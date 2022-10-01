@@ -3,12 +3,13 @@ PYTHON=$(ENV)/bin/python
 PIP=$(ENV)/bin/pip
 SITE_PACKAGES=$(wildcard $(ENV)/lib/python*/site-packages)
 REQUIREMENTS=requirements.txt
+STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
 PYTHON_FILES=$(shell find hiddeninfo -name '*.py')
 
 .PHONY: run
-run: $(PYTHON)
-	$(PYTHON) -m hiddeninfo
+run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
+	$(STREAMLIT) run run_streamlit.py
 
 .PHONY: format
 format: $(BLACK)
@@ -18,9 +19,8 @@ format: $(BLACK)
 clean:
 	rm -r $(ENV)
 
-$(PYTHON): $(ENV) $(SITE_PACKAGES)
-$(ENV):
+# TODO: Replace this with proper make dependencies.
+.PHONY: install
+install:
 	python -m venv $(ENV)
-$(SITE_PACKAGES): $(REQUIREMENTS)
-	$(PIP) install -r $(REQUIREMENTS) > /dev/null
-$(BLACK): $(SITE_PACKAGES)
+	$(PIP) install -r $(REQUIREMENTS)

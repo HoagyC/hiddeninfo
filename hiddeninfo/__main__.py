@@ -2,8 +2,9 @@ from typing import Iterable
 import dataclasses
 import matplotlib.pyplot as plt
 import pandas as pd
-import torch
 import seaborn as sns
+import streamlit as st
+import torch
 
 VECTOR_SIZE = 20
 LATENT_SIZE = 20
@@ -53,14 +54,25 @@ def main():
                 dict(exp="with_representation_loss", **dataclasses.asdict(result))
                 for result in results_with_representation_loss
             ],
-            * [
+            *[
                 dict(exp="without_representation_loss", **dataclasses.asdict(result))
                 for result in results_without_representation_loss
-            ]
+            ],
         ]
     )
-    sns.lineplot(data=df, x="step", y="loss", hue="exp")
-    plt.show()
+    st.write(df)
+
+    losses = [
+        "loss",
+        "reconstruction_loss",
+        "representation_loss",
+        "reconstruction_loss_p1",
+        "reconstruction_loss_p2",
+    ]
+    fig, axs = plt.subplots(len(losses), figsize=(10, 10 * len(losses)))
+    for loss_name, ax in zip(losses, axs):
+        sns.lineplot(data=df, x="step", y=loss_name, hue="exp", ax=ax)
+    st.pyplot(fig)
 
 
 def _train(encoder_decoder: EncoderDecoder) -> Iterable[Result]:
@@ -96,8 +108,6 @@ def _train(encoder_decoder: EncoderDecoder) -> Iterable[Result]:
             vector[LATENT_SIZE:], vector_reconstructed[LATENT_SIZE:]
         )
 
-        if step % 100 == 0:
-            print(step, loss.item())
         yield Result(
             step=step,
             loss=loss.item(),
