@@ -1,3 +1,4 @@
+from cmath import exp
 from typing import List
 import dataclasses
 import matplotlib.pyplot as plt
@@ -9,9 +10,10 @@ import torch
 VECTOR_SIZE = 20
 LATENT_SIZE = 20
 HIDDEN_SIZE = 20
-NUM_BATCHES = 10_000
+NUM_BATCHES = 1000
 BATCH_SIZE = 32
 REPRESENTATION_LOSS_COEFFICIENT = 8
+NUM_ITERATIONS = 5
 
 
 @dataclasses.dataclass
@@ -24,6 +26,7 @@ class Experiment:
 @dataclasses.dataclass
 class Result:
     tag: str
+    iteration: int
     step: int
     loss: float
     reconstruction_loss: float
@@ -51,7 +54,9 @@ def main():
             has_missing_knowledge=True,
         ),
     ]
-    results = [result for experiment in experiments for result in _train(experiment)]
+    results = [
+        result for experiment in experiments for result in _run_experiment(experiment)
+    ]
     df = pd.DataFrame([dataclasses.asdict(result) for result in results])
     st.write(df)
 
@@ -69,7 +74,16 @@ def main():
 
 
 @st.cache
-def _train(experiment: Experiment) -> List[Result]:
+def _run_experiment(experiment: Experiment) -> List[Result]:
+    return [
+        result
+        for iteration in range(NUM_ITERATIONS)
+        for result in _train(experiment, iteration)
+    ]
+
+
+@st.cache
+def _train(experiment: Experiment, iteration: int) -> List[Result]:
     encoder = _create_encoder()
     decoder = _create_decoder()
 
@@ -117,6 +131,7 @@ def _train(experiment: Experiment) -> List[Result]:
             results.append(
                 Result(
                     tag=experiment.tag,
+                    iteration=iteration,
                     step=step,
                     loss=loss.item(),
                     reconstruction_loss=reconstruction_loss.item(),
