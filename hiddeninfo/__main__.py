@@ -16,12 +16,14 @@ REPRESENTATION_LOSS_COEFFICIENT = 8
 
 @dataclasses.dataclass
 class Experiment:
+    tag: str
     has_representation_loss: float
     has_missing_knowledge: bool
 
 
 @dataclasses.dataclass
 class Result:
+    tag: str
     step: int
     loss: float
     reconstruction_loss: float
@@ -32,41 +34,25 @@ class Result:
 
 
 def main():
-    results_baseline = _train(
+    experiments = [
         Experiment(
+            tag="baseline",
             has_representation_loss=False,
             has_missing_knowledge=False,
-        )
-    )
-    results_representation_loss = _train(
+        ),
         Experiment(
+            tag="representation_loss",
             has_representation_loss=True,
             has_missing_knowledge=False,
-        )
-    )
-    results_missing_knowledge = _train(
+        ),
         Experiment(
+            tag="missing_knowledge",
             has_representation_loss=False,
             has_missing_knowledge=True,
-        )
-    )
-
-    df = pd.DataFrame(
-        [
-            *[
-                dict(exp="baseline", **dataclasses.asdict(result))
-                for result in results_baseline
-            ],
-            *[
-                dict(exp="representation_loss", **dataclasses.asdict(result))
-                for result in results_representation_loss
-            ],
-            *[
-                dict(exp="results_missing_knowledge", **dataclasses.asdict(result))
-                for result in results_missing_knowledge
-            ],
-        ]
-    )
+        ),
+    ]
+    results = [result for experiment in experiments for result in _train(experiment)]
+    df = pd.DataFrame([dataclasses.asdict(result) for result in results])
     st.write(df)
 
     losses = [
@@ -78,7 +64,7 @@ def main():
     ]
     fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
     for loss_name, ax in zip(losses, axs):
-        sns.lineplot(data=df, x="step", y=loss_name, hue="exp", ax=ax)
+        sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
     st.pyplot(fig)
 
 
@@ -128,14 +114,17 @@ def _train(experiment: Experiment) -> List[Result]:
         )
 
         if step % 100 == 0:
-            results.append(Result(
-                step=step,
-                loss=loss.item(),
-                reconstruction_loss=reconstruction_loss.item(),
-                representation_loss=representation_loss.item(),
-                reconstruction_loss_p1=reconstruction_loss_p1.item(),
-                reconstruction_loss_p2=reconstruction_loss_p2.item(),
-            ))
+            results.append(
+                Result(
+                    tag=experiment.tag,
+                    step=step,
+                    loss=loss.item(),
+                    reconstruction_loss=reconstruction_loss.item(),
+                    representation_loss=representation_loss.item(),
+                    reconstruction_loss_p1=reconstruction_loss_p1.item(),
+                    reconstruction_loss_p2=reconstruction_loss_p2.item(),
+                )
+            )
     return results
 
 
