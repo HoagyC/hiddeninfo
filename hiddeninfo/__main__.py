@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import List
 import dataclasses
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -15,9 +15,7 @@ REPRESENTATION_LOSS_COEFFICIENT = 8
 
 
 @dataclasses.dataclass
-class EncoderDecoder:
-    encoder: torch.nn.Module
-    decoder: torch.nn.Module
+class Experiment:
     has_representation_loss: float
     has_missing_knowledge: bool
 
@@ -35,25 +33,19 @@ class Result:
 
 def main():
     results_baseline = _train(
-        EncoderDecoder(
-            _create_encoder(),
-            _create_decoder(),
+        Experiment(
             has_representation_loss=False,
             has_missing_knowledge=False,
         )
     )
     results_representation_loss = _train(
-        EncoderDecoder(
-            _create_encoder(),
-            _create_decoder(),
+        Experiment(
             has_representation_loss=True,
             has_missing_knowledge=False,
         )
     )
     results_missing_knowledge = _train(
-        EncoderDecoder(
-            _create_encoder(),
-            _create_decoder(),
+        Experiment(
             has_representation_loss=False,
             has_missing_knowledge=True,
         )
@@ -90,29 +82,32 @@ def main():
     st.pyplot(fig)
 
 
-def _train(encoder_decoder: EncoderDecoder) -> Iterable[Result]:
-    optimizer = torch.optim.Adam(
-        [*encoder_decoder.encoder.parameters(), *encoder_decoder.decoder.parameters()]
-    )
+@st.cache
+def _train(experiment: Experiment) -> List[Result]:
+    encoder = _create_encoder()
+    decoder = _create_decoder()
+
+    optimizer = torch.optim.Adam([*encoder.parameters(), *decoder.parameters()])
     reconstruction_loss_fn = torch.nn.MSELoss()
     representation_loss_fn = torch.nn.MSELoss()
 
+    results = []
     for step in range(NUM_BATCHES + 1):
         optimizer.zero_grad()
 
         vector = torch.normal(mean=0, std=1, size=(BATCH_SIZE, VECTOR_SIZE))
-        if encoder_decoder.has_missing_knowledge:
+        if experiment.has_missing_knowledge:
             replacement = torch.normal(
                 mean=0, std=1, size=(BATCH_SIZE, VECTOR_SIZE - LATENT_SIZE)
             )
             vector_input = torch.concat([vector[:, :LATENT_SIZE], replacement], dim=1)
         else:
             vector_input = vector
-        latent_repr = encoder_decoder.encoder(vector_input)
-        vector_reconstructed = encoder_decoder.decoder(latent_repr)
+        latent_repr = encoder(vector_input)
+        vector_reconstructed = decoder(latent_repr)
 
         reconstruction_loss = reconstruction_loss_fn(vector, vector_reconstructed)
-        if encoder_decoder.has_representation_loss:
+        if experiment.has_representation_loss:
             representation_loss = representation_loss_fn(
                 vector[:, :LATENT_SIZE], latent_repr
             )
@@ -133,14 +128,15 @@ def _train(encoder_decoder: EncoderDecoder) -> Iterable[Result]:
         )
 
         if step % 100 == 0:
-            yield Result(
+            results.append(Result(
                 step=step,
                 loss=loss.item(),
                 reconstruction_loss=reconstruction_loss.item(),
                 representation_loss=representation_loss.item(),
                 reconstruction_loss_p1=reconstruction_loss_p1.item(),
                 reconstruction_loss_p2=reconstruction_loss_p2.item(),
-            )
+            ))
+    return results
 
 
 def _create_encoder() -> torch.nn.Module:
