@@ -9,9 +9,9 @@ import torch
 VECTOR_SIZE = 20
 LATENT_SIZE = 20
 HIDDEN_SIZE = 20
-NUM_BATCHES = 1000
+NUM_BATCHES = 10_000
 BATCH_SIZE = 32
-REPRESENTATION_LOSS_COEFFICIENT = 1
+REPRESENTATION_LOSS_COEFFICIENT = 8
 
 
 @dataclasses.dataclass
@@ -19,7 +19,7 @@ class EncoderDecoder:
     encoder: torch.nn.Module
     decoder: torch.nn.Module
     has_representation_loss: float
-    # has_missing_knowledge: bool
+    has_missing_knowledge: bool
 
 
 @dataclasses.dataclass
@@ -34,30 +34,44 @@ class Result:
 
 
 def main():
-    results_with_representation_loss = _train(
-        EncoderDecoder(
-            _create_encoder(),
-            _create_decoder(),
-            has_representation_loss=True,
-        )
-    )
-    results_without_representation_loss = _train(
+    results_baseline = _train(
         EncoderDecoder(
             _create_encoder(),
             _create_decoder(),
             has_representation_loss=False,
+            has_missing_knowledge=False,
+        )
+    )
+    results_representation_loss = _train(
+        EncoderDecoder(
+            _create_encoder(),
+            _create_decoder(),
+            has_representation_loss=True,
+            has_missing_knowledge=False,
+        )
+    )
+    results_missing_knowledge = _train(
+        EncoderDecoder(
+            _create_encoder(),
+            _create_decoder(),
+            has_representation_loss=False,
+            has_missing_knowledge=True,
         )
     )
 
     df = pd.DataFrame(
         [
             *[
-                dict(exp="with_representation_loss", **dataclasses.asdict(result))
-                for result in results_with_representation_loss
+                dict(exp="baseline", **dataclasses.asdict(result))
+                for result in results_baseline
             ],
             *[
-                dict(exp="without_representation_loss", **dataclasses.asdict(result))
-                for result in results_without_representation_loss
+                dict(exp="representation_loss", **dataclasses.asdict(result))
+                for result in results_representation_loss
+            ],
+            *[
+                dict(exp="results_missing_knowledge", **dataclasses.asdict(result))
+                for result in results_missing_knowledge
             ],
         ]
     )
@@ -70,7 +84,7 @@ def main():
         "reconstruction_loss_p1",
         "reconstruction_loss_p2",
     ]
-    fig, axs = plt.subplots(len(losses), figsize=(10, 10 * len(losses)))
+    fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
     for loss_name, ax in zip(losses, axs):
         sns.lineplot(data=df, x="step", y=loss_name, hue="exp", ax=ax)
     st.pyplot(fig)
@@ -83,11 +97,18 @@ def _train(encoder_decoder: EncoderDecoder) -> Iterable[Result]:
     reconstruction_loss_fn = torch.nn.MSELoss()
     representation_loss_fn = torch.nn.MSELoss()
 
-    for step in range(NUM_BATCHES):
+    for step in range(NUM_BATCHES + 1):
         optimizer.zero_grad()
 
         vector = torch.normal(mean=0, std=1, size=(BATCH_SIZE, VECTOR_SIZE))
-        latent_repr = encoder_decoder.encoder(vector)
+        if encoder_decoder.has_missing_knowledge:
+            replacement = torch.normal(
+                mean=0, std=1, size=(BATCH_SIZE, VECTOR_SIZE - LATENT_SIZE)
+            )
+            vector_input = torch.concat([vector[:, :LATENT_SIZE], replacement], dim=1)
+        else:
+            vector_input = vector
+        latent_repr = encoder_decoder.encoder(vector_input)
         vector_reconstructed = encoder_decoder.decoder(latent_repr)
 
         reconstruction_loss = reconstruction_loss_fn(vector, vector_reconstructed)
@@ -97,7 +118,9 @@ def _train(encoder_decoder: EncoderDecoder) -> Iterable[Result]:
             )
         else:
             representation_loss = torch.tensor(0)
-        loss = reconstruction_loss + representation_loss * REPRESENTATION_LOSS_COEFFICIENT
+        loss = (
+            reconstruction_loss + representation_loss * REPRESENTATION_LOSS_COEFFICIENT
+        )
 
         loss.backward()
         optimizer.step()
@@ -109,14 +132,15 @@ def _train(encoder_decoder: EncoderDecoder) -> Iterable[Result]:
             vector[LATENT_SIZE:], vector_reconstructed[LATENT_SIZE:]
         )
 
-        yield Result(
-            step=step,
-            loss=loss.item(),
-            reconstruction_loss=reconstruction_loss.item(),
-            representation_loss=representation_loss.item(),
-            reconstruction_loss_p1=reconstruction_loss_p1.item(),
-            reconstruction_loss_p2=reconstruction_loss_p2.item(),
-        )
+        if step % 100 == 0:
+            yield Result(
+                step=step,
+                loss=loss.item(),
+                reconstruction_loss=reconstruction_loss.item(),
+                representation_loss=representation_loss.item(),
+                reconstruction_loss_p1=reconstruction_loss_p1.item(),
+                reconstruction_loss_p2=reconstruction_loss_p2.item(),
+            )
 
 
 def _create_encoder() -> torch.nn.Module:
