@@ -10,7 +10,7 @@ import torch
 VECTOR_SIZE = 20
 LATENT_SIZE = 20
 HIDDEN_SIZE = 20
-NUM_BATCHES = 1000
+NUM_BATCHES = 10_000
 BATCH_SIZE = 32
 REPRESENTATION_LOSS_COEFFICIENT = 8
 NUM_ITERATIONS = 5
@@ -95,11 +95,9 @@ def _train(experiment: Experiment, iteration: int) -> List[Result]:
     for step in range(NUM_BATCHES + 1):
         optimizer.zero_grad()
 
-        vector = torch.normal(mean=0, std=1, size=(BATCH_SIZE, VECTOR_SIZE))
+        vector = _generate_vector_batch()
         if experiment.has_missing_knowledge:
-            replacement = torch.normal(
-                mean=0, std=1, size=(BATCH_SIZE, VECTOR_SIZE - LATENT_SIZE)
-            )
+            replacement = _generate_vector_batch(VECTOR_SIZE - LATENT_SIZE)
             vector_input = torch.concat([vector[:, :LATENT_SIZE], replacement], dim=1)
         else:
             vector_input = vector
@@ -157,6 +155,12 @@ def _create_decoder() -> torch.nn.Module:
         torch.nn.ReLU(),
         torch.nn.Linear(HIDDEN_SIZE, VECTOR_SIZE),
     )
+
+
+def _generate_vector_batch(vector_size: int = VECTOR_SIZE) -> torch.Tensor:
+    # High is exclusive.
+    return torch.randint(low=0, high=2, size=(BATCH_SIZE, vector_size)).float()
+    # return torch.normal(mean=0, std=1, size=(BATCH_SIZE, vector_size))
 
 
 if __name__ == "__main__":
