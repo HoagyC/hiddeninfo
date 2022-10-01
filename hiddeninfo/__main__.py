@@ -11,6 +11,7 @@ LATENT_SIZE = 20
 HIDDEN_SIZE = 20
 NUM_BATCHES = 1000
 BATCH_SIZE = 32
+REPRESENTATION_LOSS_COEFFICIENT = 1
 
 
 @dataclasses.dataclass
@@ -96,7 +97,7 @@ def _train(encoder_decoder: EncoderDecoder) -> Iterable[Result]:
             )
         else:
             representation_loss = torch.tensor(0)
-        loss = reconstruction_loss + representation_loss
+        loss = reconstruction_loss + representation_loss * REPRESENTATION_LOSS_COEFFICIENT
 
         loss.backward()
         optimizer.step()
