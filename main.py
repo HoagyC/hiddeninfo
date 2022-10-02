@@ -17,6 +17,7 @@ NUM_BATCHES = 10_000
 BATCH_SIZE = 32
 REPRESENTATION_LOSS_COEFFICIENT = 5
 NUM_ITERATIONS = 3
+VECTOR_P2_SCALE = 3
 
 CACHE_DIR = pathlib.Path("out/cache")
 
@@ -107,7 +108,6 @@ def main():
     st.pyplot(grid.fig)
 
 
-
 def _train(experiment: Experiment, iteration: int) -> List[Result]:
     encoder = _create_encoder()
     decoder = _create_decoder()
@@ -120,16 +120,12 @@ def _train(experiment: Experiment, iteration: int) -> List[Result]:
     for step in range(NUM_BATCHES + 1):
         optimizer.zero_grad()
 
-        vector = torch.concat(
-            [
-                _generate_vector_batch(LATENT_SIZE),
-                _generate_vector_batch(VECTOR_SIZE - LATENT_SIZE) * 3,
-            ],
-            dim=1,
-        )
+        vector = _generate_vector_batch()
         if experiment.has_missing_knowledge:
-            replacement = _generate_vector_batch(VECTOR_SIZE - LATENT_SIZE) * 3
-            vector_input = torch.concat([vector[:, :LATENT_SIZE], replacement], dim=1)
+            vector_input = torch.concat(
+                [vector[:, :LATENT_SIZE], _generate_vector_batch()[:, LATENT_SIZE:]],
+                dim=1,
+            )
         else:
             vector_input = vector
         latent_repr = encoder(vector_input)
@@ -203,10 +199,15 @@ def _create_decoder() -> torch.nn.Module:
     )
 
 
-def _generate_vector_batch(vector_size: int = VECTOR_SIZE) -> torch.Tensor:
+def _generate_vector_batch() -> torch.Tensor:
     # High is exclusive, so add one.
-    return torch.randint(low=0, high=2, size=(BATCH_SIZE, vector_size)).float()
-    # return torch.normal(mean=0, std=1, size=(BATCH_SIZE, vector_size))
+    p1_high = 1 + 1
+    p2_high = VECTOR_P2_SCALE + 1
+    p1 = torch.randint(low=0, high=p1_high, size=(BATCH_SIZE, LATENT_SIZE)).float()
+    p2 = torch.randint(
+        low=0, high=p2_high, size=(BATCH_SIZE, VECTOR_SIZE - LATENT_SIZE)
+    ).float()
+    return torch.concat([p1, p2], dim=1)
 
 
 if __name__ == "__main__":
