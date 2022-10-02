@@ -1,19 +1,20 @@
 from cmath import exp
-import itertools
 from typing import List
+from typing import Tuple
 import dataclasses
+import itertools
 import matplotlib.pyplot as plt
 import pandas as pd
+import pathlib
+import pickle
 import seaborn as sns
 import streamlit as st
 import torch
-import pathlib
-import pickle
 
 VECTOR_SIZE = 20
 LATENT_SIZE = 10
 HIDDEN_SIZE = 20
-NUM_BATCHES = 10_000
+NUM_BATCHES = 100_000
 BATCH_SIZE = 32
 REPRESENTATION_LOSS_COEFFICIENT = 5
 NUM_ITERATIONS = 3
@@ -27,6 +28,14 @@ class Experiment:
     tag: str
     has_representation_loss: float
     has_missing_knowledge: bool
+
+
+@dataclasses.dataclass
+class Model:
+    tag: str
+    iteration: int
+    encoder: torch.nn.Module
+    decoder: torch.nn.Module
 
 
 @dataclasses.dataclass
@@ -66,17 +75,24 @@ def main():
         ),
     ]
 
-    if st.checkbox("Refresh results", value=False):
+    if st.checkbox("Retrain models", value=False):
         results = []
+        models = []
         iterations = itertools.product(experiments, range(NUM_ITERATIONS))
         bar = st.progress(0.0)
         for i, (experiment, iteration) in enumerate(iterations):
-            results.extend(_train(experiment, iteration))
+            model, iteration_results = _train(experiment, iteration)
+            models.append(model)
+            results.extend(iteration_results)
             bar.progress(i / (len(experiments) * NUM_ITERATIONS))
         bar.progress(1.0)
+        with (CACHE_DIR / "models.pickle").open("wb") as f:
+            pickle.dump(models, f)
         with (CACHE_DIR / "results.pickle").open("wb") as f:
             pickle.dump(results, f)
     else:
+        with (CACHE_DIR / "models.pickle").open("rb") as f:
+            models = pickle.load(f)
         with (CACHE_DIR / "results.pickle").open("rb") as f:
             results = pickle.load(f)
 
@@ -108,11 +124,17 @@ def main():
     st.pyplot(grid.fig)
 
 
-def _train(experiment: Experiment, iteration: int) -> List[Result]:
-    encoder = _create_encoder()
-    decoder = _create_decoder()
+def _train(experiment: Experiment, iteration: int) -> Tuple[Model, List[Result]]:
+    model = Model(
+        tag=experiment.tag,
+        iteration=iteration,
+        encoder=_create_encoder(),
+        decoder=_create_decoder(),
+    )
 
-    optimizer = torch.optim.Adam([*encoder.parameters(), *decoder.parameters()])
+    optimizer = torch.optim.Adam(
+        [*model.encoder.parameters(), *model.decoder.parameters()]
+    )
     reconstruction_loss_fn = torch.nn.MSELoss()
     representation_loss_fn = torch.nn.MSELoss()
 
@@ -128,8 +150,8 @@ def _train(experiment: Experiment, iteration: int) -> List[Result]:
             )
         else:
             vector_input = vector
-        latent_repr = encoder(vector_input)
-        vector_reconstructed = decoder(latent_repr)
+        latent_repr = model.encoder(vector_input)
+        vector_reconstructed = model.decoder(latent_repr)
 
         reconstruction_loss = reconstruction_loss_fn(vector, vector_reconstructed)
         if experiment.has_representation_loss:
@@ -172,7 +194,8 @@ def _train(experiment: Experiment, iteration: int) -> List[Result]:
                     reconstruction_loss_p2=reconstruction_loss_p2.item(),
                 )
             )
-    return results
+
+    return model, results
 
 
 def _create_encoder() -> torch.nn.Module:
