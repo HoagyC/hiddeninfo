@@ -6,14 +6,19 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 import torch
+import pathlib
+import pickle
 
 VECTOR_SIZE = 20
-LATENT_SIZE = 20
+LATENT_SIZE = 10
 HIDDEN_SIZE = 20
-NUM_BATCHES = 10_000
+# NUM_BATCHES = 10_000
+NUM_BATCHES = 200
 BATCH_SIZE = 32
 REPRESENTATION_LOSS_COEFFICIENT = 8
 NUM_ITERATIONS = 5
+
+CACHE_DIR = pathlib.Path("out/cache")
 
 
 @dataclasses.dataclass
@@ -37,6 +42,11 @@ class Result:
 
 
 def main():
+    st.header("Hidden info")
+
+    if not CACHE_DIR.is_dir():
+        CACHE_DIR.mkdir(parents=True)
+
     experiments = [
         Experiment(
             tag="baseline",
@@ -54,9 +64,19 @@ def main():
             has_missing_knowledge=True,
         ),
     ]
-    results = [
-        result for experiment in experiments for result in _run_experiment(experiment)
-    ]
+
+    if st.checkbox("Refresh results", value=True):
+        results = [
+            result
+            for experiment in experiments
+            for result in _run_experiment(experiment)
+        ]
+        with (CACHE_DIR / "results.pickle").open("wb") as f:
+            pickle.dump(results, f)
+    else:
+        with (CACHE_DIR / "results.pickle").open("rb") as f:
+            results = pickle.load(f)
+
     df = pd.DataFrame([dataclasses.asdict(result) for result in results])
     st.write(df)
 
@@ -70,10 +90,13 @@ def main():
     fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
     for loss_name, ax in zip(losses, axs):
         sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
+        ax.set_title(loss_name)
+        ax.set_yscale("log")
+    fig.tight_layout()
     st.pyplot(fig)
 
 
-@st.cache
+@st.cache(suppress_st_warning=True)
 def _run_experiment(experiment: Experiment) -> List[Result]:
     return [
         result
@@ -82,7 +105,7 @@ def _run_experiment(experiment: Experiment) -> List[Result]:
     ]
 
 
-@st.cache
+@st.cache(suppress_st_warning=True)
 def _train(experiment: Experiment, iteration: int) -> List[Result]:
     encoder = _create_encoder()
     decoder = _create_decoder()
