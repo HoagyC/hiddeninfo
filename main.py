@@ -1,4 +1,5 @@
 from cmath import exp
+import itertools
 from typing import List
 import dataclasses
 import matplotlib.pyplot as plt
@@ -14,8 +15,8 @@ LATENT_SIZE = 10
 HIDDEN_SIZE = 20
 NUM_BATCHES = 10_000
 BATCH_SIZE = 32
-REPRESENTATION_LOSS_COEFFICIENT = 8
-NUM_ITERATIONS = 5
+REPRESENTATION_LOSS_COEFFICIENT = 5
+NUM_ITERATIONS = 3
 
 CACHE_DIR = pathlib.Path("out/cache")
 
@@ -64,12 +65,14 @@ def main():
         ),
     ]
 
-    if st.checkbox("Refresh results", value=True):
-        results = [
-            result
-            for experiment in experiments
-            for result in _run_experiment(experiment)
-        ]
+    if st.checkbox("Refresh results", value=False):
+        results = []
+        iterations = itertools.product(experiments, range(NUM_ITERATIONS))
+        bar = st.progress(0.0)
+        for i, (experiment, iteration) in enumerate(iterations):
+            results.extend(_train(experiment, iteration))
+            bar.progress(i / (len(experiments) * NUM_ITERATIONS))
+        bar.progress(1.0)
         with (CACHE_DIR / "results.pickle").open("wb") as f:
             pickle.dump(results, f)
     else:
@@ -94,17 +97,17 @@ def main():
     fig.tight_layout()
     st.pyplot(fig)
 
+    df = df[df["step"] == df["step"].max()]
+    df = df.drop("step", axis=1)
+    df = pd.melt(
+        df, id_vars=["tag", "iteration"], var_name="loss_type", value_name="loss_value"
+    )
+    grid = sns.FacetGrid(df, col="loss_type", sharex=False)
+    grid.map(sns.barplot, "loss_value", "tag")
+    st.pyplot(grid.fig)
 
-@st.cache(suppress_st_warning=True)
-def _run_experiment(experiment: Experiment) -> List[Result]:
-    return [
-        result
-        for iteration in range(NUM_ITERATIONS)
-        for result in _train(experiment, iteration)
-    ]
 
 
-@st.cache(suppress_st_warning=True)
 def _train(experiment: Experiment, iteration: int) -> List[Result]:
     encoder = _create_encoder()
     decoder = _create_decoder()
@@ -117,9 +120,15 @@ def _train(experiment: Experiment, iteration: int) -> List[Result]:
     for step in range(NUM_BATCHES + 1):
         optimizer.zero_grad()
 
-        vector = _generate_vector_batch()
+        vector = torch.concat(
+            [
+                _generate_vector_batch(LATENT_SIZE),
+                _generate_vector_batch(VECTOR_SIZE - LATENT_SIZE) * 3,
+            ],
+            dim=1,
+        )
         if experiment.has_missing_knowledge:
-            replacement = _generate_vector_batch(VECTOR_SIZE - LATENT_SIZE)
+            replacement = _generate_vector_batch(VECTOR_SIZE - LATENT_SIZE) * 3
             vector_input = torch.concat([vector[:, :LATENT_SIZE], replacement], dim=1)
         else:
             vector_input = vector
@@ -131,20 +140,27 @@ def _train(experiment: Experiment, iteration: int) -> List[Result]:
             representation_loss = representation_loss_fn(
                 vector[:, :LATENT_SIZE], latent_repr
             )
+            reconstruction_loss_coefficient = 1 / (REPRESENTATION_LOSS_COEFFICIENT + 1)
+            representation_loss_coefficient = REPRESENTATION_LOSS_COEFFICIENT / (
+                REPRESENTATION_LOSS_COEFFICIENT + 1
+            )
         else:
             representation_loss = torch.tensor(0)
+            reconstruction_loss_coefficient = 1
+            representation_loss_coefficient = 0
         loss = (
-            reconstruction_loss + representation_loss * REPRESENTATION_LOSS_COEFFICIENT
+            reconstruction_loss * reconstruction_loss_coefficient
+            + representation_loss * representation_loss_coefficient
         )
 
         loss.backward()
         optimizer.step()
 
         reconstruction_loss_p1 = reconstruction_loss_fn(
-            vector[:LATENT_SIZE], vector_reconstructed[:LATENT_SIZE]
+            vector[:, :LATENT_SIZE], vector_reconstructed[:, :LATENT_SIZE]
         )
         reconstruction_loss_p2 = reconstruction_loss_fn(
-            vector[LATENT_SIZE:], vector_reconstructed[LATENT_SIZE:]
+            vector[:, LATENT_SIZE:], vector_reconstructed[:, LATENT_SIZE:]
         )
 
         if step % 100 == 0:
@@ -167,6 +183,10 @@ def _create_encoder() -> torch.nn.Module:
     return torch.nn.Sequential(
         torch.nn.Linear(VECTOR_SIZE, HIDDEN_SIZE),
         torch.nn.ReLU(),
+        torch.nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE),
+        torch.nn.ReLU(),
+        torch.nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE),
+        torch.nn.ReLU(),
         torch.nn.Linear(HIDDEN_SIZE, LATENT_SIZE),
     )
 
@@ -175,12 +195,16 @@ def _create_decoder() -> torch.nn.Module:
     return torch.nn.Sequential(
         torch.nn.Linear(LATENT_SIZE, HIDDEN_SIZE),
         torch.nn.ReLU(),
+        torch.nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE),
+        torch.nn.ReLU(),
+        torch.nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE),
+        torch.nn.ReLU(),
         torch.nn.Linear(HIDDEN_SIZE, VECTOR_SIZE),
     )
 
 
 def _generate_vector_batch(vector_size: int = VECTOR_SIZE) -> torch.Tensor:
-    # High is exclusive.
+    # High is exclusive, so add one.
     return torch.randint(low=0, high=2, size=(BATCH_SIZE, vector_size)).float()
     # return torch.normal(mean=0, std=1, size=(BATCH_SIZE, vector_size))
 

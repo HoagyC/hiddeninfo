@@ -5,7 +5,7 @@ SITE_PACKAGES=$(wildcard $(ENV)/lib/python*/site-packages)
 REQUIREMENTS=requirements.txt
 STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
-PYTHON_FILES=$(shell find hiddeninfo -name '*.py')
+PYTHON_FILES=main.py
 
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
