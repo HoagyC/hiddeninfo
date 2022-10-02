@@ -9,7 +9,7 @@ PYTHON_FILES=$(shell find hiddeninfo -name '*.py')
 
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
-	$(STREAMLIT) run run_streamlit.py
+	$(STREAMLIT) run main.py
 
 .PHONY: format
 format: $(BLACK)
