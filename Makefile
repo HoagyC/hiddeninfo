@@ -5,6 +5,7 @@ SITE_PACKAGES=$(wildcard $(ENV)/lib/python*/site-packages)
 REQUIREMENTS=requirements.txt
 STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
+MYPY=$(ENV)/bin/mypy
 PYTHON_FILES=main.py
 
 .PHONY: run
@@ -14,6 +15,10 @@ run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
 .PHONY: format
 format: $(BLACK)
 	$(BLACK) $(PYTHON_FILES)
+
+.PHONY: check
+check: $(MYPY)
+	$(MYPY) $(PYTHON_FILES)
 
 .PHONY: clean
 clean:
