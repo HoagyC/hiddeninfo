@@ -230,7 +230,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[Model, List[Result]]
                 )
             )
 
-    return model, results
+    return models, results
 
 
 def _get_average_loss(losses: List[Loss]) -> Loss:
