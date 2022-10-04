@@ -21,7 +21,7 @@ HIDDEN_SIZE = 20
 NUM_BATCHES = 100_000
 BATCH_SIZE = 32
 REPRESENTATION_LOSS_COEFFICIENT = 5
-NUM_ITERATIONS = 3
+NUM_ITERATIONS = 1
 VECTOR_P2_SCALE = 3
 DROPOUT_P = 0.3
 
@@ -51,7 +51,12 @@ class Result:
     tag: str
     iteration: int
     step: int
-    loss_struct: Loss
+    total_loss: float
+    reconstruction_loss: float
+    representation_loss: float
+    # The reconstruction losses for the first & second halves of the vector.
+    reconstruction_loss_p1: float
+    reconstruction_loss_p2: float
 
 
 def main():
@@ -60,9 +65,9 @@ def main():
     if not CACHE_DIR.is_dir():
         CACHE_DIR.mkdir(parents=True)
 
-    experiments = [exps.freeze2, exps.freeze4]
+    experiments = [exps.freeze2]
 
-    if st.checkbox("Retrain models", value=False):
+    if st.checkbox("Retrain models", value=True):
         results = []
         models = []
         iterations = itertools.product(experiments, range(NUM_ITERATIONS))
@@ -88,7 +93,7 @@ def main():
 
     print("written dfs")
     losses = [
-        "loss",
+        "total_loss",
         "reconstruction_loss",
         "representation_loss",
         "reconstruction_loss_p1",
@@ -127,7 +132,7 @@ def main():
 # Number of models used in multi-model scenarios
 
 
-def _train(experiment: Experiment, iteration: int) -> Tuple[Model, List[Result]]:
+def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Result]]:
     models = [
         Model(
             tag=experiment.tag + str(ndx),
@@ -226,7 +231,11 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[Model, List[Result]]
                     tag=experiment.tag,
                     iteration=iteration,
                     step=step,
-                    loss_struct=average_loss,
+                    total_loss=average_loss.total_loss,
+                    reconstruction_loss=average_loss.reconstruction_loss,
+                    representation_loss=average_loss.representation_loss,
+                    reconstruction_loss_p1=average_loss.reconstruction_loss_p1,
+                    reconstruction_loss_p2=average_loss.reconstruction_loss_p2,
                 )
             )
 
