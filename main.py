@@ -6,7 +6,7 @@ import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pathlib
+from pathlib import Path
 import pickle
 import seaborn as sns
 import streamlit as st
@@ -25,7 +25,7 @@ NUM_ITERATIONS = 1
 VECTOR_P2_SCALE = 3
 DROPOUT_P = 0.3
 
-CACHE_DIR = pathlib.Path("out/cache")
+CACHE_DIR = Path("out/cache")
 
 
 @dataclasses.dataclass
@@ -65,9 +65,9 @@ def main():
     if not CACHE_DIR.is_dir():
         CACHE_DIR.mkdir(parents=True)
 
-    experiments = [exps.freeze2]
+    experiments = [exps.prep_decoders3, exps.fresh_encoders3, exps.fresh_decoder]
 
-    if st.checkbox("Retrain models", value=True):
+    if st.checkbox("Retrain models", value=False):
         results = []
         models = []
         iterations = itertools.product(experiments, range(NUM_ITERATIONS))
@@ -87,6 +87,17 @@ def main():
             models = pickle.load(f)
         with (CACHE_DIR / "results.pickle").open("rb") as f:
             results = pickle.load(f)
+
+        completed_exps = list(set([result.tag for result in results]))
+        new_experiments = [exp for exp in experiments if exp.tag not in completed_exps]
+        iterations = itertools.product(new_experiments, range(NUM_ITERATIONS))
+        bar = st.progress(0.0)
+        for i, (experiment, iteration) in enumerate(iterations):
+            model, iteration_results = _train(experiment, iteration)
+            models.append(model)
+            results.extend(iteration_results)
+            bar.progress(i / (len(new_experiments) * NUM_ITERATIONS))
+        bar.progress(1.0)
 
     df = pd.DataFrame([dataclasses.asdict(result) for result in results])
     st.write(df)
@@ -133,19 +144,39 @@ def main():
 
 
 def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Result]]:
+    if experiment.load_decoder:
+        loaded_decoders = _load_decoders(experiment.decoder_loc)
+        assert len(loaded_decoders) == experiment.n_models
+        dec_fn = lambda x: loaded_decoders[x]
+    else:
+        dec_fn = lambda x: _create_decoder()
+
+    if experiment.load_encoder:
+        loaded_encoders = _load_encoders(experiment.encoder_loc)
+        assert len(loaded_encoders) == experiment.n_models
+        enc_fn = lambda x: loaded_encoders[x]
+    else:
+        enc_fn = lambda x: _create_encoder()
+
     models = [
         Model(
             tag=experiment.tag + str(ndx),
             iteration=iteration,
-            encoder=_create_encoder(),
-            decoder=_create_decoder(),
+            encoder=enc_fn(ndx),
+            decoder=dec_fn(ndx),
         )
         for ndx in range(experiment.n_models)
     ]
 
-    all_params = [
-        [*model.encoder.parameters(), *model.decoder.parameters()] for model in models
-    ]
+    if experiment.load_decoder:
+        all_params = [[*model.encoder.parameters()] for model in models]
+    elif experiment.load_encoder:
+        all_params = [[*model.decoder.parameters()] for model in models]
+    else:
+        all_params = [
+            [*model.encoder.parameters(), *model.decoder.parameters()]
+            for model in models
+        ]
 
     optimizer = torch.optim.Adam(list(itertools.chain.from_iterable(all_params)))
     reconstruction_loss_fn = torch.nn.MSELoss()
@@ -154,7 +185,9 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
     results = []
     for step in range(NUM_BATCHES + 1):
         losses = []
-        model_perm = torch.randperm(len(models))
+        if experiment.end_to_end:
+            model_perm = torch.randperm(len(models))
+
         for model_ndx in range(len(models)):
             encoder = models[model_ndx].encoder
             if experiment.end_to_end:
@@ -179,7 +212,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             latent_repr = encoder(vector_input)
             if experiment.dropout:
                 # Applying dropout manually to avoid scaling
-                bernoulli_t = torch.full(size=HIDDEN_SIZE, fill_value=dropout_p)
+                bernoulli_t = torch.full(size=[HIDDEN_SIZE], fill_value=DROPOUT_P)
                 dropout_t = torch.bernoulli(bernoulli_t)
                 latent_repr = latent_repr * DROPOUT_P
 
@@ -238,6 +271,8 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
                     reconstruction_loss_p2=average_loss.reconstruction_loss_p2,
                 )
             )
+        if step % 10000 == 0:
+            print(step)
 
     return models, results
 
@@ -247,11 +282,11 @@ def _get_average_loss(losses: List[Loss]) -> Loss:
         return losses[0]
     else:
         return Loss(
-            np.mean([l.total_loss for l in losses]),
-            np.mean([l.reconstruction_loss for l in losses]),
-            np.mean([l.representation_loss for l in losses]),
-            np.mean([l.reconstruction_loss_p1 for l in losses]),
-            np.mean([l.reconstruction_loss_p2 for l in losses]),
+            float(np.mean([l.total_loss for l in losses])),
+            float(np.mean([l.reconstruction_loss for l in losses])),
+            float(np.mean([l.representation_loss for l in losses])),
+            float(np.mean([l.reconstruction_loss_p1 for l in losses])),
+            float(np.mean([l.reconstruction_loss_p2 for l in losses])),
         )
 
 
@@ -288,6 +323,27 @@ def _generate_vector_batch() -> torch.Tensor:
         low=0, high=p2_high, size=(BATCH_SIZE, VECTOR_SIZE - LATENT_SIZE)
     ).float()
     return torch.concat([p1, p2], dim=1)
+
+
+def _load_decoders(location: Path) -> List[torch.nn.Module]:
+    with open(location, "rb") as f:
+        models = pickle.load(f)
+
+    return [model.decoder for model in models]
+
+
+def _load_encoders(location: Path) -> List[torch.nn.Module]:
+    with open(location, "rb") as f:
+        models = pickle.load(f)
+
+    return [model.encoder for model in models]
+
+
+def _save_models(models: torch.nn.Module, location: Path) -> None:
+    if not location.parent.is_dir():
+        location.parent.mkdir(parents=True)
+    with open(location, "wb") as f:
+        pickle.dump(models, f)
 
 
 if __name__ == "__main__":
