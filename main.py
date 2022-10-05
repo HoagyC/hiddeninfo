@@ -61,7 +61,7 @@ def main():
     original_experiments = [
         exps.prep_decoders3,
         exps.fresh_encoders3,
-        exps.fresh_decoder,
+        exps.fresh_decoders3,
     ]
     retrain_models = st.checkbox("Retrain models", value=False)
 
