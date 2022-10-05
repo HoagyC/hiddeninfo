@@ -1,5 +1,6 @@
 from typing import List
 from typing import Tuple
+import copy
 import dataclasses
 import functools
 import itertools
@@ -57,12 +58,16 @@ def main():
     if not CACHE_DIR.is_dir():
         CACHE_DIR.mkdir(parents=True)
 
-    experiments = [exps.prep_decoders3, exps.fresh_encoders3, exps.fresh_decoder]
+    original_experiments = [
+        exps.prep_decoders3,
+        exps.fresh_encoders3,
+        exps.fresh_decoder,
+    ]
     retrain_models = st.checkbox("Retrain models", value=False)
 
     for repr_loss_coef in range(1, 11, 2):
-        st.subheader(f"Using repr loss coefficient of {repr_loss_coef}")
-        experiments = [exps.prep_decoders3, exps.fresh_encoders3, exps.fresh_decoder]
+        st.subheader(f"Using representation loss coefficient of {repr_loss_coef}")
+        experiments = copy.deepcopy(original_experiments)
         for exp in experiments:
             exp.repr_loss_coef = repr_loss_coef
             exp.tag += f"_coef{repr_loss_coef}"
@@ -78,7 +83,7 @@ def main():
                 results.extend(iteration_results)
                 bar.progress((i + 1) / (len(experiments) * NUM_ITERATIONS))
             bar.progress(1.0)
-            _save_all(results, models)
+            _save_all(models, results)
         else:
             with (CACHE_DIR / "models.pickle").open("rb") as f:
                 models = pickle.load(f)
@@ -156,7 +161,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
         assert len(loaded_decoders) == experiment.n_models
         dec_fn = lambda x: loaded_decoders[x]
     else:
-        dec_fn = lambda x: _create_decoder(
+        dec_fn = lambda _: _create_decoder(
             latent_size=experiment.latent_size,
             hidden_size=experiment.hidden_size,
             vector_size=experiment.hidden_size,
@@ -167,7 +172,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
         assert len(loaded_encoders) == experiment.n_models
         enc_fn = lambda x: loaded_encoders[x]
     else:
-        enc_fn = lambda x: _create_encoder(
+        enc_fn = lambda _: _create_encoder(
             latent_size=experiment.latent_size,
             hidden_size=experiment.hidden_size,
             vector_size=experiment.hidden_size,
@@ -215,7 +220,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
                 vector_size=experiment.vector_size,
-                latent_size=experiment.latent_size,
+                preferred_rep_size=experiment.preferred_rep_size,
                 vector_p2_scale=experiment.vector_p2_scale,
             )
             if experiment.has_missing_knowledge:
@@ -225,7 +230,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
                         _generate_vector_batch(
                             batch_size=experiment.batch_size,
                             vector_size=experiment.vector_size,
-                            latent_size=experiment.latent_size,
+                            preferred_rep_size=experiment.preferred_rep_size,
                             vector_p2_scale=experiment.vector_p2_scale,
                         )[:, experiment.latent_size :],
                     ],
@@ -248,7 +253,8 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             reconstruction_loss = reconstruction_loss_fn(vector, vector_reconstructed)
             if experiment.has_representation_loss:
                 representation_loss = representation_loss_fn(
-                    vector[:, : experiment.latent_size], latent_repr
+                    vector[:, : experiment.preferred_rep_size],
+                    latent_repr[:, : experiment.preferred_rep_size],
                 )
                 reconstruction_loss_coefficient = 1 / (experiment.repr_loss_coef + 1)
                 representation_loss_coefficient = experiment.repr_loss_coef / (
@@ -266,12 +272,12 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             loss.backward()
             optimizer.step()
             reconstruction_loss_p1 = reconstruction_loss_fn(
-                vector[:, : experiment.latent_size],
-                vector_reconstructed[:, : experiment.latent_size],
+                vector[:, : experiment.preferred_rep_size],
+                vector_reconstructed[:, : experiment.preferred_rep_size],
             )
             reconstruction_loss_p2 = reconstruction_loss_fn(
-                vector[:, experiment.latent_size :],
-                vector_reconstructed[:, experiment.latent_size :],
+                vector[:, experiment.preferred_rep_size :],
+                vector_reconstructed[:, experiment.preferred_rep_size :],
             )
             losses.append(
                 Loss(
@@ -298,7 +304,8 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
                     reconstruction_loss_p2=average_loss.reconstruction_loss_p2,
                 )
             )
-        if step % 10000 == 0:
+        if step % 1000 == 0:
+            print(vector_input[0], latent_repr[0], vector_reconstructed[0])
             print(step)
 
     if experiment.save_model:
@@ -348,14 +355,16 @@ def _create_decoder(
 
 
 def _generate_vector_batch(
-    batch_size: int, vector_size: int, latent_size: int, vector_p2_scale: int
+    batch_size: int, vector_size: int, preferred_rep_size: int, vector_p2_scale: int
 ) -> torch.Tensor:
     # High is exclusive, so add one.
     p1_high = 1 + 1
     p2_high = vector_p2_scale + 1
-    p1 = torch.randint(low=0, high=p1_high, size=(batch_size, latent_size)).float()
+    p1 = torch.randint(
+        low=0, high=p1_high, size=(batch_size, preferred_rep_size)
+    ).float()
     p2 = torch.randint(
-        low=0, high=p2_high, size=(batch_size, vector_size - latent_size)
+        low=0, high=p2_high, size=(batch_size, vector_size - preferred_rep_size)
     ).float()
     return torch.concat([p1, p2], dim=1)
 

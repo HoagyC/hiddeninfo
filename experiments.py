@@ -8,17 +8,19 @@ class Experiment:
     tag: str
 
     vector_size: int = 20
-    latent_size: int = 10
+    latent_size: int = 20
+    preferred_rep_size: int = 10
     hidden_size: int = 20
     num_batches: int = 10_000
     batch_size: int = 32
-    vector_p2_scale: int = 3
-    dropout_p: float = 0.3
+    vector_p2_scale: int = 1
     repr_loss_coef: int = 5
+
+    dropout: bool = False
+    dropout_p: float = 0.3
 
     has_representation_loss: float = True
     has_missing_knowledge: bool = False
-    dropout: bool = False
     end_to_end: bool = False
     n_models: int = 1
     load_encoder: bool = False
