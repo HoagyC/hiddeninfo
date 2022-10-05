@@ -58,6 +58,7 @@ def main():
         CACHE_DIR.mkdir(parents=True)
 
     experiments = [exps.prep_decoders3, exps.fresh_encoders3, exps.fresh_decoder]
+    retrain_models = st.checkbox("Retrain models", value=False)
 
     for repr_loss_coef in range(1, 11, 2):
         st.subheader(f"Using repr loss coefficient of {repr_loss_coef}")
@@ -66,7 +67,7 @@ def main():
             exp.repr_loss_coef = repr_loss_coef
             exp.tag += f"_coef{repr_loss_coef}"
 
-        if st.checkbox("Retrain models", value=False):
+        if retrain_models:
             results = []
             models = []
             iterations = itertools.product(experiments, range(NUM_ITERATIONS))
@@ -75,12 +76,9 @@ def main():
                 model, iteration_results = _train(experiment, iteration)
                 models.append(model)
                 results.extend(iteration_results)
-                bar.progress(i / (len(experiments) * NUM_ITERATIONS))
+                bar.progress((i + 1) / (len(experiments) * NUM_ITERATIONS))
             bar.progress(1.0)
-            with (CACHE_DIR / "models.pickle").open("wb") as f:
-                pickle.dump(models, f)
-            with (CACHE_DIR / "results.pickle").open("wb") as f:
-                pickle.dump(results, f)
+            _save_all(results, models)
         else:
             with (CACHE_DIR / "models.pickle").open("rb") as f:
                 models = pickle.load(f)
@@ -91,46 +89,54 @@ def main():
             new_experiments = [
                 exp for exp in experiments if exp.tag not in completed_exps
             ]
+            print(completed_exps, new_experiments)
             iterations = itertools.product(new_experiments, range(NUM_ITERATIONS))
             bar = st.progress(0.0)
             for i, (experiment, iteration) in enumerate(iterations):
                 model, iteration_results = _train(experiment, iteration)
                 models.append(model)
                 results.extend(iteration_results)
-                bar.progress(i / (len(new_experiments) * NUM_ITERATIONS))
+                bar.progress((i + 1) / (len(new_experiments) * NUM_ITERATIONS))
             bar.progress(1.0)
+            _save_all(models, results)
 
-        df = pd.DataFrame([dataclasses.asdict(result) for result in results])
+        tags = [experiment.tag for experiment in experiments]
+        df = pd.DataFrame(
+            [dataclasses.asdict(result) for result in results if result.tag in tags]
+        )
         st.write(df)
 
-    print("written dfs")
-    losses = [
-        "total_loss",
-        "reconstruction_loss",
-        "representation_loss",
-        "reconstruction_loss_p1",
-        "reconstruction_loss_p2",
-    ]
-    print(len(losses))
-    fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
+        print("written dfs")
+        losses = [
+            "total_loss",
+            "reconstruction_loss",
+            "representation_loss",
+            "reconstruction_loss_p1",
+            "reconstruction_loss_p2",
+        ]
+        print(len(losses))
+        fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
 
-    for loss_name, ax in zip(losses, axs):
-        sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
-        print("linplot")
-        ax.set_title(loss_name)
-        ax.set_yscale("log")
+        for loss_name, ax in zip(losses, axs):
+            sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
+            print("linplot")
+            ax.set_title(loss_name)
+            ax.set_yscale("log")
 
-    fig.tight_layout()
-    st.pyplot(fig)
+        fig.tight_layout()
+        st.pyplot(fig)
 
-    df = df[df["step"] == df["step"].max()]
-    df = df.drop("step", axis=1)
-    df = pd.melt(
-        df, id_vars=["tag", "iteration"], var_name="loss_type", value_name="loss_value"
-    )
-    grid = sns.FacetGrid(df, col="loss_type", sharex=False)
-    grid.map(sns.barplot, "loss_value", "tag")
-    st.pyplot(grid.fig)
+        df = df[df["step"] == df["step"].max()]
+        df = df.drop("step", axis=1)
+        df = pd.melt(
+            df,
+            id_vars=["tag", "iteration"],
+            var_name="loss_type",
+            value_name="loss_value",
+        )
+        grid = sns.FacetGrid(df, col="loss_type", sharex=False)
+        grid.map(sns.barplot, "loss_value", "tag")
+        st.pyplot(grid.fig)
 
 
 ### List of interventions
@@ -169,7 +175,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
 
     models = [
         Model(
-            tag=experiment.tag + str(ndx),
+            experiment.tag + str(ndx),
             iteration=iteration,
             encoder=enc_fn(ndx),
             decoder=dec_fn(ndx),
@@ -373,6 +379,13 @@ def _save_models(models: List[Model], location: Path) -> None:
         location.parent.mkdir(parents=True)
     with open(location, "wb") as f:
         pickle.dump(models, f)
+
+
+def _save_all(models: List[Model], results: List[Result]) -> None:
+    with (CACHE_DIR / "models.pickle").open("wb") as f:
+        pickle.dump(models, f)
+    with (CACHE_DIR / "results.pickle").open("wb") as f:
+        pickle.dump(results, f)
 
 
 if __name__ == "__main__":
