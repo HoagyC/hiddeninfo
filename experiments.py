@@ -10,9 +10,8 @@ class Experiment:
     vector_size: int = 20
     latent_size: int = 10
     hidden_size: int = 20
-    num_batches: int = 20_000
+    num_batches: int = 10_000
     batch_size: int = 32
-    num_iterations: int = 1
     vector_p2_scale: int = 3
     dropout_p: float = 0.3
     repr_loss_coef: int = 5
@@ -62,7 +61,10 @@ prep_decoders3 = Experiment(
 fresh_encoders3 = Experiment(
     tag="fresh3",
     load_decoder=True,
+    end_to_end=True,
     n_models=3,
     save_model=Path("./out/store/encoders.pickle"),
 )
-fresh_decoder = Experiment(tag="fresh_dec", load_encoder=True, n_models=3)
+fresh_decoder = Experiment(
+    tag="fresh_dec", load_encoder=True, n_models=3, end_to_end=True
+)

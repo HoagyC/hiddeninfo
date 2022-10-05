@@ -16,6 +16,7 @@ import experiments as exps
 from experiments import Experiment
 
 
+NUM_ITERATIONS: int = 1
 CACHE_DIR = Path("out/cache")
 
 
@@ -58,40 +59,49 @@ def main():
 
     experiments = [exps.prep_decoders3, exps.fresh_encoders3, exps.fresh_decoder]
 
-    if st.checkbox("Retrain models", value=False):
-        results = []
-        models = []
-        iterations = itertools.product(experiments, range(NUM_ITERATIONS))
-        bar = st.progress(0.0)
-        for i, (experiment, iteration) in enumerate(iterations):
-            model, iteration_results = _train(experiment, iteration)
-            models.append(model)
-            results.extend(iteration_results)
-            bar.progress(i / (len(experiments) * NUM_ITERATIONS))
-        bar.progress(1.0)
-        with (CACHE_DIR / "models.pickle").open("wb") as f:
-            pickle.dump(models, f)
-        with (CACHE_DIR / "results.pickle").open("wb") as f:
-            pickle.dump(results, f)
-    else:
-        with (CACHE_DIR / "models.pickle").open("rb") as f:
-            models = pickle.load(f)
-        with (CACHE_DIR / "results.pickle").open("rb") as f:
-            results = pickle.load(f)
+    for repr_loss_coef in range(1, 11, 2):
+        st.subheader(f"Using repr loss coefficient of {repr_loss_coef}")
+        experiments = [exps.prep_decoders3, exps.fresh_encoders3, exps.fresh_decoder]
+        for exp in experiments:
+            exp.repr_loss_coef = repr_loss_coef
+            exp.tag += f"_coef{repr_loss_coef}"
 
-        completed_exps = list(set([result.tag for result in results]))
-        new_experiments = [exp for exp in experiments if exp.tag not in completed_exps]
-        iterations = itertools.product(new_experiments, range(NUM_ITERATIONS))
-        bar = st.progress(0.0)
-        for i, (experiment, iteration) in enumerate(iterations):
-            model, iteration_results = _train(experiment, iteration)
-            models.append(model)
-            results.extend(iteration_results)
-            bar.progress(i / (len(new_experiments) * NUM_ITERATIONS))
-        bar.progress(1.0)
+        if st.checkbox("Retrain models", value=False):
+            results = []
+            models = []
+            iterations = itertools.product(experiments, range(NUM_ITERATIONS))
+            bar = st.progress(0.0)
+            for i, (experiment, iteration) in enumerate(iterations):
+                model, iteration_results = _train(experiment, iteration)
+                models.append(model)
+                results.extend(iteration_results)
+                bar.progress(i / (len(experiments) * NUM_ITERATIONS))
+            bar.progress(1.0)
+            with (CACHE_DIR / "models.pickle").open("wb") as f:
+                pickle.dump(models, f)
+            with (CACHE_DIR / "results.pickle").open("wb") as f:
+                pickle.dump(results, f)
+        else:
+            with (CACHE_DIR / "models.pickle").open("rb") as f:
+                models = pickle.load(f)
+            with (CACHE_DIR / "results.pickle").open("rb") as f:
+                results = pickle.load(f)
 
-    df = pd.DataFrame([dataclasses.asdict(result) for result in results])
-    st.write(df)
+            completed_exps = list(set([result.tag for result in results]))
+            new_experiments = [
+                exp for exp in experiments if exp.tag not in completed_exps
+            ]
+            iterations = itertools.product(new_experiments, range(NUM_ITERATIONS))
+            bar = st.progress(0.0)
+            for i, (experiment, iteration) in enumerate(iterations):
+                model, iteration_results = _train(experiment, iteration)
+                models.append(model)
+                results.extend(iteration_results)
+                bar.progress(i / (len(new_experiments) * NUM_ITERATIONS))
+            bar.progress(1.0)
+
+        df = pd.DataFrame([dataclasses.asdict(result) for result in results])
+        st.write(df)
 
     print("written dfs")
     losses = [
