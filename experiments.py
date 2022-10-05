@@ -6,12 +6,22 @@ from pathlib import Path
 @dataclasses.dataclass
 class Experiment:
     tag: str
+
+    vector_size: int = 20
+    latent_size: int = 10
+    hidden_size: int = 20
+    num_batches: int = 20_000
+    batch_size: int = 32
+    num_iterations: int = 1
+    vector_p2_scale: int = 3
+    dropout_p: float = 0.3
+    repr_loss_coef: int = 5
+
     has_representation_loss: float = True
     has_missing_knowledge: bool = False
     dropout: bool = False
     end_to_end: bool = False
     n_models: int = 1
-    prep_decoders: bool = True
     load_encoder: bool = False
     encoder_loc: Path = Path("./out/store/encoders.pickle")
     load_decoder: bool = False
@@ -46,7 +56,6 @@ freeze10 = Experiment(tag="freeze_10", end_to_end=True, n_models=10)
 # Series of experiments that should be run in order
 prep_decoders3 = Experiment(
     tag="prep3",
-    prep_decoders=True,
     n_models=3,
     save_model=Path("./out/store/decoders.pickle"),
 )

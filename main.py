@@ -15,15 +15,6 @@ import torch
 import experiments as exps
 from experiments import Experiment
 
-VECTOR_SIZE = 20
-LATENT_SIZE = 10
-HIDDEN_SIZE = 20
-NUM_BATCHES = 5_000
-BATCH_SIZE = 32
-REPRESENTATION_LOSS_COEFFICIENT = 1
-NUM_ITERATIONS = 1
-VECTOR_P2_SCALE = 3
-DROPOUT_P = 0.3
 
 CACHE_DIR = Path("out/cache")
 
@@ -149,14 +140,22 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
         assert len(loaded_decoders) == experiment.n_models
         dec_fn = lambda x: loaded_decoders[x]
     else:
-        dec_fn = lambda x: _create_decoder()
+        dec_fn = lambda x: _create_decoder(
+            latent_size=experiment.latent_size,
+            hidden_size=experiment.hidden_size,
+            vector_size=experiment.hidden_size,
+        )
 
     if experiment.load_encoder:
         loaded_encoders = _load_encoders(experiment.encoder_loc)
         assert len(loaded_encoders) == experiment.n_models
         enc_fn = lambda x: loaded_encoders[x]
     else:
-        enc_fn = lambda x: _create_encoder()
+        enc_fn = lambda x: _create_encoder(
+            latent_size=experiment.latent_size,
+            hidden_size=experiment.hidden_size,
+            vector_size=experiment.hidden_size,
+        )
 
     models = [
         Model(
@@ -183,7 +182,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
     representation_loss_fn = torch.nn.MSELoss()
 
     results = []
-    for step in range(NUM_BATCHES + 1):
+    for step in range(experiment.num_batches + 1):
         losses = []
         if experiment.end_to_end:
             model_perm = torch.randperm(len(models))
@@ -197,12 +196,22 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
 
             optimizer.zero_grad()
 
-            vector = _generate_vector_batch()
+            vector = _generate_vector_batch(
+                batch_size=experiment.batch_size,
+                vector_size=experiment.vector_size,
+                latent_size=experiment.latent_size,
+                vector_p2_scale=experiment.vector_p2_scale,
+            )
             if experiment.has_missing_knowledge:
                 vector_input = torch.concat(
                     [
-                        vector[:, :LATENT_SIZE],
-                        _generate_vector_batch()[:, LATENT_SIZE:],
+                        vector[:, : experiment.latent_size],
+                        _generate_vector_batch(
+                            batch_size=experiment.batch_size,
+                            vector_size=experiment.vector_size,
+                            latent_size=experiment.latent_size,
+                            vector_p2_scale=experiment.vector_p2_scale,
+                        )[:, experiment.latent_size :],
                     ],
                     dim=1,
                 )
@@ -212,22 +221,22 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             latent_repr = encoder(vector_input)
             if experiment.dropout:
                 # Applying dropout manually to avoid scaling
-                bernoulli_t = torch.full(size=[HIDDEN_SIZE], fill_value=DROPOUT_P)
+                bernoulli_t = torch.full(
+                    size=[experiment.hidden_size], fill_value=experiment.dropout_p
+                )
                 dropout_t = torch.bernoulli(bernoulli_t)
-                latent_repr = latent_repr * DROPOUT_P
+                latent_repr = latent_repr * experiment.dropout_p
 
             vector_reconstructed = decoder(latent_repr)
 
             reconstruction_loss = reconstruction_loss_fn(vector, vector_reconstructed)
             if experiment.has_representation_loss:
                 representation_loss = representation_loss_fn(
-                    vector[:, :LATENT_SIZE], latent_repr
+                    vector[:, : experiment.latent_size], latent_repr
                 )
-                reconstruction_loss_coefficient = 1 / (
-                    REPRESENTATION_LOSS_COEFFICIENT + 1
-                )
-                representation_loss_coefficient = REPRESENTATION_LOSS_COEFFICIENT / (
-                    REPRESENTATION_LOSS_COEFFICIENT + 1
+                reconstruction_loss_coefficient = 1 / (experiment.repr_loss_coef + 1)
+                representation_loss_coefficient = experiment.repr_loss_coef / (
+                    experiment.repr_loss_coef + 1
                 )
             else:
                 representation_loss = torch.tensor(0)
@@ -241,10 +250,12 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             loss.backward()
             optimizer.step()
             reconstruction_loss_p1 = reconstruction_loss_fn(
-                vector[:, :LATENT_SIZE], vector_reconstructed[:, :LATENT_SIZE]
+                vector[:, : experiment.latent_size],
+                vector_reconstructed[:, : experiment.latent_size],
             )
             reconstruction_loss_p2 = reconstruction_loss_fn(
-                vector[:, LATENT_SIZE:], vector_reconstructed[:, LATENT_SIZE:]
+                vector[:, experiment.latent_size :],
+                vector_reconstructed[:, experiment.latent_size :],
             )
             losses.append(
                 Loss(
@@ -292,37 +303,43 @@ def _get_average_loss(losses: List[Loss]) -> Loss:
         )
 
 
-def _create_encoder() -> torch.nn.Module:
+def _create_encoder(
+    vector_size: int, hidden_size: int, latent_size: int
+) -> torch.nn.Module:
     return torch.nn.Sequential(
-        torch.nn.Linear(VECTOR_SIZE, HIDDEN_SIZE),
+        torch.nn.Linear(vector_size, hidden_size),
         torch.nn.ReLU(),
-        torch.nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE),
+        torch.nn.Linear(hidden_size, hidden_size),
         torch.nn.ReLU(),
-        torch.nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE),
+        torch.nn.Linear(hidden_size, hidden_size),
         torch.nn.ReLU(),
-        torch.nn.Linear(HIDDEN_SIZE, LATENT_SIZE),
+        torch.nn.Linear(hidden_size, latent_size),
     )
 
 
-def _create_decoder() -> torch.nn.Module:
+def _create_decoder(
+    latent_size: int, hidden_size: int, vector_size: int
+) -> torch.nn.Module:
     return torch.nn.Sequential(
-        torch.nn.Linear(LATENT_SIZE, HIDDEN_SIZE),
+        torch.nn.Linear(latent_size, hidden_size),
         torch.nn.ReLU(),
-        torch.nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE),
+        torch.nn.Linear(hidden_size, hidden_size),
         torch.nn.ReLU(),
-        torch.nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE),
+        torch.nn.Linear(hidden_size, hidden_size),
         torch.nn.ReLU(),
-        torch.nn.Linear(HIDDEN_SIZE, VECTOR_SIZE),
+        torch.nn.Linear(hidden_size, vector_size),
     )
 
 
-def _generate_vector_batch() -> torch.Tensor:
+def _generate_vector_batch(
+    batch_size: int, vector_size: int, latent_size: int, vector_p2_scale: int
+) -> torch.Tensor:
     # High is exclusive, so add one.
     p1_high = 1 + 1
-    p2_high = VECTOR_P2_SCALE + 1
-    p1 = torch.randint(low=0, high=p1_high, size=(BATCH_SIZE, LATENT_SIZE)).float()
+    p2_high = vector_p2_scale + 1
+    p1 = torch.randint(low=0, high=p1_high, size=(batch_size, latent_size)).float()
     p2 = torch.randint(
-        low=0, high=p2_high, size=(BATCH_SIZE, VECTOR_SIZE - LATENT_SIZE)
+        low=0, high=p2_high, size=(batch_size, vector_size - latent_size)
     ).float()
     return torch.concat([p1, p2], dim=1)
 
