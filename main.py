@@ -18,9 +18,9 @@ from experiments import Experiment
 VECTOR_SIZE = 20
 LATENT_SIZE = 10
 HIDDEN_SIZE = 20
-NUM_BATCHES = 100_000
+NUM_BATCHES = 5_000
 BATCH_SIZE = 32
-REPRESENTATION_LOSS_COEFFICIENT = 5
+REPRESENTATION_LOSS_COEFFICIENT = 1
 NUM_ITERATIONS = 1
 VECTOR_P2_SCALE = 3
 DROPOUT_P = 0.3
@@ -274,6 +274,8 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
         if step % 10000 == 0:
             print(step)
 
+    if experiment.save_model:
+        _save_models(models=models, location=experiment.save_model)
     return models, results
 
 
@@ -339,7 +341,7 @@ def _load_encoders(location: Path) -> List[torch.nn.Module]:
     return [model.encoder for model in models]
 
 
-def _save_models(models: torch.nn.Module, location: Path) -> None:
+def _save_models(models: List[Model], location: Path) -> None:
     if not location.parent.is_dir():
         location.parent.mkdir(parents=True)
     with open(location, "wb") as f:

@@ -13,9 +13,9 @@ class Experiment:
     n_models: int = 1
     prep_decoders: bool = True
     load_encoder: bool = False
-    encoder_loc: Path = Path("./out/store/decoders.pickle")
+    encoder_loc: Path = Path("./out/store/encoders.pickle")
     load_decoder: bool = False
-    decoder_loc: Path = Path("./out/store/encoders.pickle")
+    decoder_loc: Path = Path("./out/store/decoders.pickle")
     save_model: Optional[Path] = None
 
 
@@ -56,4 +56,4 @@ fresh_encoders3 = Experiment(
     n_models=3,
     save_model=Path("./out/store/encoders.pickle"),
 )
-fresh_decoder = Experiment(tag="fresh_dec", load_encoder=True)
+fresh_decoder = Experiment(tag="fresh_dec", load_encoder=True, n_models=3)
