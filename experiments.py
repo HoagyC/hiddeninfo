@@ -7,11 +7,14 @@ from pathlib import Path
 class Experiment:
     tag: str
 
+    use_class: bool = False
+
+    # Model setup
     vector_size: int = 20
-    latent_size: int = 20
+    latent_size: int = 25
     preferred_rep_size: int = 10
-    hidden_size: int = 20
-    num_batches: int = 20_000
+    n_hidden_layers: int = 0
+    hidden_size: int = 30
     batch_size: int = 32
     vector_p2_scale: int = 1
     repr_loss_coef: int = 5
@@ -19,6 +22,8 @@ class Experiment:
     dropout: bool = False
     dropout_p: float = 0.3
 
+    # Training setup
+    num_batches: int = 10_000
     has_representation_loss: float = True
     has_missing_knowledge: bool = False
     end_to_end: bool = False
@@ -59,6 +64,7 @@ prep_decoders3 = Experiment(
     tag="prep3",
     n_models=3,
     save_model=Path("./out/store/decoders.pickle"),
+    use_class=False,
 )
 fresh_encoders3 = Experiment(
     tag="fresh_enc_3",

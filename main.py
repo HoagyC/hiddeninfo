@@ -1,5 +1,4 @@
-from typing import List
-from typing import Tuple
+from typing import List, Tuple, Callable
 import copy
 import dataclasses
 import functools
@@ -126,7 +125,8 @@ def main():
             sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
             print("linplot")
             ax.set_title(loss_name)
-            ax.set_yscale("log")
+            ax.set_yscale("linear")
+            ax.set_ylim(([0, 1]))
 
         fig.tight_layout()
         st.pyplot(fig)
@@ -164,7 +164,9 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
         dec_fn = lambda _: _create_decoder(
             latent_size=experiment.latent_size,
             hidden_size=experiment.hidden_size,
-            vector_size=experiment.hidden_size,
+            vector_size=experiment.vector_size,
+            use_class=experiment.use_class,
+            n_hidden_layers=experiment.n_hidden_layers,
         )
 
     if experiment.load_encoder:
@@ -175,7 +177,8 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
         enc_fn = lambda _: _create_encoder(
             latent_size=experiment.latent_size,
             hidden_size=experiment.hidden_size,
-            vector_size=experiment.hidden_size,
+            vector_size=experiment.vector_size,
+            n_hidden_layers=experiment.n_hidden_layers,
         )
 
     models = [
@@ -199,7 +202,13 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
         ]
 
     optimizer = torch.optim.Adam(list(itertools.chain.from_iterable(all_params)))
-    reconstruction_loss_fn = torch.nn.MSELoss()
+
+    reconstruction_loss_fn: Callable  # I thought this was PYTHON
+    if experiment.use_class:
+        reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
+    else:
+        reconstruction_loss_fn = torch.nn.MSELoss()
+
     representation_loss_fn = torch.nn.MSELoss()
 
     results = []
@@ -249,8 +258,17 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
                 latent_repr = latent_repr * experiment.dropout_p
 
             vector_reconstructed = decoder(latent_repr)
+            if experiment.use_class:
+                vector_reconstructed = vector_reconstructed.reshape(
+                    experiment.batch_size, 2, experiment.vector_size
+                )
+                vector_target = vector.to(dtype=torch.long)
+            else:
+                vector_target = vector
 
-            reconstruction_loss = reconstruction_loss_fn(vector, vector_reconstructed)
+            reconstruction_loss = reconstruction_loss_fn(
+                vector_reconstructed, vector_target
+            )
             if experiment.has_representation_loss:
                 representation_loss = representation_loss_fn(
                     vector[:, : experiment.preferred_rep_size],
@@ -271,14 +289,24 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
 
             loss.backward()
             optimizer.step()
-            reconstruction_loss_p1 = reconstruction_loss_fn(
-                vector[:, : experiment.preferred_rep_size],
-                vector_reconstructed[:, : experiment.preferred_rep_size],
-            )
-            reconstruction_loss_p2 = reconstruction_loss_fn(
-                vector[:, experiment.preferred_rep_size :],
-                vector_reconstructed[:, experiment.preferred_rep_size :],
-            )
+            if experiment.use_class:
+                reconstruction_loss_p1 = reconstruction_loss_fn(
+                    vector_reconstructed[:, :, : experiment.preferred_rep_size],
+                    vector_target[:, : experiment.preferred_rep_size],
+                )
+                reconstruction_loss_p2 = reconstruction_loss_fn(
+                    vector_reconstructed[:, :, experiment.preferred_rep_size :],
+                    vector_target[:, experiment.preferred_rep_size :],
+                )
+            else:
+                reconstruction_loss_p1 = reconstruction_loss_fn(
+                    vector_reconstructed[:, : experiment.preferred_rep_size],
+                    vector[:, : experiment.preferred_rep_size],
+                )
+                reconstruction_loss_p2 = reconstruction_loss_fn(
+                    vector_reconstructed[:, experiment.preferred_rep_size :],
+                    vector[:, experiment.preferred_rep_size :],
+                )
             losses.append(
                 Loss(
                     loss.item(),
@@ -288,6 +316,9 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
                     reconstruction_loss_p2.item(),
                 )
             )
+            # import pdb
+
+            # pdb.set_trace()
 
         average_loss = _get_average_loss(losses)
 
@@ -327,31 +358,41 @@ def _get_average_loss(losses: List[Loss]) -> Loss:
 
 
 def _create_encoder(
-    vector_size: int, hidden_size: int, latent_size: int
+    vector_size: int, hidden_size: int, latent_size: int, n_hidden_layers: int = 0
 ) -> torch.nn.Module:
-    return torch.nn.Sequential(
-        torch.nn.Linear(vector_size, hidden_size),
-        torch.nn.ReLU(),
-        torch.nn.Linear(hidden_size, hidden_size),
-        torch.nn.ReLU(),
-        torch.nn.Linear(hidden_size, hidden_size),
-        torch.nn.ReLU(),
-        torch.nn.Linear(hidden_size, latent_size),
-    )
+
+    in_layer = torch.nn.Linear(vector_size, hidden_size)
+    hidden_layers = [
+        torch.nn.Sequential(torch.nn.Linear(hidden_size, hidden_size), torch.nn.ReLU())
+        for _ in range(n_hidden_layers)
+    ]
+    hidden_layers_seq = torch.nn.Sequential(*hidden_layers)
+    out_layer = torch.nn.Linear(hidden_size, latent_size)
+
+    return torch.nn.Sequential(in_layer, torch.nn.ReLU(), hidden_layers_seq, out_layer)
 
 
 def _create_decoder(
-    latent_size: int, hidden_size: int, vector_size: int
+    latent_size: int,
+    hidden_size: int,
+    vector_size: int,
+    use_class: bool = False,
+    n_hidden_layers: int = 0,
 ) -> torch.nn.Module:
-    return torch.nn.Sequential(
-        torch.nn.Linear(latent_size, hidden_size),
-        torch.nn.ReLU(),
-        torch.nn.Linear(hidden_size, hidden_size),
-        torch.nn.ReLU(),
-        torch.nn.Linear(hidden_size, hidden_size),
-        torch.nn.ReLU(),
-        torch.nn.Linear(hidden_size, vector_size),
-    )
+    if use_class:
+        output_size = vector_size * 2
+    else:
+        output_size = vector_size
+
+    in_layer = torch.nn.Linear(latent_size, hidden_size)
+    hidden_layers = [
+        torch.nn.Sequential(torch.nn.Linear(hidden_size, hidden_size), torch.nn.ReLU())
+        for _ in range(n_hidden_layers)
+    ]
+    hidden_layers_seq = torch.nn.Sequential(*hidden_layers)
+    out_layer = torch.nn.Linear(hidden_size, output_size)
+
+    return torch.nn.Sequential(in_layer, torch.nn.ReLU(), hidden_layers_seq, out_layer)
 
 
 def _generate_vector_batch(
