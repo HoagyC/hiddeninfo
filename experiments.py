@@ -1,6 +1,7 @@
-import dataclasses
-from typing import Optional
 from pathlib import Path
+from typing import Optional
+import dataclasses
+import torch
 
 
 @dataclasses.dataclass
@@ -18,9 +19,7 @@ class Experiment:
     batch_size: int = 32
     vector_p2_scale: int = 1
     repr_loss_coef: int = 5
-
-    dropout: bool = False
-    dropout_p: float = 0.3
+    dropout_prob: Optional[float] = None
 
     # Training setup
     num_batches: int = 10_000
@@ -53,7 +52,7 @@ fuzzed = Experiment(
     has_missing_knowledge=True,
 )
 
-dropout = Experiment(tag="dropout", dropout=True)
+dropout = Experiment(tag="dropout", dropout_prob=0.3)
 
 freeze2 = Experiment(tag="freeze_2", end_to_end=True, n_models=2)
 freeze4 = Experiment(tag="freeze_4", end_to_end=True, n_models=4)
@@ -104,5 +103,11 @@ decoders_then_encoders = [
         decoder_loc=Path("./out/store/decoders.pickle"),
         n_models=3,
         end_to_end=True,
+    ),
+    Experiment(
+        tag="dropout",
+        n_models=3,
+        dropout_prob=0.5,
+        use_class=False,
     ),
 ]

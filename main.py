@@ -1,7 +1,6 @@
-from typing import List, Tuple, Callable
+from typing import List, Optional, Tuple, Callable
 import copy
 import dataclasses
-import functools
 import itertools
 import matplotlib.pyplot as plt
 import numpy as np
@@ -163,6 +162,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             vector_size=experiment.vector_size,
             use_class=experiment.use_class,
             n_hidden_layers=experiment.n_hidden_layers,
+            dropout_prob=experiment.dropout_prob,
         )
 
     if experiment.load_encoder:
@@ -245,14 +245,6 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
                 vector_input = vector
 
             latent_repr = encoder(vector_input)
-            if experiment.dropout:
-                # Applying dropout manually to avoid scaling
-                bernoulli_t = torch.full(
-                    size=[experiment.hidden_size], fill_value=experiment.dropout_p
-                )
-                dropout_t = torch.bernoulli(bernoulli_t)
-                latent_repr = latent_repr * experiment.dropout_p
-
             vector_reconstructed = decoder(latent_repr)
             if experiment.use_class:
                 vector_reconstructed = vector_reconstructed.reshape(
@@ -356,7 +348,7 @@ def _get_average_loss(losses: List[Loss]) -> Loss:
 def _create_encoder(
     vector_size: int, hidden_size: int, latent_size: int, n_hidden_layers: int = 0
 ) -> torch.nn.Module:
-
+    # TODO: Use layers.append here, like _create_decoder.
     in_layer = torch.nn.Linear(vector_size, hidden_size)
     hidden_layers = [
         torch.nn.Sequential(
@@ -376,27 +368,26 @@ def _create_decoder(
     latent_size: int,
     hidden_size: int,
     vector_size: int,
-    use_class: bool = False,
-    n_hidden_layers: int = 0,
+    use_class: bool,
+    n_hidden_layers: int,
+    dropout_prob: Optional[float],
 ) -> torch.nn.Module:
     if use_class:
         output_size = vector_size * 2
     else:
         output_size = vector_size
-
-    in_layer = torch.nn.Linear(latent_size, hidden_size)
-    hidden_layers = [
+    layers: List[torch.nn.Module] = []
+    if dropout_prob is not None:
+        layers.append(torch.nn.Dropout(p=dropout_prob))
+    layers.append(torch.nn.Linear(latent_size, hidden_size))
+    layers.extend(
         torch.nn.Sequential(
             torch.nn.Linear(hidden_size, hidden_size), torch.nn.Sigmoid()
         )
         for _ in range(n_hidden_layers)
-    ]
-    hidden_layers_seq = torch.nn.Sequential(*hidden_layers)
-    out_layer = torch.nn.Linear(hidden_size, output_size)
-
-    return torch.nn.Sequential(
-        in_layer, torch.nn.Sigmoid(), hidden_layers_seq, out_layer
     )
+    layers.append(torch.nn.Linear(hidden_size, output_size))
+    return torch.nn.Sequential(*layers)
 
 
 def _generate_vector_batch(
