@@ -60,24 +60,49 @@ freeze4 = Experiment(tag="freeze_4", end_to_end=True, n_models=4)
 freeze10 = Experiment(tag="freeze_10", end_to_end=True, n_models=10)
 
 # Series of experiments that should be run in order
-prep_decoders3 = Experiment(
-    tag="prep3",
-    n_models=3,
-    save_model=Path("./out/store/decoders.pickle"),
-    use_class=False,
-)
-fresh_encoders3 = Experiment(
-    tag="fresh_enc_3",
-    load_decoder=True,
-    decoder_loc=Path("./out/store/decoders.pickle"),
-    end_to_end=True,
-    n_models=3,
-    save_model=Path("./out/store/encoders.pickle"),
-)
-fresh_decoders3 = Experiment(
-    tag="fresh_dec_3",
-    load_encoder=True,
-    encoder_loc=Path("./out/store/encoders.pickle"),
-    n_models=3,
-    end_to_end=True,
-)
+encoders_then_decoders = [
+    Experiment(
+        tag="prep3",
+        n_models=3,
+        save_model=Path("./out/store/decoders.pickle"),
+        use_class=False,
+    ),
+    Experiment(
+        tag="fresh_enc_3",
+        load_decoder=True,
+        decoder_loc=Path("./out/store/decoders.pickle"),
+        end_to_end=True,
+        n_models=3,
+        save_model=Path("./out/store/encoders.pickle"),
+    ),
+    Experiment(
+        tag="fresh_dec_3",
+        load_encoder=True,
+        encoder_loc=Path("./out/store/encoders.pickle"),
+        n_models=3,
+        end_to_end=True,
+    ),
+]
+decoders_then_encoders = [
+    Experiment(
+        tag="prep3",
+        n_models=3,
+        save_model=Path("./out/store/encoders.pickle"),
+        use_class=False,
+    ),
+    Experiment(
+        tag="fresh_dec_3",
+        load_encoder=True,
+        encoder_loc=Path("./out/store/encoders.pickle"),
+        end_to_end=True,
+        n_models=3,
+        save_model=Path("./out/store/decoders.pickle"),
+    ),
+    Experiment(
+        tag="fresh_enc_3",
+        load_decoder=True,
+        decoder_loc=Path("./out/store/decoders.pickle"),
+        n_models=3,
+        end_to_end=True,
+    ),
+]

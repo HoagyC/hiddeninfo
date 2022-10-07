@@ -57,11 +57,7 @@ def main():
     if not CACHE_DIR.is_dir():
         CACHE_DIR.mkdir(parents=True)
 
-    original_experiments = [
-        exps.prep_decoders3,
-        exps.fresh_encoders3,
-        exps.fresh_decoders3,
-    ]
+    original_experiments = exps.decoders_then_encoders
     retrain_models = st.checkbox("Retrain models", value=False)
 
     for repr_loss_coef in range(1, 11, 2):
@@ -363,13 +359,17 @@ def _create_encoder(
 
     in_layer = torch.nn.Linear(vector_size, hidden_size)
     hidden_layers = [
-        torch.nn.Sequential(torch.nn.Linear(hidden_size, hidden_size), torch.nn.ReLU())
+        torch.nn.Sequential(
+            torch.nn.Linear(hidden_size, hidden_size), torch.nn.Sigmoid()
+        )
         for _ in range(n_hidden_layers)
     ]
     hidden_layers_seq = torch.nn.Sequential(*hidden_layers)
     out_layer = torch.nn.Linear(hidden_size, latent_size)
 
-    return torch.nn.Sequential(in_layer, torch.nn.ReLU(), hidden_layers_seq, out_layer)
+    return torch.nn.Sequential(
+        in_layer, torch.nn.Sigmoid(), hidden_layers_seq, out_layer
+    )
 
 
 def _create_decoder(
@@ -386,13 +386,17 @@ def _create_decoder(
 
     in_layer = torch.nn.Linear(latent_size, hidden_size)
     hidden_layers = [
-        torch.nn.Sequential(torch.nn.Linear(hidden_size, hidden_size), torch.nn.ReLU())
+        torch.nn.Sequential(
+            torch.nn.Linear(hidden_size, hidden_size), torch.nn.Sigmoid()
+        )
         for _ in range(n_hidden_layers)
     ]
     hidden_layers_seq = torch.nn.Sequential(*hidden_layers)
     out_layer = torch.nn.Linear(hidden_size, output_size)
 
-    return torch.nn.Sequential(in_layer, torch.nn.ReLU(), hidden_layers_seq, out_layer)
+    return torch.nn.Sequential(
+        in_layer, torch.nn.Sigmoid(), hidden_layers_seq, out_layer
+    )
 
 
 def _generate_vector_batch(
