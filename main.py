@@ -38,7 +38,7 @@ class Loss:
 
 
 @dataclasses.dataclass
-class Result:
+class StepResult:
     tag: str
     iteration: int
     step: int
@@ -48,6 +48,14 @@ class Result:
     # The reconstruction losses for the first & second halves of the vector.
     reconstruction_loss_p1: float
     reconstruction_loss_p2: float
+
+
+@dataclasses.dataclass
+class TrainResult:
+    tag: str
+    models: List[Model]
+    step_results: List[StepResult]
+    # validation_result: StepResult
 
 
 def main():
@@ -72,9 +80,9 @@ def main():
             iterations = itertools.product(experiments, range(NUM_ITERATIONS))
             bar = st.progress(0.0)
             for i, (experiment, iteration) in enumerate(iterations):
-                model, iteration_results = _train(experiment, iteration)
-                models.append(model)
-                results.extend(iteration_results)
+                train_result = _train(experiment, iteration)
+                models.append(train_result.models)
+                results.extend(train_result.step_results)
                 bar.progress((i + 1) / (len(experiments) * NUM_ITERATIONS))
             bar.progress(1.0)
             _save_all(models, results)
@@ -92,9 +100,9 @@ def main():
             iterations = itertools.product(new_experiments, range(NUM_ITERATIONS))
             bar = st.progress(0.0)
             for i, (experiment, iteration) in enumerate(iterations):
-                model, iteration_results = _train(experiment, iteration)
-                models.append(model)
-                results.extend(iteration_results)
+                train_result = _train(experiment, iteration)
+                models.append(train_result.models)
+                results.extend(train_result.step_results)
                 bar.progress((i + 1) / (len(new_experiments) * NUM_ITERATIONS))
             bar.progress(1.0)
             _save_all(models, results)
@@ -150,7 +158,7 @@ def main():
 # Number of models used in multi-model scenarios
 
 
-def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Result]]:
+def _train(experiment: Experiment, iteration: int) -> TrainResult:
     if experiment.load_decoder:
         loaded_decoders = _load_decoders(experiment.decoder_loc)
         assert len(loaded_decoders) == experiment.n_models
@@ -209,7 +217,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
 
     representation_loss_fn = torch.nn.MSELoss()
 
-    results = []
+    step_results = []
     for step in range(experiment.num_batches + 1):
         losses = []
         if experiment.end_to_end:
@@ -313,8 +321,8 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
         average_loss = _get_average_loss(losses)
 
         if step % 100 == 0:
-            results.append(
-                Result(
+            step_results.append(
+                StepResult(
                     tag=experiment.tag,
                     iteration=iteration,
                     step=step,
@@ -331,7 +339,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
 
     if experiment.save_model:
         _save_models(models=models, location=experiment.save_model)
-    return models, results
+    return TrainResult(experiment.tag, models, step_results)
 
 
 def _get_average_loss(losses: List[Loss]) -> Loss:
@@ -430,7 +438,7 @@ def _save_models(models: List[Model], location: Path) -> None:
         pickle.dump(models, f)
 
 
-def _save_all(models: List[Model], results: List[Result]) -> None:
+def _save_all(models: List[Model], results: List[StepResult]) -> None:
     with (CACHE_DIR / "models.pickle").open("wb") as f:
         pickle.dump(models, f)
     with (CACHE_DIR / "results.pickle").open("wb") as f:
