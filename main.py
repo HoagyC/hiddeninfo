@@ -162,6 +162,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             vector_size=experiment.vector_size,
             use_class=experiment.use_class,
             n_hidden_layers=experiment.n_hidden_layers,
+            activation_fn=experiment.activation_fn,
             dropout_prob=experiment.dropout_prob,
         )
 
@@ -175,6 +176,7 @@ def _train(experiment: Experiment, iteration: int) -> Tuple[List[Model], List[Re
             hidden_size=experiment.hidden_size,
             vector_size=experiment.vector_size,
             n_hidden_layers=experiment.n_hidden_layers,
+            activation_fn=experiment.activation_fn,
         )
 
     models = [
@@ -346,22 +348,25 @@ def _get_average_loss(losses: List[Loss]) -> Loss:
 
 
 def _create_encoder(
-    vector_size: int, hidden_size: int, latent_size: int, n_hidden_layers: int = 0
+    vector_size: int,
+    hidden_size: int,
+    latent_size: int,
+    n_hidden_layers: int,
+    activation_fn: torch.nn.Module,
 ) -> torch.nn.Module:
     # TODO: Use layers.append here, like _create_decoder.
     in_layer = torch.nn.Linear(vector_size, hidden_size)
     hidden_layers = [
         torch.nn.Sequential(
-            torch.nn.Linear(hidden_size, hidden_size), torch.nn.Sigmoid()
+            torch.nn.Linear(hidden_size, hidden_size),
+            activation_fn,
         )
         for _ in range(n_hidden_layers)
     ]
     hidden_layers_seq = torch.nn.Sequential(*hidden_layers)
     out_layer = torch.nn.Linear(hidden_size, latent_size)
 
-    return torch.nn.Sequential(
-        in_layer, torch.nn.Sigmoid(), hidden_layers_seq, out_layer
-    )
+    return torch.nn.Sequential(in_layer, activation_fn, hidden_layers_seq, out_layer)
 
 
 def _create_decoder(
@@ -370,6 +375,7 @@ def _create_decoder(
     vector_size: int,
     use_class: bool,
     n_hidden_layers: int,
+    activation_fn: torch.nn.Module,
     dropout_prob: Optional[float],
 ) -> torch.nn.Module:
     if use_class:
@@ -381,9 +387,7 @@ def _create_decoder(
         layers.append(torch.nn.Dropout(p=dropout_prob))
     layers.append(torch.nn.Linear(latent_size, hidden_size))
     layers.extend(
-        torch.nn.Sequential(
-            torch.nn.Linear(hidden_size, hidden_size), torch.nn.Sigmoid()
-        )
+        torch.nn.Sequential(torch.nn.Linear(hidden_size, hidden_size), activation_fn)
         for _ in range(n_hidden_layers)
     )
     layers.append(torch.nn.Linear(hidden_size, output_size))

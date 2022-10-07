@@ -20,6 +20,7 @@ class Experiment:
     vector_p2_scale: int = 1
     repr_loss_coef: int = 5
     dropout_prob: Optional[float] = None
+    activation_fn: torch.nn.Module = dataclasses.field(default_factory=torch.nn.ReLU)
 
     # Training setup
     num_batches: int = 10_000
@@ -86,11 +87,13 @@ decoders_then_encoders = [
     Experiment(
         tag="prep3",
         n_models=3,
+        activation_fn=torch.nn.Sigmoid(),
         save_model=Path("./out/store/encoders.pickle"),
         use_class=False,
     ),
     Experiment(
         tag="fresh_dec_3",
+        activation_fn=torch.nn.Sigmoid(),
         load_encoder=True,
         encoder_loc=Path("./out/store/encoders.pickle"),
         end_to_end=True,
@@ -99,6 +102,7 @@ decoders_then_encoders = [
     ),
     Experiment(
         tag="fresh_enc_3",
+        activation_fn=torch.nn.Sigmoid(),
         load_decoder=True,
         decoder_loc=Path("./out/store/decoders.pickle"),
         n_models=3,
@@ -107,6 +111,7 @@ decoders_then_encoders = [
     Experiment(
         tag="dropout",
         n_models=3,
+        activation_fn=torch.nn.Sigmoid(),
         dropout_prob=0.5,
         use_class=False,
     ),
