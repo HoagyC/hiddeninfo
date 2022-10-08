@@ -127,6 +127,8 @@ def main():
                     x=[0, max(df.step)],
                     y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
                     label="zero info loss",
+                    linestyle="dashed",
+                    ax=ax,
                 )
             ax.set_title(loss_name)
             ax.set_yscale("linear")
