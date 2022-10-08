@@ -1,7 +1,6 @@
 from typing import List
 from typing import Optional
 import dataclasses
-import torch
 
 
 @dataclasses.dataclass
@@ -22,7 +21,7 @@ class Experiment:
     dropout_prob: Optional[float] = None
     l1_loss: Optional[float] = None
     l2_loss: Optional[float] = None
-    activation_fn: torch.nn.Module = dataclasses.field(default_factory=torch.nn.ReLU)
+    activation_fn: str = "relu"
 
     # Training setup
     num_batches: int = 10_000
@@ -82,19 +81,19 @@ decoders_then_encoders = [
     Experiment(
         tag="prep_",
         n_models=3,
-        activation_fn=torch.nn.Sigmoid(),
+        activation_fn="sigmoid",
         use_class=False,
     ),
     Experiment(
         tag="fresh_dec",
-        activation_fn=torch.nn.Sigmoid(),
+        activation_fn="sigmoid",
         load_encoders_from_tag="prep_",
         end_to_end=True,
         n_models=3,
     ),
     Experiment(
         tag="fresh_enc",
-        activation_fn=torch.nn.Sigmoid(),
+        activation_fn="sigmoid",
         load_decoders_from_tag="fresh_dec",
         n_models=3,
         end_to_end=True,
@@ -105,12 +104,12 @@ new_decoders = [
     Experiment(
         tag="prepare",
         n_models=3,
-        activation_fn=torch.nn.Sigmoid(),
+        activation_fn="sigmoid",
         use_class=False,
     ),
     Experiment(
         tag="fresh_dec",
-        activation_fn=torch.nn.Sigmoid(),
+        activation_fn="sigmoid",
         load_encoders_from_tag="prepare",
         end_to_end=True,
         n_models=3,
@@ -120,7 +119,7 @@ new_decoders = [
 baseline_10_latent = Experiment(
     tag="10-latent-space",
     n_models=3,
-    activation_fn=torch.nn.Sigmoid(),
+    activation_fn="sigmoid",
     use_class=False,
     num_batches=10_000,
     latent_size=10,

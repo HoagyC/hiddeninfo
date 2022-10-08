@@ -368,13 +368,13 @@ def _create_encoder(
     hidden_size: int,
     latent_size: int,
     n_hidden_layers: int,
-    activation_fn: torch.nn.Module,
+    activation_fn: str,
 ) -> torch.nn.Module:
     layers: List[torch.nn.Module] = []
     layers.append(torch.nn.Linear(vector_size, hidden_size))
     for _ in range(n_hidden_layers):
         layers.append(torch.nn.Linear(hidden_size, hidden_size))
-        layers.append(activation_fn)
+        layers.append(_get_activation_fn(activation_fn))
     layers.append(torch.nn.Linear(hidden_size, latent_size))
     return torch.nn.Sequential(*layers)
 
@@ -385,7 +385,7 @@ def _create_decoder(
     vector_size: int,
     use_class: bool,
     n_hidden_layers: int,
-    activation_fn: torch.nn.Module,
+    activation_fn: str,
     dropout_prob: Optional[float],
 ) -> torch.nn.Module:
     if use_class:
@@ -398,9 +398,18 @@ def _create_decoder(
     layers.append(torch.nn.Linear(latent_size, hidden_size))
     for _ in range(n_hidden_layers):
         layers.append(torch.nn.Linear(hidden_size, hidden_size))
-        layers.append(activation_fn)
+        layers.append(_get_activation_fn(activation_fn))
     layers.append(torch.nn.Linear(hidden_size, output_size))
     return torch.nn.Sequential(*layers)
+
+
+def _get_activation_fn(name: str) -> torch.nn.Module:
+    if name == "relu":
+        return torch.nn.ReLU()
+    elif name == "sigmoid":
+        return torch.nn.Sigmoid()
+    else:
+        raise AssertionError(name)
 
 
 def _generate_vector_batch(
