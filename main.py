@@ -73,71 +73,74 @@ def main():
                 exp.load_decoders_from_tag += suffix
             if exp.load_encoders_from_tag is not None:
                 exp.load_encoders_from_tag += suffix
+        _run_experiments(experiments, retrain_models)
 
-        bar = st.progress(0.0)
-        train_results: List[TrainResult] = []
-        for i, experiment in enumerate(experiments):
-            if retrain_models or _get_train_result_path(experiment.tag) is None:
-                train_result = _train(experiment=experiment)
-                _save_train_result(train_result)
-            else:
-                train_result = _load_train_result(experiment.tag)
-            train_results.append(train_result)
-            bar.progress((i + 1) / len(experiments))
 
-        tags = [experiment.tag for experiment in experiments]
-        df = pd.DataFrame(
-            [
-                dataclasses.asdict(result)
-                for train_result in train_results
-                for result in train_result.step_results
-                if result.tag in tags
-            ]
-        )
-        st.write(df)
+def _run_experiments(experiments: List[Experiment], retrain_models: bool):
+    bar = st.progress(0.0)
+    train_results: List[TrainResult] = []
+    for i, experiment in enumerate(experiments):
+        if retrain_models or _get_train_result_path(experiment.tag) is None:
+            train_result = _train(experiment=experiment)
+            _save_train_result(train_result)
+        else:
+            train_result = _load_train_result(experiment.tag)
+        train_results.append(train_result)
+        bar.progress((i + 1) / len(experiments))
 
-        print("written dfs")
-        losses = [
-            "total_loss",
-            "reconstruction_loss",
-            "representation_loss",
-            "reconstruction_loss_p1",
-            "reconstruction_loss_p2",
+    tags = [experiment.tag for experiment in experiments]
+    df = pd.DataFrame(
+        [
+            dataclasses.asdict(result)
+            for train_result in train_results
+            for result in train_result.step_results
+            if result.tag in tags
         ]
-        print(len(losses))
-        fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
+    )
+    st.write(df)
 
-        # With binary data and zero info, ideal prediction is always 0.5
-        ZERO_INFO_LOSS = 0.5**2
+    print("written dfs")
+    losses = [
+        "total_loss",
+        "reconstruction_loss",
+        "representation_loss",
+        "reconstruction_loss_p1",
+        "reconstruction_loss_p2",
+    ]
+    print(len(losses))
+    fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
 
-        for loss_name, ax in zip(losses, axs):
-            sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
-            if loss_name == "reconstruction_loss_p2":
-                sns.lineplot(
-                    x=[0, max(df.step)],
-                    y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
-                    label="zero info loss",
-                    linestyle="dashed",
-                    ax=ax,
-                )
-            ax.set_title(loss_name)
-            ax.set_yscale("linear")
-            ax.set_ylim(([0, 0.3]))
+    # With binary data and zero info, ideal prediction is always 0.5
+    ZERO_INFO_LOSS = 0.5**2
 
-        fig.tight_layout()
-        st.pyplot(fig)
+    for loss_name, ax in zip(losses, axs):
+        sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
+        if loss_name == "reconstruction_loss_p2":
+            sns.lineplot(
+                x=[0, max(df.step)],
+                y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
+                label="zero info loss",
+                linestyle="dashed",
+                ax=ax,
+            )
+        ax.set_title(loss_name)
+        ax.set_yscale("linear")
+        ax.set_ylim(([0, 0.3]))
 
-        df = df[df["step"] == df["step"].max()]
-        df = df.drop("step", axis=1)
-        df = pd.melt(
-            df,
-            id_vars=["tag"],
-            var_name="loss_type",
-            value_name="loss_value",
-        )
-        grid = sns.FacetGrid(df, col="loss_type", sharex=False)
-        grid.map(sns.barplot, "loss_value", "tag")
-        st.pyplot(grid.fig)
+    fig.tight_layout()
+    st.pyplot(fig)
+
+    df = df[df["step"] == df["step"].max()]
+    df = df.drop("step", axis=1)
+    df = pd.melt(
+        df,
+        id_vars=["tag"],
+        var_name="loss_type",
+        value_name="loss_value",
+    )
+    grid = sns.FacetGrid(df, col="loss_type", sharex=False)
+    grid.map(sns.barplot, "loss_value", "tag")
+    st.pyplot(grid.fig)
 
 
 ### List of interventions
