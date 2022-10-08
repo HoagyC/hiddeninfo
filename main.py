@@ -22,8 +22,6 @@ DATETIME_FMT = "%Y%m%d-%H%M%S"
 
 @dataclasses.dataclass
 class Model:
-    tag: str
-    iteration: int
     encoder: torch.nn.Module
     decoder: torch.nn.Module
 
@@ -41,7 +39,6 @@ class Loss:
 @dataclasses.dataclass
 class StepResult:
     tag: str
-    iteration: int
     step: int
     total_loss: float
     reconstruction_loss: float
@@ -81,7 +78,7 @@ def main():
         train_results: List[TrainResult] = []
         for i, experiment in enumerate(experiments):
             if retrain_models or _get_train_result_path(experiment.tag) is None:
-                train_result = _train(experiment=experiment, iteration=0)
+                train_result = _train(experiment=experiment)
                 _save_train_result(train_result)
             else:
                 train_result = _load_train_result(experiment.tag)
@@ -134,7 +131,7 @@ def main():
         df = df.drop("step", axis=1)
         df = pd.melt(
             df,
-            id_vars=["tag", "iteration"],
+            id_vars=["tag"],
             var_name="loss_type",
             value_name="loss_value",
         )
@@ -154,7 +151,7 @@ def main():
 # Number of models used in multi-model scenarios
 
 
-def _train(experiment: Experiment, iteration: int) -> TrainResult:
+def _train(experiment: Experiment) -> TrainResult:
     if experiment.load_decoders_from_tag is not None:
         decoder_train_result = _load_train_result(experiment.load_decoders_from_tag)
         assert len(decoder_train_result.models) == experiment.n_models
@@ -185,8 +182,6 @@ def _train(experiment: Experiment, iteration: int) -> TrainResult:
 
     models = [
         Model(
-            experiment.tag + str(ndx),
-            iteration=iteration,
             encoder=enc_fn(ndx),
             decoder=dec_fn(ndx),
         )
@@ -330,7 +325,6 @@ def _train(experiment: Experiment, iteration: int) -> TrainResult:
             step_results.append(
                 StepResult(
                     tag=experiment.tag,
-                    iteration=iteration,
                     step=step,
                     total_loss=average_loss.total_loss,
                     reconstruction_loss=average_loss.reconstruction_loss,
