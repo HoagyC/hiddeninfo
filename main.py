@@ -100,7 +100,6 @@ def _run_experiments(experiments: List[Experiment], retrain_models: bool):
             if result.tag in tags
         ]
     )
-    st.write(df)
 
     print("written dfs")
     losses = [
