@@ -315,9 +315,6 @@ def _train(experiment: Experiment) -> TrainResult:
                     reconstruction_loss_p2.item(),
                 )
             )
-            # import pdb
-
-            # pdb.set_trace()
 
         average_loss = _get_average_loss(losses)
 
@@ -370,19 +367,13 @@ def _create_encoder(
     n_hidden_layers: int,
     activation_fn: torch.nn.Module,
 ) -> torch.nn.Module:
-    # TODO: Use layers.append here, like _create_decoder.
-    in_layer = torch.nn.Linear(vector_size, hidden_size)
-    hidden_layers = [
-        torch.nn.Sequential(
-            torch.nn.Linear(hidden_size, hidden_size),
-            activation_fn,
-        )
-        for _ in range(n_hidden_layers)
-    ]
-    hidden_layers_seq = torch.nn.Sequential(*hidden_layers)
-    out_layer = torch.nn.Linear(hidden_size, latent_size)
-
-    return torch.nn.Sequential(in_layer, activation_fn, hidden_layers_seq, out_layer)
+    layers: List[torch.nn.Module] = []
+    layers.append(torch.nn.Linear(vector_size, hidden_size))
+    for _ in range(n_hidden_layers):
+        layers.append(torch.nn.Linear(hidden_size, hidden_size))
+        layers.append(activation_fn)
+    layers.append(torch.nn.Linear(hidden_size, latent_size))
+    return torch.nn.Sequential(*layers)
 
 
 def _create_decoder(
@@ -402,10 +393,9 @@ def _create_decoder(
     if dropout_prob is not None:
         layers.append(torch.nn.Dropout(p=dropout_prob))
     layers.append(torch.nn.Linear(latent_size, hidden_size))
-    layers.extend(
-        torch.nn.Sequential(torch.nn.Linear(hidden_size, hidden_size), activation_fn)
-        for _ in range(n_hidden_layers)
-    )
+    for _ in range(n_hidden_layers):
+        layers.append(torch.nn.Linear(hidden_size, hidden_size))
+        layers.append(activation_fn)
     layers.append(torch.nn.Linear(hidden_size, output_size))
     return torch.nn.Sequential(*layers)
 
