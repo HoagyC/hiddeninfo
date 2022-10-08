@@ -64,48 +64,41 @@ def main():
     if not CACHE_DIR.is_dir():
         CACHE_DIR.mkdir(parents=True)
 
-    original_experiments = exps.decoders_then_encoders
+    original_experiments: List[Experiment] = exps.new_decoders
     retrain_models = st.checkbox("Retrain models", value=False)
 
-    for repr_loss_coef in range(1, 11, 2):
-        st.subheader(f"Using representation loss coefficient of {repr_loss_coef}")
+    for n_models in [2, 4, 8, 16]:
+        st.subheader(f"Training with {n_models} models")
         experiments = copy.deepcopy(original_experiments)
         for exp in experiments:
-            exp.repr_loss_coef = repr_loss_coef
-            exp.tag += f"_coef{repr_loss_coef}"
+            exp.n_models = n_models
+            exp.tag += f"_{n_models}models"
 
         if retrain_models:
             results = []
             models = []
-            iterations = itertools.product(experiments, range(NUM_ITERATIONS))
-            bar = st.progress(0.0)
-            for i, (experiment, iteration) in enumerate(iterations):
-                train_result = _train(experiment, iteration)
-                models.append(train_result.models)
-                results.extend(train_result.step_results)
-                bar.progress((i + 1) / (len(experiments) * NUM_ITERATIONS))
-            bar.progress(1.0)
-            _save_all(models, results)
+            new_experiments = experiments
         else:
             with (CACHE_DIR / "models.pickle").open("rb") as f:
                 models = pickle.load(f)
             with (CACHE_DIR / "results.pickle").open("rb") as f:
                 results = pickle.load(f)
 
-            completed_exps = list(set([result.tag for result in results]))
+            completed_experiments = list(set([result.tag for result in results]))
             new_experiments = [
-                exp for exp in experiments if exp.tag not in completed_exps
+                exp for exp in experiments if exp.tag not in completed_experiments
             ]
-            print(completed_exps, new_experiments)
-            iterations = itertools.product(new_experiments, range(NUM_ITERATIONS))
-            bar = st.progress(0.0)
-            for i, (experiment, iteration) in enumerate(iterations):
-                train_result = _train(experiment, iteration)
-                models.append(train_result.models)
-                results.extend(train_result.step_results)
-                bar.progress((i + 1) / (len(new_experiments) * NUM_ITERATIONS))
-            bar.progress(1.0)
-            _save_all(models, results)
+
+        print(new_experiments)
+        iterations = itertools.product(new_experiments, range(NUM_ITERATIONS))
+        bar = st.progress(0.0)
+        for i, (experiment, iteration) in enumerate(iterations):
+            train_result = _train(experiment, iteration)
+            models.append(train_result.models)
+            results.extend(train_result.step_results)
+            bar.progress((i + 1) / (len(new_experiments) * NUM_ITERATIONS))
+        bar.progress(1.0)
+        _save_all(models, results)  # FIX
 
         tags = [experiment.tag for experiment in experiments]
         df = pd.DataFrame(
@@ -124,12 +117,20 @@ def main():
         print(len(losses))
         fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
 
+        # With binary data and zero info, ideal prediction is always 0.5
+        ZERO_INFO_LOSS = 0.5**2
+
         for loss_name, ax in zip(losses, axs):
             sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
-            print("linplot")
+            if loss_name == "reconstruction_loss_p2":
+                sns.lineplot(
+                    x=[0, max(df.step)],
+                    y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
+                    label="zero info loss",
+                )
             ax.set_title(loss_name)
             ax.set_yscale("linear")
-            ax.set_ylim(([0, 1]))
+            ax.set_ylim(([0, 0.3]))
 
         fig.tight_layout()
         st.pyplot(fig)
@@ -241,13 +242,13 @@ def _train(experiment: Experiment, iteration: int) -> TrainResult:
             if experiment.has_missing_knowledge:
                 vector_input = torch.concat(
                     [
-                        vector[:, : experiment.latent_size],
+                        vector[:, : experiment.preferred_rep_size],
                         _generate_vector_batch(
                             batch_size=experiment.batch_size,
                             vector_size=experiment.vector_size,
                             preferred_rep_size=experiment.preferred_rep_size,
                             vector_p2_scale=experiment.vector_p2_scale,
-                        )[:, experiment.latent_size :],
+                        )[:, experiment.preferred_rep_size :],
                     ],
                     dim=1,
                 )
@@ -334,11 +335,11 @@ def _train(experiment: Experiment, iteration: int) -> TrainResult:
                 )
             )
         if step % 1000 == 0:
-            print(vector_input[0], latent_repr[0], vector_reconstructed[0])
+            print(vector[0], vector_input[0], latent_repr[0], vector_reconstructed[0])
             print(step)
 
     if experiment.save_model:
-        _save_models(models=models, location=experiment.save_model)
+        _save_all(models=models, results=step_results, location=experiment.save_model)
     return TrainResult(experiment.tag, models, step_results)
 
 
@@ -353,6 +354,16 @@ def _get_average_loss(losses: List[Loss]) -> Loss:
             float(np.mean([l.reconstruction_loss_p1 for l in losses])),
             float(np.mean([l.reconstruction_loss_p2 for l in losses])),
         )
+
+
+def _get_final_result(results: List[StepResult]) -> float:
+    assert len(results) >= 200
+    if len(results) >= 2000:
+        mean_p2_loss = np.mean([r.reconstruction_loss_p2 for r in results[-1000:]])
+    else:
+        mean_p2_loss = np.mean([r.reconstruction_loss_p2 for r in results[-100:]])
+
+    return float(mean_p2_loss)
 
 
 def _create_encoder(
@@ -418,30 +429,29 @@ def _generate_vector_batch(
 
 
 def _load_decoders(location: Path) -> List[torch.nn.Module]:
-    with open(location, "rb") as f:
+    with open(location / "models.pickle", "rb") as f:
         models = pickle.load(f)
 
     return [model.decoder for model in models]
 
 
 def _load_encoders(location: Path) -> List[torch.nn.Module]:
-    with open(location, "rb") as f:
+    with open(location / "models.pickle", "rb") as f:
         models = pickle.load(f)
 
     return [model.encoder for model in models]
 
 
-def _save_models(models: List[Model], location: Path) -> None:
-    if not location.parent.is_dir():
-        location.parent.mkdir(parents=True)
-    with open(location, "wb") as f:
+def _save_all(
+    models: List[Model], results: List[StepResult], location: Path = None
+) -> None:
+    if not location:
+        location = CACHE_DIR
+    if not location.is_dir():
+        location.mkdir(parents=True)
+    with (location / "models.pickle").open("wb") as f:
         pickle.dump(models, f)
-
-
-def _save_all(models: List[Model], results: List[StepResult]) -> None:
-    with (CACHE_DIR / "models.pickle").open("wb") as f:
-        pickle.dump(models, f)
-    with (CACHE_DIR / "results.pickle").open("wb") as f:
+    with (location / "results.pickle").open("wb") as f:
         pickle.dump(results, f)
 
 

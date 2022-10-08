@@ -51,6 +51,7 @@ fuzzed = Experiment(
     tag="missing_knowledge",
     has_representation_loss=False,
     has_missing_knowledge=True,
+    save_model=Path("./out/store/fuzzed_baseline"),
 )
 
 dropout = Experiment(tag="dropout", dropout_prob=0.3)
@@ -64,7 +65,7 @@ encoders_then_decoders = [
     Experiment(
         tag="prep3",
         n_models=3,
-        save_model=Path("./out/store/decoders.pickle"),
+        save_model=Path("./out/store/decoders"),
         use_class=False,
     ),
     Experiment(
@@ -85,34 +86,45 @@ encoders_then_decoders = [
 ]
 decoders_then_encoders = [
     Experiment(
-        tag="prep3",
+        tag="prep_",
         n_models=3,
         activation_fn=torch.nn.Sigmoid(),
-        save_model=Path("./out/store/encoders.pickle"),
+        save_model=Path("./out/store/encoders"),
         use_class=False,
     ),
     Experiment(
-        tag="fresh_dec_3",
+        tag="fresh_dec",
         activation_fn=torch.nn.Sigmoid(),
         load_encoder=True,
-        encoder_loc=Path("./out/store/encoders.pickle"),
+        encoder_loc=Path("./out/store/encoders"),
         end_to_end=True,
         n_models=3,
-        save_model=Path("./out/store/decoders.pickle"),
+        save_model=Path("./out/store/decoders"),
     ),
     Experiment(
-        tag="fresh_enc_3",
+        tag="fresh_enc",
         activation_fn=torch.nn.Sigmoid(),
         load_decoder=True,
-        decoder_loc=Path("./out/store/decoders.pickle"),
+        decoder_loc=Path("./out/store/decoders"),
         n_models=3,
         end_to_end=True,
     ),
+]
+
+new_decoders = [
     Experiment(
-        tag="dropout",
+        tag="prepare",
         n_models=3,
         activation_fn=torch.nn.Sigmoid(),
-        dropout_prob=0.5,
+        save_model=Path("./out/store/encoders"),
         use_class=False,
+    ),
+    Experiment(
+        tag="fresh_dec",
+        activation_fn=torch.nn.Sigmoid(),
+        load_encoder=True,
+        encoder_loc=Path("./out/store/encoders"),
+        end_to_end=True,
+        n_models=3,
     ),
 ]
