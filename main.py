@@ -1,11 +1,12 @@
-from typing import List, Optional, Tuple, Callable
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Callable
 import copy
 import dataclasses
 import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pathlib import Path
 import pickle
 import seaborn as sns
 import streamlit as st
@@ -15,8 +16,8 @@ import experiments as exps
 from experiments import Experiment
 
 
-NUM_ITERATIONS: int = 1
-CACHE_DIR = Path("out/cache")
+RESULTS_DIR = Path("out/results")
+DATETIME_FMT = "%Y%m%d-%H%M%S"
 
 
 @dataclasses.dataclass
@@ -61,9 +62,6 @@ class TrainResult:
 def main():
     st.header("Hidden info")
 
-    if not CACHE_DIR.is_dir():
-        CACHE_DIR.mkdir(parents=True)
-
     original_experiments: List[Experiment] = exps.new_decoders
     retrain_models = st.checkbox("Retrain models", value=False)
 
@@ -71,38 +69,33 @@ def main():
         st.subheader(f"Training with {n_models} models")
         experiments = copy.deepcopy(original_experiments)
         for exp in experiments:
+            suffix = f"_{n_models}models"
             exp.n_models = n_models
-            exp.tag += f"_{n_models}models"
+            exp.tag += suffix
+            if exp.load_decoders_from_tag is not None:
+                exp.load_decoders_from_tag += suffix
+            if exp.load_encoders_from_tag is not None:
+                exp.load_encoders_from_tag += suffix
 
-        if retrain_models:
-            results = []
-            models = []
-            new_experiments = experiments
-        else:
-            with (CACHE_DIR / "models.pickle").open("rb") as f:
-                models = pickle.load(f)
-            with (CACHE_DIR / "results.pickle").open("rb") as f:
-                results = pickle.load(f)
-
-            completed_experiments = list(set([result.tag for result in results]))
-            new_experiments = [
-                exp for exp in experiments if exp.tag not in completed_experiments
-            ]
-
-        print(new_experiments)
-        iterations = itertools.product(new_experiments, range(NUM_ITERATIONS))
         bar = st.progress(0.0)
-        for i, (experiment, iteration) in enumerate(iterations):
-            train_result = _train(experiment, iteration)
-            models.append(train_result.models)
-            results.extend(train_result.step_results)
-            bar.progress((i + 1) / (len(new_experiments) * NUM_ITERATIONS))
-        bar.progress(1.0)
-        _save_all(models, results)  # FIX
+        train_results: List[TrainResult] = []
+        for i, experiment in enumerate(experiments):
+            if retrain_models or _get_train_result_path(experiment.tag) is None:
+                train_result = _train(experiment=experiment, iteration=0)
+                _save_train_result(train_result)
+            else:
+                train_result = _load_train_result(experiment.tag)
+            train_results.append(train_result)
+            bar.progress((i + 1) / len(experiments))
 
         tags = [experiment.tag for experiment in experiments]
         df = pd.DataFrame(
-            [dataclasses.asdict(result) for result in results if result.tag in tags]
+            [
+                dataclasses.asdict(result)
+                for train_result in train_results
+                for result in train_result.step_results
+                if result.tag in tags
+            ]
         )
         st.write(df)
 
@@ -162,10 +155,10 @@ def main():
 
 
 def _train(experiment: Experiment, iteration: int) -> TrainResult:
-    if experiment.load_decoder:
-        loaded_decoders = _load_decoders(experiment.decoder_loc)
-        assert len(loaded_decoders) == experiment.n_models
-        dec_fn = lambda x: loaded_decoders[x]
+    if experiment.load_decoders_from_tag is not None:
+        decoder_train_result = _load_train_result(experiment.load_decoders_from_tag)
+        assert len(decoder_train_result.models) == experiment.n_models
+        dec_fn = lambda x: decoder_train_result.models[x].decoder
     else:
         dec_fn = lambda _: _create_decoder(
             latent_size=experiment.latent_size,
@@ -177,10 +170,10 @@ def _train(experiment: Experiment, iteration: int) -> TrainResult:
             dropout_prob=experiment.dropout_prob,
         )
 
-    if experiment.load_encoder:
-        loaded_encoders = _load_encoders(experiment.encoder_loc)
-        assert len(loaded_encoders) == experiment.n_models
-        enc_fn = lambda x: loaded_encoders[x]
+    if experiment.load_encoders_from_tag is not None:
+        encoder_train_result = _load_train_result(experiment.load_encoders_from_tag)
+        assert len(encoder_train_result.models) == experiment.n_models
+        enc_fn = lambda x: encoder_train_result.models[x].encoder
     else:
         enc_fn = lambda _: _create_encoder(
             latent_size=experiment.latent_size,
@@ -200,9 +193,9 @@ def _train(experiment: Experiment, iteration: int) -> TrainResult:
         for ndx in range(experiment.n_models)
     ]
 
-    if experiment.load_decoder:
+    if experiment.load_decoders_from_tag is not None:
         all_params = [[*model.encoder.parameters()] for model in models]
-    elif experiment.load_encoder:
+    elif experiment.load_encoders_from_tag is not None:
         all_params = [[*model.decoder.parameters()] for model in models]
     else:
         all_params = [
@@ -350,8 +343,6 @@ def _train(experiment: Experiment, iteration: int) -> TrainResult:
             print(vector[0], vector_input[0], latent_repr[0], vector_reconstructed[0])
             print(step)
 
-    if experiment.save_model:
-        _save_all(models=models, results=step_results, location=experiment.save_model)
     return TrainResult(experiment.tag, models, step_results)
 
 
@@ -440,31 +431,30 @@ def _generate_vector_batch(
     return torch.concat([p1, p2], dim=1)
 
 
-def _load_decoders(location: Path) -> List[torch.nn.Module]:
-    with open(location / "models.pickle", "rb") as f:
-        models = pickle.load(f)
-
-    return [model.decoder for model in models]
-
-
-def _load_encoders(location: Path) -> List[torch.nn.Module]:
-    with open(location / "models.pickle", "rb") as f:
-        models = pickle.load(f)
-
-    return [model.encoder for model in models]
+def _save_train_result(train_result: TrainResult):
+    now_str = datetime.now().strftime(DATETIME_FMT)
+    train_result_path = RESULTS_DIR / train_result.tag / now_str / "train-result.pickle"
+    if not train_result_path.parent.is_dir():
+        train_result_path.parent.mkdir(parents=True)
+    with train_result_path.open("wb") as f:
+        pickle.dump(train_result, f)
 
 
-def _save_all(
-    models: List[Model], results: List[StepResult], location: Path = None
-) -> None:
-    if not location:
-        location = CACHE_DIR
-    if not location.is_dir():
-        location.mkdir(parents=True)
-    with (location / "models.pickle").open("wb") as f:
-        pickle.dump(models, f)
-    with (location / "results.pickle").open("wb") as f:
-        pickle.dump(results, f)
+def _load_train_result(tag: str) -> TrainResult:
+    train_result_path = _get_train_result_path(tag)
+    assert train_result_path is not None, f"No train results for {tag}"
+    with train_result_path.open("rb") as f:
+        return pickle.load(f)
+
+
+def _get_train_result_path(tag: str) -> Optional[Path]:
+    results_dir = RESULTS_DIR / tag
+    if not results_dir.is_dir():
+        return None
+    time_strs = [time_dir.name for time_dir in results_dir.iterdir()]
+    times = [datetime.strptime(time_str, DATETIME_FMT) for time_str in time_strs]
+    latest_time_str = max(times).strftime(DATETIME_FMT)
+    return RESULTS_DIR / tag / latest_time_str / "train-result.pickle"
 
 
 if __name__ == "__main__":

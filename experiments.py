@@ -30,11 +30,8 @@ class Experiment:
     has_missing_knowledge: bool = False
     end_to_end: bool = False
     n_models: int = 1
-    load_encoder: bool = False
-    encoder_loc: Path = Path("./out/store/encoders.pickle")
-    load_decoder: bool = False
-    decoder_loc: Path = Path("./out/store/decoders.pickle")
-    save_model: Optional[Path] = None
+    load_encoders_from_tag: Optional[str] = None
+    load_decoders_from_tag: Optional[str] = None
 
 
 baseline = Experiment(
@@ -53,7 +50,6 @@ fuzzed = Experiment(
     tag="missing_knowledge",
     has_representation_loss=False,
     has_missing_knowledge=True,
-    save_model=Path("./out/store/fuzzed_baseline"),
 )
 
 dropout = Experiment(tag="dropout", dropout_prob=0.3)
@@ -67,21 +63,17 @@ encoders_then_decoders = [
     Experiment(
         tag="prep3",
         n_models=3,
-        save_model=Path("./out/store/decoders"),
         use_class=False,
     ),
     Experiment(
         tag="fresh_enc_3",
-        load_decoder=True,
-        decoder_loc=Path("./out/store/decoders.pickle"),
+        load_decoders_from_tag="prep3",
         end_to_end=True,
         n_models=3,
-        save_model=Path("./out/store/encoders.pickle"),
     ),
     Experiment(
         tag="fresh_dec_3",
-        load_encoder=True,
-        encoder_loc=Path("./out/store/encoders.pickle"),
+        load_encoders_from_tag="fresh_enc_3",
         n_models=3,
         end_to_end=True,
     ),
@@ -91,23 +83,19 @@ decoders_then_encoders = [
         tag="prep_",
         n_models=3,
         activation_fn=torch.nn.Sigmoid(),
-        save_model=Path("./out/store/encoders"),
         use_class=False,
     ),
     Experiment(
         tag="fresh_dec",
         activation_fn=torch.nn.Sigmoid(),
-        load_encoder=True,
-        encoder_loc=Path("./out/store/encoders"),
+        load_encoders_from_tag="prep_",
         end_to_end=True,
         n_models=3,
-        save_model=Path("./out/store/decoders"),
     ),
     Experiment(
         tag="fresh_enc",
         activation_fn=torch.nn.Sigmoid(),
-        load_decoder=True,
-        decoder_loc=Path("./out/store/decoders"),
+        load_decoders_from_tag="fresh_dec",
         n_models=3,
         end_to_end=True,
     ),
@@ -118,14 +106,12 @@ new_decoders = [
         tag="prepare",
         n_models=3,
         activation_fn=torch.nn.Sigmoid(),
-        save_model=Path("./out/store/encoders"),
         use_class=False,
     ),
     Experiment(
         tag="fresh_dec",
         activation_fn=torch.nn.Sigmoid(),
-        load_encoder=True,
-        encoder_loc=Path("./out/store/encoders"),
+        load_encoders_from_tag="prepare",
         end_to_end=True,
         n_models=3,
     ),
@@ -135,7 +121,6 @@ baseline_10_latent = Experiment(
     tag="10-latent-space",
     n_models=3,
     activation_fn=torch.nn.Sigmoid(),
-    save_model=Path("./out/store/encoders.pickle"),
     use_class=False,
     num_batches=10_000,
     latent_size=10,
