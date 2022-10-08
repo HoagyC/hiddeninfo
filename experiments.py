@@ -1,4 +1,4 @@
-from pathlib import Path
+from typing import List
 from typing import Optional
 import dataclasses
 import torch
@@ -129,3 +129,53 @@ baseline_10_latent = Experiment(
     has_representation_loss=True,
     repr_loss_coef=0.05,
 )
+
+def make_retrain_enc_experiments(base_experiment: Experiment) -> List[Experiment]:
+    tag = base_experiment.tag
+    return [
+        dataclasses.replace(base_experiment, tag=f"{tag}_init"),
+        dataclasses.replace(
+            base_experiment,
+            tag=f"{tag}_retrain-encoders",
+            load_decoders_from_tag=f"{tag}_init",
+            end_to_end=True,
+        ),
+    ]
+
+
+def make_retrain_dec_experiments(base_experiment: Experiment) -> List[Experiment]:
+    tag = base_experiment.tag
+    return [
+        dataclasses.replace(base_experiment, tag=f"{tag}_init"),
+        dataclasses.replace(
+            base_experiment,
+            tag=f"{tag}_retrain-decoders",
+            load_encoders_from_tag=f"{tag}_init",
+            end_to_end=True,
+        ),
+    ]
+
+def make_retrain_enc_dec_experiments(base_experiment: Experiment) -> List[Experiment]:
+    tag = base_experiment.tag
+    return [
+        *make_retrain_enc_experiments(base_experiment),
+        dataclasses.replace(
+            base_experiment,
+            tag=f"{tag}_retrain-decoders",
+            load_encoders_from_tag=f"{tag}_retrain-encoders",
+            end_to_end=True,
+        ),
+    ]
+
+
+def make_retrain_dec_enc_experiments(base_experiment: Experiment) -> List[Experiment]:
+    tag = base_experiment.tag
+    return [
+        *make_retrain_dec_experiments(base_experiment),
+        dataclasses.replace(
+            base_experiment,
+            tag=f"{tag}_retrain-encoders",
+            load_decoders_from_tag=f"{tag}_retrain-decoders",
+            end_to_end=True,
+        ),
+    ]
