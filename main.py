@@ -77,6 +77,9 @@ def main():
 
 
 def _run_experiments(experiments: List[Experiment], retrain_models: bool):
+    st.write("Running experiments", datetime.now())
+    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
+
     bar = st.progress(0.0)
     train_results: List[TrainResult] = []
     for i, experiment in enumerate(experiments):
