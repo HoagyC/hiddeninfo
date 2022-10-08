@@ -18,7 +18,7 @@ class Experiment:
     hidden_size: int = 30
     batch_size: int = 32
     vector_p2_scale: int = 1
-    repr_loss_coef: int = 5
+    repr_loss_coef: float = 5
     dropout_prob: Optional[float] = None
     l1_loss: Optional[float] = None
     l2_loss: Optional[float] = None
@@ -130,3 +130,17 @@ new_decoders = [
         n_models=3,
     ),
 ]
+
+baseline_10_latent = Experiment(
+    tag="10-latent-space",
+    n_models=3,
+    activation_fn=torch.nn.Sigmoid(),
+    save_model=Path("./out/store/encoders.pickle"),
+    use_class=False,
+    num_batches=10_000,
+    latent_size=10,
+    hidden_size=80,
+    n_hidden_layers=1,
+    has_representation_loss=True,
+    repr_loss_coef=0.05,
+)
