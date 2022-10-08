@@ -285,6 +285,16 @@ def _train(experiment: Experiment, iteration: int) -> TrainResult:
                 reconstruction_loss * reconstruction_loss_coefficient
                 + representation_loss * representation_loss_coefficient
             )
+            if experiment.l1_loss is not None:
+                l1_loss = experiment.l1_loss * torch.norm(
+                    latent_repr[experiment.preferred_rep_size :], 1
+                )
+                loss += l1_loss
+            if experiment.l2_loss is not None:
+                l2_loss = experiment.l2_loss * torch.norm(
+                    latent_repr[experiment.preferred_rep_size :], 2
+                )
+                loss += l2_loss
 
             loss.backward()
             optimizer.step()

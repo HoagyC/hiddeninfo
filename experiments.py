@@ -20,6 +20,8 @@ class Experiment:
     vector_p2_scale: int = 1
     repr_loss_coef: int = 5
     dropout_prob: Optional[float] = None
+    l1_loss: Optional[float] = None
+    l2_loss: Optional[float] = None
     activation_fn: torch.nn.Module = dataclasses.field(default_factory=torch.nn.ReLU)
 
     # Training setup
