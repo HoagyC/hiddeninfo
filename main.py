@@ -63,10 +63,9 @@ def main():
     _run_experiments(exps.baseline_10_latent)
 
     st.header("Regularisation strategies")
-    st.write("TODO: Finetune")
     _run_experiments(
-        dataclasses.replace(exps.baseline_10_latent, tag="l1", l1_loss=1e-3),
-        dataclasses.replace(exps.baseline_10_latent, tag="l2", l2_loss=1e-3),
+        dataclasses.replace(exps.baseline_10_latent, tag="l1", l1_loss=1e-5),
+        dataclasses.replace(exps.baseline_10_latent, tag="l2", l2_loss=1e-2),
     )
 
     st.header("Dropout strategy")
