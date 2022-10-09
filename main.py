@@ -79,6 +79,8 @@ def main():
 def _run_experiments(experiments: List[Experiment], retrain_models: bool):
     st.write("Running experiments", datetime.now())
     st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
+    tags = [experiment.tag for experiment in experiments]
+    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
 
     bar = st.progress(0.0)
     train_results: List[TrainResult] = []
