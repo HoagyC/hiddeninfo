@@ -62,11 +62,24 @@ class TrainResult:
 def main():
     st.title("Hidden info")
 
-    base = exps.baseline_10_latent
+    base = Experiment(
+        tag="base",
+        n_models=3,
+        activation_fn="sigmoid",
+        use_class=False,
+        num_batches=10_000,
+        latent_size=10,
+        hidden_size=80,
+        n_hidden_layers=1,
+        # Ideally, we want the representation loss to be as high as possible, conditioned on the
+        # autoencoders still exhibiting the "hidden info" behaviour.
+        # TODO: Experiment with making this number larger.
+        representation_loss=1,
+    )
     l1 = dataclasses.replace(base, tag="l1", l1_loss=1e-5)
     l2 = dataclasses.replace(base, tag="l2", l2_loss=1e-2)
     dropout = dataclasses.replace(base, tag="dropout", dropout_prob=0.5)
-    noisy = dataclasses.replace(base, tag="noisy", latent_noise_std=0.5)
+    noisy = dataclasses.replace(base, tag="noisy", latent_noise_std=0.1)
     perms = dataclasses.replace(base, tag="perms", shuffle_decoders=True)
     retrain_dec = dataclasses.replace(
         base,
@@ -79,14 +92,24 @@ def main():
         tag="retrain-enc",
         load_decoders_from_tag=base.tag,
         shuffle_decoders=True,
+        # Don't use representation loss when retraining the encoders.
+        # This is kinda cheating: if the problem of retraining the encoders is too hard, then adding
+        # the representation loss gives the model a *really* easy way to fit the the decoder for p1,
+        # leaving it struggling for p2.
+        representation_loss=0,
     )
-    retrain_enc_noisy = dataclasses.replace(
-        noisy,
-        tag="retrain-enc-noisy",
-        load_decoders_from_tag=noisy.tag,
-        shuffle_decoders=True,
-        latent_noise_std=0.5,
-    )
+    # One thing I've found is that it's hard to retrain the encoders. My hypothesis is that, since
+    # the decoder is trying to find some hidden info in the latent embedding, it's *really*
+    # sensitive around 0 and 1 values. This makes the loss landscape really difficult for GD to
+    # traverse around these values, leading to a something has poor reconstruction performance.
+    # I've not observed this effect recently, but noting here for posterity.
+    # retrain_enc_noisy = dataclasses.replace(
+    #     noisy,
+    #     tag="retrain-enc-noisy",
+    #     load_decoders_from_tag=noisy.tag,
+    #     shuffle_decoders=True,
+    #     representation_loss=0,
+    # )
 
     st.header("Baseline")
     _run_experiments(base)
@@ -104,19 +127,14 @@ def main():
     st.header("Random permutations")
     _run_experiments(perms)
 
-    st.header("Retrain decoder + random permutations")
+    st.header("Retrain decoders + random permutations")
     _run_experiments(retrain_dec)
 
-    st.header("Retrain encoder + random permutations")
+    st.header("Retrain encoders + random permutations")
     _run_experiments(retrain_enc)
 
-    st.header("Retrain encoder + random permutations + noise")
-    _run_experiments(retrain_enc_noisy)
-
     st.header("All strategies")
-    _run_experiments(
-        base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc, retrain_enc_noisy
-    )
+    _run_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
 
     st.header("Experimenting with different numbers of models")
     for n_models in [2, 4, 8, 16]:
@@ -155,14 +173,10 @@ def _run_experiments(*experiments_iterable: Experiment):
         train_results.append(train_result)
         bar.progress((i + 1) / len(experiments))
 
-    tags = [experiment.tag for experiment in experiments]
     df = pd.DataFrame(
-        [
-            dataclasses.asdict(result)
-            for train_result in train_results
-            for result in train_result.step_results
-            if result.tag in tags
-        ]
+        dataclasses.asdict(result)
+        for train_result in train_results
+        for result in train_result.step_results
     )
 
     losses = [
