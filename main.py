@@ -18,6 +18,8 @@ from experiments import Experiment
 
 RESULTS_DIR = Path("out/results")
 DATETIME_FMT = "%Y%m%d-%H%M%S"
+# With binary data and zero info, ideal prediction is always 0.5
+ZERO_INFO_LOSS = 0.5**2
 
 
 @dataclasses.dataclass
@@ -126,48 +128,26 @@ def _run_experiments(*experiments_iterable: Experiment):
         ]
     )
 
-    print("written dfs")
     losses = [
-        "total_loss",
-        "reconstruction_loss",
         "representation_loss",
         "reconstruction_loss_p1",
         "reconstruction_loss_p2",
     ]
-    print(len(losses))
     fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
-
-    # With binary data and zero info, ideal prediction is always 0.5
-    ZERO_INFO_LOSS = 0.5**2
-
     for loss_name, ax in zip(losses, axs):
         sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
-        if loss_name == "reconstruction_loss_p2":
-            sns.lineplot(
-                x=[0, max(df.step)],
-                y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
-                label="zero info loss",
-                linestyle="dashed",
-                ax=ax,
-            )
+        sns.lineplot(
+            x=[0, max(df.step)],
+            y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
+            label="zero info loss",
+            linestyle="dashed",
+            ax=ax,
+        )
         ax.set_title(loss_name)
         ax.set_yscale("linear")
         ax.set_ylim(([0, 0.3]))
-
     fig.tight_layout()
     st.pyplot(fig)
-
-    df = df[df["step"] == df["step"].max()]
-    df = df.drop("step", axis=1)
-    df = pd.melt(
-        df,
-        id_vars=["tag"],
-        var_name="loss_type",
-        value_name="loss_value",
-    )
-    grid = sns.FacetGrid(df, col="loss_type", sharex=False)
-    grid.map(sns.barplot, "loss_value", "tag")
-    st.pyplot(grid.fig)
 
 
 ### List of interventions
