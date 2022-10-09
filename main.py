@@ -64,7 +64,7 @@ def main():
 
     base = Experiment(
         tag="base",
-        n_models=3,
+        n_models=8,
         activation_fn="sigmoid",
         use_class=False,
         num_batches=10_000,
@@ -76,10 +76,10 @@ def main():
         # TODO: Experiment with making this number larger.
         representation_loss=1,
     )
-    l1 = dataclasses.replace(base, tag="l1", l1_loss=1e-5)
-    l2 = dataclasses.replace(base, tag="l2", l2_loss=1e-2)
-    dropout = dataclasses.replace(base, tag="dropout", dropout_prob=0.5)
-    noisy = dataclasses.replace(base, tag="noisy", latent_noise_std=0.1)
+    l1 = dataclasses.replace(base, tag="l1", l1_loss=1e-5, n_models=1)
+    l2 = dataclasses.replace(base, tag="l2", l2_loss=1e-2, n_models=1)
+    dropout = dataclasses.replace(base, tag="dropout", dropout_prob=0.5, n_models=1)
+    noisy = dataclasses.replace(base, tag="noisy", latent_noise_std=0.1, n_models=1)
     perms = dataclasses.replace(base, tag="perms", shuffle_decoders=True)
     retrain_dec = dataclasses.replace(
         base,
