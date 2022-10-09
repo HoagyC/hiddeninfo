@@ -57,14 +57,33 @@ class TrainResult:
 
 
 def main():
-    st.header("Hidden info")
+    st.title("Hidden info")
 
-    original_experiments: List[Experiment] = exps.new_decoders
-    retrain_models = st.checkbox("Retrain models", value=False)
+    st.header("Baseline")
+    _run_experiments(exps.baseline_10_latent)
 
+    st.header("Regularisation strategies")
+    st.write("TODO: Finetune")
+    _run_experiments(
+        dataclasses.replace(exps.baseline_10_latent, tag="l1", l1_loss=1e-3),
+        dataclasses.replace(exps.baseline_10_latent, tag="l2", l2_loss=1e-3),
+    )
+
+    st.header("Dropout strategy")
+    st.write("TODO: Get results outside of eval mode.")
+    _run_experiments(
+        dataclasses.replace(exps.baseline_10_latent, tag="dropout", dropout_prob=0.5)
+    )
+
+    st.header("Noise strategy")
+    _run_experiments(
+        dataclasses.replace(exps.baseline_10_latent, tag="noisy", latent_noise_std=0.5)
+    )
+
+    st.header("Experimenting with different numbers of models")
     for n_models in [2, 4, 8, 16]:
         st.subheader(f"Training with {n_models} models")
-        experiments = copy.deepcopy(original_experiments)
+        experiments = copy.deepcopy(exps.new_decoders)
         for exp in experiments:
             suffix = f"_{n_models}models"
             exp.n_models = n_models
@@ -73,19 +92,24 @@ def main():
                 exp.load_decoders_from_tag += suffix
             if exp.load_encoders_from_tag is not None:
                 exp.load_encoders_from_tag += suffix
-        _run_experiments(experiments, retrain_models)
+        _run_experiments(*experiments)
 
 
-def _run_experiments(experiments: List[Experiment], retrain_models: bool):
-    st.write("Running experiments", datetime.now())
-    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
+def _run_experiments(*experiments_iterable: Experiment):
+    experiments: List[Experiment] = list(experiments_iterable)
     tags = [experiment.tag for experiment in experiments]
     assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
+    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+        return
+    force_retrain_models = st.checkbox(
+        "Force retrain models?", value=False, key=str((tags, "retrain"))
+    )
+    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
 
     bar = st.progress(0.0)
     train_results: List[TrainResult] = []
     for i, experiment in enumerate(experiments):
-        if retrain_models or _get_train_result_path(experiment.tag) is None:
+        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
             train_result = _train(experiment=experiment)
             _save_train_result(train_result)
         else:
@@ -253,7 +277,9 @@ def _train(experiment: Experiment) -> TrainResult:
                 vector_input = vector
 
             latent_repr = encoder(vector_input)
-            noise = torch.normal(mean=0, std=experiment.latent_noise_std, size=latent_repr.shape)
+            noise = torch.normal(
+                mean=0, std=experiment.latent_noise_std, size=latent_repr.shape
+            )
             vector_reconstructed = decoder(latent_repr + noise)
             if experiment.use_class:
                 vector_reconstructed = vector_reconstructed.reshape(

@@ -116,7 +116,7 @@ new_decoders = [
 ]
 
 baseline_10_latent = Experiment(
-    tag="10-latent-space",
+    tag="latent10",
     n_models=3,
     activation_fn="sigmoid",
     use_class=False,
@@ -125,6 +125,11 @@ baseline_10_latent = Experiment(
     hidden_size=80,
     n_hidden_layers=1,
     representation_loss=0.05,
+)
+baseline_10_latent_noisy = dataclasses.replace(
+    baseline_10_latent,
+    tag="latent10-noisy",
+    latent_noise_std=0.5,
 )
 
 
