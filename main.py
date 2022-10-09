@@ -238,8 +238,9 @@ def _train(experiment: Experiment) -> TrainResult:
 
     representation_loss_fn = torch.nn.MSELoss()
 
+    bar = st.progress(0.0)
     step_results = []
-    for step in range(experiment.num_batches + 1):
+    for step in range(experiment.num_batches):
         losses = []
         if experiment.end_to_end:
             model_perm = torch.randperm(len(models))
@@ -356,6 +357,7 @@ def _train(experiment: Experiment) -> TrainResult:
         if step % 1000 == 0:
             print(vector[0], vector_input[0], latent_repr[0], vector_reconstructed[0])
             print(step)
+        bar.progress((step + 1) / experiment.num_batches)
 
     return TrainResult(experiment.tag, models, step_results)
 
