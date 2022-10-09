@@ -27,7 +27,7 @@ class Experiment:
     # Training setup
     num_batches: int = 10_000
     has_missing_knowledge: bool = False
-    end_to_end: bool = False
+    shuffle_decoders: bool = False
     n_models: int = 1
     load_encoders_from_tag: Optional[str] = None
     load_decoders_from_tag: Optional[str] = None
@@ -52,9 +52,9 @@ fuzzed = Experiment(
 
 dropout = Experiment(tag="dropout", dropout_prob=0.3)
 
-freeze2 = Experiment(tag="freeze_2", end_to_end=True, n_models=2)
-freeze4 = Experiment(tag="freeze_4", end_to_end=True, n_models=4)
-freeze10 = Experiment(tag="freeze_10", end_to_end=True, n_models=10)
+freeze2 = Experiment(tag="freeze_2", shuffle_decoders=True, n_models=2)
+freeze4 = Experiment(tag="freeze_4", shuffle_decoders=True, n_models=4)
+freeze10 = Experiment(tag="freeze_10", shuffle_decoders=True, n_models=10)
 
 # Series of experiments that should be run in order
 encoders_then_decoders = [
@@ -66,14 +66,14 @@ encoders_then_decoders = [
     Experiment(
         tag="fresh_enc_3",
         load_decoders_from_tag="prep3",
-        end_to_end=True,
+        shuffle_decoders=True,
         n_models=3,
     ),
     Experiment(
         tag="fresh_dec_3",
         load_encoders_from_tag="fresh_enc_3",
         n_models=3,
-        end_to_end=True,
+        shuffle_decoders=True,
     ),
 ]
 decoders_then_encoders = [
@@ -87,7 +87,7 @@ decoders_then_encoders = [
         tag="fresh_dec",
         activation_fn="sigmoid",
         load_encoders_from_tag="prep_",
-        end_to_end=True,
+        shuffle_decoders=True,
         n_models=3,
     ),
     Experiment(
@@ -95,7 +95,7 @@ decoders_then_encoders = [
         activation_fn="sigmoid",
         load_decoders_from_tag="fresh_dec",
         n_models=3,
-        end_to_end=True,
+        shuffle_decoders=True,
     ),
 ]
 
@@ -110,7 +110,7 @@ new_decoders = [
         tag="fresh_dec",
         activation_fn="sigmoid",
         load_encoders_from_tag="prepare",
-        end_to_end=True,
+        shuffle_decoders=True,
         n_models=3,
     ),
 ]
@@ -141,7 +141,7 @@ def make_retrain_enc_experiments(base_experiment: Experiment) -> List[Experiment
             base_experiment,
             tag=f"{tag}_retrain-encoders",
             load_decoders_from_tag=f"{tag}_init",
-            end_to_end=True,
+            shuffle_decoders=True,
         ),
     ]
 
@@ -154,7 +154,7 @@ def make_retrain_dec_experiments(base_experiment: Experiment) -> List[Experiment
             base_experiment,
             tag=f"{tag}_retrain-decoders",
             load_encoders_from_tag=f"{tag}_init",
-            end_to_end=True,
+            shuffle_decoders=True,
         ),
     ]
 
@@ -167,7 +167,7 @@ def make_retrain_enc_dec_experiments(base_experiment: Experiment) -> List[Experi
             base_experiment,
             tag=f"{tag}_retrain-decoders",
             load_encoders_from_tag=f"{tag}_retrain-encoders",
-            end_to_end=True,
+            shuffle_decoders=True,
         ),
     ]
 
@@ -180,6 +180,6 @@ def make_retrain_dec_enc_experiments(base_experiment: Experiment) -> List[Experi
             base_experiment,
             tag=f"{tag}_retrain-encoders",
             load_decoders_from_tag=f"{tag}_retrain-decoders",
-            end_to_end=True,
+            shuffle_decoders=True,
         ),
     ]

@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import random
 from typing import List, Optional, Callable
 import copy
 import dataclasses
@@ -220,19 +221,16 @@ def _train(experiment: Experiment) -> TrainResult:
 
     bar = st.progress(0.0)
     step_results = []
+    encoder_to_decoder_idx = list(range(len(models)))
     for step in range(experiment.num_batches):
         losses = []
-        if experiment.end_to_end:
-            model_perm = torch.randperm(len(models))
+        if experiment.shuffle_decoders:
+            random.shuffle(encoder_to_decoder_idx)
 
-        for model_ndx in range(len(models)):
-            encoder = models[model_ndx].encoder
-            if experiment.end_to_end:
-                decoder = models[model_perm[model_ndx]].decoder
-            else:
-                decoder = models[model_ndx].decoder
-
+        for encoder_idx in range(len(models)):
             optimizer.zero_grad()
+            encoder = models[encoder_idx].encoder
+            decoder = models[encoder_to_decoder_idx[encoder_idx]].decoder
 
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
