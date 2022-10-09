@@ -62,60 +62,60 @@ class TrainResult:
 def main():
     st.title("Hidden info")
 
+    base = exps.baseline_10_latent
+    l1 = dataclasses.replace(base, tag="l1", l1_loss=1e-5)
+    l2 = dataclasses.replace(base, tag="l2", l2_loss=1e-2)
+    dropout = dataclasses.replace(base, tag="dropout", dropout_prob=0.5)
+    noisy = dataclasses.replace(base, tag="noisy", latent_noise_std=0.5)
+    perms = dataclasses.replace(base, tag="perms", shuffle_decoders=True)
+    retrain_dec = dataclasses.replace(
+        base,
+        tag="retrain-dec",
+        load_encoders_from_tag=base.tag,
+        shuffle_decoders=True,
+    )
+    retrain_enc = dataclasses.replace(
+        base,
+        tag="retrain-enc",
+        load_decoders_from_tag=base.tag,
+        shuffle_decoders=True,
+    )
+    retrain_enc_noisy = dataclasses.replace(
+        noisy,
+        tag="retrain-enc-noisy",
+        load_decoders_from_tag=noisy.tag,
+        shuffle_decoders=True,
+        latent_noise_std=0.5,
+    )
+
     st.header("Baseline")
-    _run_experiments(exps.baseline_10_latent)
+    _run_experiments(base)
 
     st.header("Regularisation strategies")
-    _run_experiments(
-        dataclasses.replace(exps.baseline_10_latent, tag="l1", l1_loss=1e-5),
-        dataclasses.replace(exps.baseline_10_latent, tag="l2", l2_loss=1e-2),
-    )
+    _run_experiments(l1, l2)
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
-    _run_experiments(
-        dataclasses.replace(exps.baseline_10_latent, tag="dropout", dropout_prob=0.5)
-    )
+    _run_experiments(dropout)
 
     st.header("Noise strategy")
-    _run_experiments(
-        dataclasses.replace(exps.baseline_10_latent, tag="noisy", latent_noise_std=0.5)
-    )
+    _run_experiments(noisy)
 
     st.header("Random permutations")
-    _run_experiments(
-        dataclasses.replace(exps.baseline_10_latent, tag="perms", shuffle_decoders=True)
-    )
+    _run_experiments(perms)
 
     st.header("Retrain decoder + random permutations")
-    _run_experiments(
-        dataclasses.replace(
-            exps.baseline_10_latent,
-            tag="retrain-dec",
-            load_encoders_from_tag=exps.baseline_10_latent.tag,
-            shuffle_decoders=True,
-        )
-    )
+    _run_experiments(retrain_dec)
 
     st.header("Retrain encoder + random permutations")
-    _run_experiments(
-        dataclasses.replace(
-            exps.baseline_10_latent,
-            tag="retrain-enc",
-            load_decoders_from_tag=exps.baseline_10_latent.tag,
-            shuffle_decoders=True,
-        )
-    )
+    _run_experiments(retrain_enc)
 
     st.header("Retrain encoder + random permutations + noise")
+    _run_experiments(retrain_enc_noisy)
+
+    st.header("All strategies")
     _run_experiments(
-        dataclasses.replace(
-            exps.baseline_10_latent,
-            tag="retrain-enc-noisy",
-            load_decoders_from_tag="noisy",
-            shuffle_decoders=True,
-            latent_noise_std=0.5,
-        )
+        base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc, retrain_enc_noisy
     )
 
     st.header("Experimenting with different numbers of models")
