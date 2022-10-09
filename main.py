@@ -263,23 +263,13 @@ def _train(experiment: Experiment) -> TrainResult:
             reconstruction_loss = reconstruction_loss_fn(
                 vector_reconstructed, vector_target
             )
-            if experiment.has_representation_loss:
-                representation_loss = representation_loss_fn(
-                    vector[:, : experiment.preferred_rep_size],
-                    latent_repr[:, : experiment.preferred_rep_size],
-                )
-                reconstruction_loss_coefficient = 1 / (experiment.repr_loss_coef + 1)
-                representation_loss_coefficient = experiment.repr_loss_coef / (
-                    experiment.repr_loss_coef + 1
-                )
-            else:
-                representation_loss = torch.tensor(0)
-                reconstruction_loss_coefficient = 1
-                representation_loss_coefficient = 0
-            loss = (
-                reconstruction_loss * reconstruction_loss_coefficient
-                + representation_loss * representation_loss_coefficient
+            representation_loss = representation_loss_fn(
+                vector[:, : experiment.preferred_rep_size],
+                latent_repr[:, : experiment.preferred_rep_size],
             )
+            loss = reconstruction_loss
+            if experiment.representation_loss is not None:
+                loss += experiment.representation_loss * representation_loss
             if experiment.l1_loss is not None:
                 l1_loss = experiment.l1_loss * torch.norm(
                     latent_repr[experiment.preferred_rep_size :], 1

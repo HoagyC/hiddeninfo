@@ -17,7 +17,7 @@ class Experiment:
     hidden_size: int = 30
     batch_size: int = 32
     vector_p2_scale: int = 1
-    repr_loss_coef: float = 5
+    representation_loss: Optional[float] = 5
     dropout_prob: Optional[float] = None
     l1_loss: Optional[float] = None
     l2_loss: Optional[float] = None
@@ -25,7 +25,6 @@ class Experiment:
 
     # Training setup
     num_batches: int = 10_000
-    has_representation_loss: float = True
     has_missing_knowledge: bool = False
     end_to_end: bool = False
     n_models: int = 1
@@ -35,19 +34,18 @@ class Experiment:
 
 baseline = Experiment(
     tag="baseline",
-    has_representation_loss=False,
+    representation_loss=None,
     has_missing_knowledge=False,
 )
 
 repr_loss = Experiment(
     tag="representation_loss",
-    has_representation_loss=True,
     has_missing_knowledge=False,
 )
 
 fuzzed = Experiment(
     tag="missing_knowledge",
-    has_representation_loss=False,
+    representation_loss=None,
     has_missing_knowledge=True,
 )
 
@@ -125,9 +123,9 @@ baseline_10_latent = Experiment(
     latent_size=10,
     hidden_size=80,
     n_hidden_layers=1,
-    has_representation_loss=True,
-    repr_loss_coef=0.05,
+    representation_loss=0.05,
 )
+
 
 def make_retrain_enc_experiments(base_experiment: Experiment) -> List[Experiment]:
     tag = base_experiment.tag
@@ -153,6 +151,7 @@ def make_retrain_dec_experiments(base_experiment: Experiment) -> List[Experiment
             end_to_end=True,
         ),
     ]
+
 
 def make_retrain_enc_dec_experiments(base_experiment: Experiment) -> List[Experiment]:
     tag = base_experiment.tag
