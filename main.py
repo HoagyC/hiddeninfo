@@ -82,6 +82,42 @@ def main():
         dataclasses.replace(exps.baseline_10_latent, tag="noisy", latent_noise_std=0.5)
     )
 
+    st.header("Random permutations")
+    _run_experiments(
+        dataclasses.replace(exps.baseline_10_latent, tag="perms", shuffle_decoders=True)
+    )
+
+    st.header("Retrain decoder + random permutations")
+    _run_experiments(
+        dataclasses.replace(
+            exps.baseline_10_latent,
+            tag="retrain-dec",
+            load_encoders_from_tag=exps.baseline_10_latent.tag,
+            shuffle_decoders=True,
+        )
+    )
+
+    st.header("Retrain encoder + random permutations")
+    _run_experiments(
+        dataclasses.replace(
+            exps.baseline_10_latent,
+            tag="retrain-enc",
+            load_decoders_from_tag=exps.baseline_10_latent.tag,
+            shuffle_decoders=True,
+        )
+    )
+
+    st.header("Retrain encoder + random permutations + noise")
+    _run_experiments(
+        dataclasses.replace(
+            exps.baseline_10_latent,
+            tag="retrain-enc-noisy",
+            load_decoders_from_tag="noisy",
+            shuffle_decoders=True,
+            latent_noise_std=0.5,
+        )
+    )
+
     st.header("Experimenting with different numbers of models")
     for n_models in [2, 4, 8, 16]:
         st.subheader(f"Training with {n_models} models")
