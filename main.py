@@ -150,6 +150,26 @@ def main():
                 exp.load_encoders_from_tag += suffix
         _run_experiments(*experiments)
 
+    st.header("Tuning number of models")
+    n_models_options = [2, 4, 8]
+    tuning_n_models_base = dataclasses.replace(
+        base, tag="tuning_n_models_base", n_models=max(n_models_options)
+    )
+    _run_experiments(tuning_n_models_base)
+    _run_experiments(
+        *(
+            dataclasses.replace(
+                tuning_n_models_base,
+                tag=f"n_models={n_models}",
+                n_models=n_models,
+                load_encoders_from_tag=tuning_n_models_base.tag,
+                shuffle_decoders=True,
+                representation_loss=0,
+            )
+            for n_models in n_models_options
+        )
+    )
+
 
 def _run_experiments(*experiments_iterable: Experiment):
     experiments: List[Experiment] = list(experiments_iterable)
@@ -215,7 +235,7 @@ def _run_experiments(*experiments_iterable: Experiment):
 def _train(experiment: Experiment) -> TrainResult:
     if experiment.load_decoders_from_tag is not None:
         decoder_train_result = _load_train_result(experiment.load_decoders_from_tag)
-        assert len(decoder_train_result.models) == experiment.n_models
+        assert len(decoder_train_result.models) >= experiment.n_models
         dec_fn = lambda x: decoder_train_result.models[x].decoder
     else:
         dec_fn = lambda _: _create_decoder(
@@ -230,7 +250,7 @@ def _train(experiment: Experiment) -> TrainResult:
 
     if experiment.load_encoders_from_tag is not None:
         encoder_train_result = _load_train_result(experiment.load_encoders_from_tag)
-        assert len(encoder_train_result.models) == experiment.n_models
+        assert len(encoder_train_result.models) >= experiment.n_models
         enc_fn = lambda x: encoder_train_result.models[x].encoder
     else:
         enc_fn = lambda _: _create_encoder(
