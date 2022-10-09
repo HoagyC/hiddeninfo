@@ -22,6 +22,7 @@ class Experiment:
     l1_loss: Optional[float] = None
     l2_loss: Optional[float] = None
     activation_fn: str = "relu"
+    latent_noise_std: float = 0
 
     # Training setup
     num_batches: int = 10_000

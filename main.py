@@ -251,7 +251,8 @@ def _train(experiment: Experiment) -> TrainResult:
                 vector_input = vector
 
             latent_repr = encoder(vector_input)
-            vector_reconstructed = decoder(latent_repr)
+            noise = torch.normal(mean=0, std=experiment.latent_noise_std, size=latent_repr.shape)
+            vector_reconstructed = decoder(latent_repr + noise)
             if experiment.use_class:
                 vector_reconstructed = vector_reconstructed.reshape(
                     experiment.batch_size, 2, experiment.vector_size
