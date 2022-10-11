@@ -124,6 +124,10 @@ def main():
     st.header("Noise strategy")
     _run_experiments(noisy)
 
+    st.header("Increasing sparsity")
+    sparsity_exps = exps.make_sparse_exps()
+    _run_experiments(*sparsity_exps)
+
     st.header("Random permutations")
     _run_experiments(perms)
 
@@ -215,8 +219,9 @@ def _run_experiments(*experiments_iterable: Experiment):
             ax=ax,
         )
         ax.set_title(loss_name)
-        ax.set_yscale("linear")
-        ax.set_ylim(([0, 0.3]))
+        # ax.set_yscale("linear")
+        # ax.set_ylim(([0, 0.3]))
+        ax.set_yscale("log")
     fig.tight_layout()
     st.pyplot(fig)
 
@@ -282,12 +287,17 @@ def _train(experiment: Experiment) -> TrainResult:
     optimizer = torch.optim.Adam(list(itertools.chain.from_iterable(all_params)))
 
     reconstruction_loss_fn: Callable  # I thought this was PYTHON
+    representation_loss_fn: Callable
+
     if experiment.use_class:
         reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
     else:
         reconstruction_loss_fn = torch.nn.MSELoss()
 
-    representation_loss_fn = torch.nn.MSELoss()
+    if experiment.sparsity == 1:
+        representation_loss_fn = torch.nn.MSELoss()
+    else:
+        representation_loss_fn = _make_sparse_loss_fn(sparsity=experiment.sparsity)
 
     bar = st.progress(0.0)
     step_results = []
@@ -447,6 +457,19 @@ def _create_encoder(
         layers.append(_get_activation_fn(activation_fn))
     layers.append(torch.nn.Linear(hidden_size, latent_size))
     return torch.nn.Sequential(*layers)
+
+
+def _make_sparse_loss_fn(sparsity) -> Callable:
+    repr_sparsity_p = 1 - (1 / sparsity)
+    sparsity_fn = torch.nn.Dropout(p=repr_sparsity_p)
+    loss_fn = torch.nn.MSELoss(reduction="none")
+
+    def sparse_repr_loss_fn(_input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        losses = loss_fn(_input, target)
+        losses = sparsity_fn(losses)
+        return torch.mean(losses)
+
+    return sparse_repr_loss_fn
 
 
 def _create_decoder(

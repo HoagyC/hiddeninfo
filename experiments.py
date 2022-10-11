@@ -23,6 +23,7 @@ class Experiment:
     l2_loss: Optional[float] = None
     activation_fn: str = "relu"
     latent_noise_std: float = 0
+    sparsity: int = 1  # repr_loss scaled up by sparsity, applied every 1/sparsity
 
     # Training setup
     num_batches: int = 10_000
@@ -131,6 +132,15 @@ baseline_10_latent_noisy = dataclasses.replace(
     tag="latent10-noisy",
     latent_noise_std=0.5,
 )
+
+
+def make_sparse_exps(base_experiment: Experiment = repr_loss) -> List[Experiment]:
+    tag = "sparse"
+    sparsity_levels = [10**x for x in range(6)]
+    return [
+        dataclasses.replace(base_experiment, tag=f"{tag}{sparsity}", sparsity=sparsity)
+        for sparsity in sparsity_levels
+    ]
 
 
 def make_retrain_enc_experiments(base_experiment: Experiment) -> List[Experiment]:
