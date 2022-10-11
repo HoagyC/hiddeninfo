@@ -98,6 +98,18 @@ def main():
         # leaving it struggling for p2.
         representation_loss=0,
     )
+
+    diagonal_base = dataclasses.replace(
+        base, tag="diagonal_base", loss_geometry="diagonal", latent_size=12
+    )
+    diagonal_retrain_enc = dataclasses.replace(
+        retrain_dec,
+        tag="diagonal_retrain_enc",
+        loss_geometry="diagonal",
+        shuffle_decoders=True,
+        load_encoders_from_tag=diagonal_base.tag,
+        latent_size=12,
+    )
     # One thing I've found is that it's hard to retrain the encoders. My hypothesis is that, since
     # the decoder is trying to find some hidden info in the latent embedding, it's *really*
     # sensitive around 0 and 1 values. This makes the loss landscape really difficult for GD to
@@ -123,6 +135,9 @@ def main():
 
     st.header("Noise strategy")
     _run_experiments(noisy)
+
+    st.header("Testing alternate target latents")
+    _run_experiments(*[diagonal_base, diagonal_retrain_enc])
 
     st.header("Increasing sparsity")
     sparsity_exps = exps.make_sparse_exps()
@@ -219,9 +234,9 @@ def _run_experiments(*experiments_iterable: Experiment):
             ax=ax,
         )
         ax.set_title(loss_name)
-        # ax.set_yscale("linear")
-        # ax.set_ylim(([0, 0.3]))
-        ax.set_yscale("log")
+        ax.set_yscale("linear")
+        ax.set_ylim(([0, 0.3]))
+        # ax.set_yscale("log")
     fig.tight_layout()
     st.pyplot(fig)
 
@@ -288,6 +303,7 @@ def _train(experiment: Experiment) -> TrainResult:
 
     reconstruction_loss_fn: Callable  # I thought this was PYTHON
     representation_loss_fn: Callable
+    target_latent_fn: Callable
 
     if experiment.use_class:
         reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
@@ -298,6 +314,15 @@ def _train(experiment: Experiment) -> TrainResult:
         representation_loss_fn = torch.nn.MSELoss()
     else:
         representation_loss_fn = _make_sparse_loss_fn(sparsity=experiment.sparsity)
+
+    if experiment.loss_geometry == "simple":
+        target_latent_fn = lambda x: x[:, : experiment.preferred_rep_size]
+    elif experiment.loss_geometry == "diagonal":
+        target_latent_fn = _make_diagonal_repr_fn(
+            rep_size=experiment.preferred_rep_size
+        )
+    else:
+        raise KeyError(f"Loss geometry {experiment.loss_geometry} not recognized.")
 
     bar = st.progress(0.0)
     step_results = []
@@ -352,7 +377,7 @@ def _train(experiment: Experiment) -> TrainResult:
             )
             representation_loss = representation_loss_fn(
                 vector[:, : experiment.preferred_rep_size],
-                latent_repr[:, : experiment.preferred_rep_size],
+                target_latent_fn(latent_repr),
             )
             loss = reconstruction_loss
             if experiment.representation_loss is not None:
@@ -470,6 +495,17 @@ def _make_sparse_loss_fn(sparsity) -> Callable:
         return torch.mean(losses)
 
     return sparse_repr_loss_fn
+
+
+def _make_diagonal_repr_fn(rep_size: int) -> Callable:
+    def diagonal_repr_target(_input: torch.Tensor) -> torch.Tensor:
+        assert rep_size + 1 <= _input.shape[1]
+        dir_1 = _input[:, :rep_size]
+        dir_2 = _input[:, 1 : rep_size + 1]
+        repr_target = (dir_1 + dir_2) / np.sqrt(2)
+        return repr_target
+
+    return diagonal_repr_target
 
 
 def _create_decoder(
