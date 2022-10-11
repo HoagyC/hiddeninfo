@@ -110,6 +110,18 @@ def main():
         load_encoders_from_tag=diagonal_base.tag,
         latent_size=12,
     )
+
+    rand_lin_base = dataclasses.replace(
+        base, tag="rand_lin_base", loss_geometry="random_linear"
+    )
+    rand_lin_retrain_enc = dataclasses.replace(
+        retrain_dec,
+        tag="rand_lin_retrain_enc",
+        loss_geometry="random_linear",
+        shuffle_decoders=True,
+        load_encoders_from_tag=rand_lin_base.tag,
+    )
+
     # One thing I've found is that it's hard to retrain the encoders. My hypothesis is that, since
     # the decoder is trying to find some hidden info in the latent embedding, it's *really*
     # sensitive around 0 and 1 values. This makes the loss landscape really difficult for GD to
@@ -137,7 +149,9 @@ def main():
     _run_experiments(noisy)
 
     st.header("Testing alternate target latents")
-    _run_experiments(*[diagonal_base, diagonal_retrain_enc])
+    _run_experiments(
+        *[diagonal_base, diagonal_retrain_enc, rand_lin_base, rand_lin_retrain_enc]
+    )
 
     st.header("Increasing sparsity")
     sparsity_exps = exps.make_sparse_exps()
@@ -319,6 +333,10 @@ def _train(experiment: Experiment) -> TrainResult:
         target_latent_fn = lambda x: x[:, : experiment.preferred_rep_size]
     elif experiment.loss_geometry == "diagonal":
         target_latent_fn = _make_diagonal_repr_fn(
+            rep_size=experiment.preferred_rep_size
+        )
+    elif experiment.loss_geometry == "random_linear":
+        target_latent_fn = _make_random_linear_repr_fn(
             rep_size=experiment.preferred_rep_size
         )
     else:
@@ -506,6 +524,18 @@ def _make_diagonal_repr_fn(rep_size: int) -> Callable:
         return repr_target
 
     return diagonal_repr_target
+
+
+def _make_random_linear_repr_fn(rep_size: int) -> Callable:
+    torch.manual_seed(0)
+    proj_fn = torch.nn.Linear(rep_size, rep_size)
+    print(proj_fn.weight)
+
+    def random_linear_repr_target(_input: torch.Tensor) -> torch.Tensor:
+        with torch.no_grad():
+            return proj_fn(_input)
+
+    return random_linear_repr_target
 
 
 def _create_decoder(
