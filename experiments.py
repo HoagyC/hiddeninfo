@@ -26,6 +26,7 @@ class Experiment:
     sparsity: int = 1  # repr_loss scaled up by sparsity, applied every 1/sparsity
     loss_geometry: str = "simple"
     loss_quadrants: str = "all"
+    # Useful range is [1, 1023] for 'bin_val' and [1, 9] for 'bin_sum'
     quadrant_threshold: int = 0
 
     # Training setup

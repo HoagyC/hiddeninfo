@@ -370,10 +370,15 @@ def _train(experiment: Experiment) -> TrainResult:
 
     if experiment.loss_quadrants == "all":
         repr_loss_mask_fn = lambda x: torch.ones(x.shape[0])
+        repr_loss_scale = 1.0
     elif experiment.loss_quadrants == "bin_sum":
         repr_loss_mask_fn = _make_bin_sum_repr_mask(experiment.quadrant_threshold)
+        repr_loss_scale = 2**10 / sum(
+            BINARY_COEFS_10[experiment.quadrant_threshold :]
+        )
     elif experiment.loss_quadrants == "bin_val":
         repr_loss_mask_fn = _make_bin_val_repr_mask(experiment.quadrant_threshold)
+        repr_loss_scale = 2**10 / (2**10 - experiment.quadrant_threshold)
     else:
         raise ValueError(
             f"Loss quadrant must be 'all', 'bin_sum' or 'bin_val', got {experiment.loss_quadrants}."
@@ -410,6 +415,8 @@ def _train(experiment: Experiment) -> TrainResult:
     step_results = []
     encoder_to_decoder_idx = list(range(len(models)))
     for step in range(experiment.num_batches):
+        if experiment.dropout_prob is not None and step == 9000:
+            pass
         losses = []
         if experiment.shuffle_decoders:
             random.shuffle(encoder_to_decoder_idx)
@@ -461,6 +468,8 @@ def _train(experiment: Experiment) -> TrainResult:
                 vector[:, : experiment.preferred_rep_size],
                 target_latent_fn(latent_repr),
             )
+            # Scaling here to compensate for quadrant sparsity
+            representation_loss *= repr_loss_scale
             loss = reconstruction_loss
             if experiment.representation_loss is not None:
                 loss += experiment.representation_loss * representation_loss
@@ -617,8 +626,8 @@ def _make_random_linear_repr_fn(rep_size: int) -> Callable:
 
 def _make_bin_sum_repr_mask(threshold: int) -> Callable:
     def bin_sum_repr_mask(target: torch.Tensor) -> torch.Tensor:
-        assert target.shape[0] == 10  # Quadrant options only work with 10dim latent
-        mask = target.sum(dim=1) >= threshold
+        assert target.shape[0] == 10  # Quadrant options only work with 10dims of target
+        mask = target.sum(dim=1) <= threshold
         return mask
 
     return bin_sum_repr_mask
@@ -628,9 +637,9 @@ def _make_bin_val_repr_mask(threshold: int) -> Callable:
     bin_power_t = torch.Tensor([2**x for x in range(9, -1, -1)])
 
     def bin_val_repr_mask(target: torch.Tensor) -> torch.Tensor:
-        assert target.shape[0] == 10  # Quadrant options only work with 10dim latent
+        assert target.shape[0] == 10  # Quadrant options only work with 10dims of target
         bin_vals = target * bin_power_t
-        mask = bin_vals.sum(dim=1) > threshold
+        mask = bin_vals.sum(dim=1) < threshold
         return mask
 
     return bin_val_repr_mask
