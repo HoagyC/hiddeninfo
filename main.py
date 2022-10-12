@@ -5,6 +5,7 @@ from typing import List, Optional, Callable
 import copy
 import dataclasses
 import itertools
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -21,6 +22,7 @@ RESULTS_DIR = Path("out/results")
 DATETIME_FMT = "%Y%m%d-%H%M%S"
 # With binary data and zero info, ideal prediction is always 0.5
 ZERO_INFO_LOSS = 0.5**2
+BINARY_COEFS_10 = [math.comb(10, x) for x in range(11)]
 
 
 @dataclasses.dataclass
@@ -100,15 +102,29 @@ def main():
     )
 
     diagonal_base = dataclasses.replace(
-        base, tag="diagonal_base", loss_geometry="diagonal", latent_size=12
+        base,
+        tag="diagonal_base",
+        loss_geometry="diagonal",
+        latent_size=12,
     )
     diagonal_retrain_enc = dataclasses.replace(
-        retrain_dec,
+        base,
         tag="diagonal_retrain_enc",
         loss_geometry="diagonal",
         shuffle_decoders=True,
         load_encoders_from_tag=diagonal_base.tag,
         latent_size=12,
+        representation_loss=0,
+    )
+
+    diagonal_retrain_dec = dataclasses.replace(
+        base,
+        tag="diagonal_retrain_dec",
+        loss_geometry="diagonal",
+        shuffle_decoders=True,
+        load_decoders_from_tag=diagonal_retrain_enc.tag,
+        latent_size=12,
+        representation_loss=0,
     )
 
     rand_lin_base = dataclasses.replace(
@@ -120,6 +136,33 @@ def main():
         loss_geometry="random_linear",
         shuffle_decoders=True,
         load_encoders_from_tag=rand_lin_base.tag,
+        representation_loss=0,
+    )
+
+    bin_sum_quads_5 = dataclasses.replace(
+        base,
+        tag="bin_sum_quads_5",
+        loss_quadrants="bin_sum",
+        quadrant_threshold=5,
+        n_models=3,
+    )
+    bin_sum_quads_5_enc = dataclasses.replace(
+        bin_sum_quads_5,
+        tag="bin_sum_quads_5_enc",
+        load_decoders_from_tag=bin_sum_quads_5.tag,
+        shuffle_decoders=True,
+        quadrant_threshold=5,
+        n_models=3,
+    )
+
+    bin_sum_quads_8 = dataclasses.replace(
+        bin_sum_quads_5, tag="bin_sum_quads_8", quadrant_threshold=8
+    )
+    bin_sum_quads_8_enc = dataclasses.replace(
+        bin_sum_quads_5_enc,
+        tag="bin_sum_quads_8_enc",
+        quadrant_threshold=8,
+        load_decoders_from_tag=bin_sum_quads_8.tag,
     )
 
     # One thing I've found is that it's hard to retrain the encoders. My hypothesis is that, since
@@ -135,6 +178,12 @@ def main():
     #     representation_loss=0,
     # )
 
+    # TODO: Scale up repr_loss as quadrant sparsity increases.
+    st.header("Binary sum quads")
+    _run_experiments(
+        bin_sum_quads_5, bin_sum_quads_5_enc, bin_sum_quads_8, bin_sum_quads_8_enc
+    )
+
     st.header("Baseline")
     _run_experiments(base)
 
@@ -149,9 +198,8 @@ def main():
     _run_experiments(noisy)
 
     st.header("Testing alternate target latents")
-    _run_experiments(
-        *[diagonal_base, diagonal_retrain_enc, rand_lin_base, rand_lin_retrain_enc]
-    )
+    _run_experiments(diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec)
+    _run_experiments(rand_lin_base, rand_lin_retrain_enc)
 
     st.header("Increasing sparsity")
     sparsity_exps = exps.make_sparse_exps()
@@ -318,6 +366,18 @@ def _train(experiment: Experiment) -> TrainResult:
     reconstruction_loss_fn: Callable  # I thought this was PYTHON
     representation_loss_fn: Callable
     target_latent_fn: Callable
+    repr_loss_mask_fn: Callable
+
+    if experiment.loss_quadrants == "all":
+        repr_loss_mask_fn = lambda x: torch.ones(x.shape[0])
+    elif experiment.loss_quadrants == "bin_sum":
+        repr_loss_mask_fn = _make_bin_sum_repr_mask(experiment.quadrant_threshold)
+    elif experiment.loss_quadrants == "bin_val":
+        repr_loss_mask_fn = _make_bin_val_repr_mask(experiment.quadrant_threshold)
+    else:
+        raise ValueError(
+            f"Loss quadrant must be 'all', 'bin_sum' or 'bin_val', got {experiment.loss_quadrants}."
+        )
 
     if experiment.use_class:
         reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
@@ -325,9 +385,11 @@ def _train(experiment: Experiment) -> TrainResult:
         reconstruction_loss_fn = torch.nn.MSELoss()
 
     if experiment.sparsity == 1:
-        representation_loss_fn = torch.nn.MSELoss()
+        representation_loss_fn = _make_mse_loss_fn(repr_loss_mask_fn)
     else:
-        representation_loss_fn = _make_sparse_loss_fn(sparsity=experiment.sparsity)
+        representation_loss_fn = _make_sparse_loss_fn(
+            sparsity=experiment.sparsity, mask_fn=repr_loss_mask_fn
+        )
 
     if experiment.loss_geometry == "simple":
         target_latent_fn = lambda x: x[:, : experiment.preferred_rep_size]
@@ -340,7 +402,9 @@ def _train(experiment: Experiment) -> TrainResult:
             rep_size=experiment.preferred_rep_size
         )
     else:
-        raise KeyError(f"Loss geometry {experiment.loss_geometry} not recognized.")
+        raise ValueError(
+            f"Loss geometry must be 'simple', 'diagonal' or 'random_linear', got {experiment.loss_geometry}."
+        )
 
     bar = st.progress(0.0)
     step_results = []
@@ -502,17 +566,30 @@ def _create_encoder(
     return torch.nn.Sequential(*layers)
 
 
-def _make_sparse_loss_fn(sparsity) -> Callable:
+def _make_sparse_loss_fn(sparsity: int, mask_fn: Callable) -> Callable:
     repr_sparsity_p = 1 - (1 / sparsity)
     sparsity_fn = torch.nn.Dropout(p=repr_sparsity_p)
     loss_fn = torch.nn.MSELoss(reduction="none")
 
     def sparse_repr_loss_fn(_input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        losses = loss_fn(_input, target)
-        losses = sparsity_fn(losses)
-        return torch.mean(losses)
+        losses = sparsity_fn(loss_fn(_input, target))
+        mask = mask_fn(target)
+        masked_losses = (losses.T * mask).T
+        return torch.mean(masked_losses)
 
     return sparse_repr_loss_fn
+
+
+def _make_mse_loss_fn(mask_fn: Callable) -> Callable:
+    loss_fn = torch.nn.MSELoss(reduction="none")
+
+    def mse_loss_fn(_input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        losses = loss_fn(_input, target)
+        mask = mask_fn(target)
+        masked_losses = (losses.T * mask).T
+        return torch.mean(masked_losses)
+
+    return mse_loss_fn
 
 
 def _make_diagonal_repr_fn(rep_size: int) -> Callable:
@@ -529,13 +606,34 @@ def _make_diagonal_repr_fn(rep_size: int) -> Callable:
 def _make_random_linear_repr_fn(rep_size: int) -> Callable:
     torch.manual_seed(0)
     proj_fn = torch.nn.Linear(rep_size, rep_size)
-    print(proj_fn.weight)
+    scale_up = 5
 
     def random_linear_repr_target(_input: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
-            return proj_fn(_input)
+            return proj_fn(_input) * scale_up
 
     return random_linear_repr_target
+
+
+def _make_bin_sum_repr_mask(threshold: int) -> Callable:
+    def bin_sum_repr_mask(target: torch.Tensor) -> torch.Tensor:
+        assert target.shape[0] == 10  # Quadrant options only work with 10dim latent
+        mask = target.sum(dim=1) >= threshold
+        return mask
+
+    return bin_sum_repr_mask
+
+
+def _make_bin_val_repr_mask(threshold: int) -> Callable:
+    bin_power_t = torch.Tensor([2**x for x in range(9, -1, -1)])
+
+    def bin_val_repr_mask(target: torch.Tensor) -> torch.Tensor:
+        assert target.shape[0] == 10  # Quadrant options only work with 10dim latent
+        bin_vals = target * bin_power_t
+        mask = bin_vals.sum(dim=1) > threshold
+        return mask
+
+    return bin_val_repr_mask
 
 
 def _create_decoder(

@@ -25,6 +25,8 @@ class Experiment:
     latent_noise_std: float = 0
     sparsity: int = 1  # repr_loss scaled up by sparsity, applied every 1/sparsity
     loss_geometry: str = "simple"
+    loss_quadrants: str = "all"
+    quadrant_threshold: int = 0
 
     # Training setup
     num_batches: int = 10_000
