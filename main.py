@@ -176,6 +176,25 @@ def main():
         num_batches=10_000,
     )
 
+    sparse_general = dataclasses.replace(
+        base,
+        tag="sparse_general",
+        quadrant_threshold=4,
+        num_batches=30_000,
+        sparsity=10,
+    )
+    sparse_general_enc = dataclasses.replace(
+        sparse_general,
+        tag="sparse_general_enc",
+        load_decoders_from_tag=sparse_general.tag,
+        shuffle_decoders=True,
+    )
+    sparse_general_dec = dataclasses.replace(
+        sparse_general,
+        tag="sparse_general_dec_8",
+        load_encoders_from_tag=sparse_general.tag,
+        shuffle_decoders=True,
+    )
     # One thing I've found is that it's hard to retrain the encoders. My hypothesis is that, since
     # the decoder is trying to find some hidden info in the latent embedding, it's *really*
     # sensitive around 0 and 1 values. This makes the loss landscape really difficult for GD to
@@ -188,6 +207,9 @@ def main():
     #     shuffle_decoders=True,
     #     representation_loss=0,
     # )
+
+    st.header("Sparse + generalization")
+    _run_experiments(sparse_general, sparse_general_dec)
 
     st.header("Binary sum quads")
     _run_experiments(
