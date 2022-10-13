@@ -374,7 +374,7 @@ def _train(experiment: Experiment) -> TrainResult:
     elif experiment.loss_quadrants == "bin_sum":
         repr_loss_mask_fn = _make_bin_sum_repr_mask(experiment.quadrant_threshold)
         repr_loss_scale = 2**10 / sum(
-            BINARY_COEFS_10[experiment.quadrant_threshold :]
+            BINARY_COEFS_10[: experiment.quadrant_threshold + 1]
         )
     elif experiment.loss_quadrants == "bin_val":
         repr_loss_mask_fn = _make_bin_val_repr_mask(experiment.quadrant_threshold)
@@ -627,7 +627,7 @@ def _make_random_linear_repr_fn(rep_size: int) -> Callable:
 def _make_bin_sum_repr_mask(threshold: int) -> Callable:
     def bin_sum_repr_mask(target: torch.Tensor) -> torch.Tensor:
         assert target.shape[0] == 10  # Quadrant options only work with 10dims of target
-        mask = target.sum(dim=1) <= threshold
+        mask = target.sum(dim=1) < threshold
         return mask
 
     return bin_sum_repr_mask
