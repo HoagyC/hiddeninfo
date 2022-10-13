@@ -385,6 +385,8 @@ def _train(experiment: Experiment) -> TrainResult:
     target_latent_fn: Callable
     repr_loss_mask_fn: Callable
 
+    latent_use_mask_fn = torch.nn.Sigmoid()
+
     if experiment.loss_quadrants == "all":
         repr_loss_mask_fn = lambda x: torch.ones(x.shape[0])
         repr_loss_scale = 1.0
@@ -471,6 +473,13 @@ def _train(experiment: Experiment) -> TrainResult:
                 vector_input = vector
 
             latent_repr = encoder(vector_input)
+            if experiment.latent_masking:
+                latent_repr = latent_repr[: experiment.preferred_rep_size]
+                repr_mask = latent_use_mask_fn(latent_repr)
+                repr_use_loss = torch.mean(repr_mask)
+            else:
+                repr_use_loss = torch.Tensor(0)
+
             noise = torch.normal(
                 mean=0, std=experiment.latent_noise_std, size=latent_repr.shape
             )

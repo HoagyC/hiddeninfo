@@ -22,12 +22,6 @@ class Experiment:
     l1_loss: Optional[float] = None
     l2_loss: Optional[float] = None
     activation_fn: str = "relu"
-    latent_noise_std: float = 0
-    sparsity: int = 1  # repr_loss scaled up by sparsity, applied every 1/sparsity
-    loss_geometry: str = "simple"
-    loss_quadrants: str = "all"
-    # Useful range is [1, 1023] for 'bin_val' and [1, 9] for 'bin_sum'
-    quadrant_threshold: int = 0
 
     # Training setup
     num_batches: int = 10_000
@@ -36,6 +30,16 @@ class Experiment:
     n_models: int = 1
     load_encoders_from_tag: Optional[str] = None
     load_decoders_from_tag: Optional[str] = None
+
+    # Representation loss options
+    loss_geometry: str = "simple"
+    loss_quadrants: str = "all"
+    # Useful range is [1, 1023] for 'bin_val' and [1, 9] for 'bin_sum'
+    quadrant_threshold: int = 0
+    sparsity: int = 1  # repr_loss scaled up by sparsity, applied every 1/sparsity
+    latent_noise_std: float = 0
+    latent_masking: bool = False
+    latent_masking_incentive: float = 0.1
 
 
 baseline = Experiment(
