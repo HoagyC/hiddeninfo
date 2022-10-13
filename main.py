@@ -587,6 +587,7 @@ def _create_encoder(
     latent_size: int,
     n_hidden_layers: int,
     activation_fn: str,
+    latent_mask: bool = False,
 ) -> torch.nn.Module:
     layers: List[torch.nn.Module] = []
     layers.append(torch.nn.Linear(vector_size, hidden_size))
@@ -594,7 +595,12 @@ def _create_encoder(
         layers.append(torch.nn.Linear(hidden_size, hidden_size))
         layers.append(_get_activation_fn(activation_fn))
 
-    layers.append(torch.nn.Linear(hidden_size, latent_size))
+    if latent_mask:
+        output_size = latent_size * 2
+    else:
+        output_size = latent_size
+
+    layers.append(torch.nn.Linear(hidden_size, output_size))
     return torch.nn.Sequential(*layers)
 
 
