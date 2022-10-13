@@ -69,7 +69,7 @@ def main():
         n_models=8,
         activation_fn="sigmoid",
         use_class=False,
-        num_batches=10_000,
+        num_batches=30_000,
         latent_size=10,
         hidden_size=80,
         n_hidden_layers=1,
@@ -145,6 +145,7 @@ def main():
         loss_quadrants="bin_sum",
         quadrant_threshold=5,
         n_models=3,
+        num_batches=30_000,
     )
     bin_sum_quads_5_enc = dataclasses.replace(
         bin_sum_quads_5,
@@ -155,14 +156,24 @@ def main():
         n_models=3,
     )
 
-    bin_sum_quads_8 = dataclasses.replace(
-        bin_sum_quads_5, tag="bin_sum_quads_8", quadrant_threshold=8
+    bin_sum_quads_7 = dataclasses.replace(
+        bin_sum_quads_5, tag="bin_sum_quads_7", quadrant_threshold=7, num_batches=30_000
     )
-    bin_sum_quads_8_enc = dataclasses.replace(
+    bin_sum_quads_7_enc = dataclasses.replace(
         bin_sum_quads_5_enc,
-        tag="bin_sum_quads_8_enc",
-        quadrant_threshold=8,
-        load_decoders_from_tag=bin_sum_quads_8.tag,
+        tag="bin_sum_quads_7_enc",
+        quadrant_threshold=7,
+        load_decoders_from_tag=bin_sum_quads_7.tag,
+    )
+    bin_sum_quads_9 = dataclasses.replace(
+        bin_sum_quads_5, tag="bin_sum_quads_9", quadrant_threshold=9, num_batches=10_000
+    )
+    bin_sum_quads_9_enc = dataclasses.replace(
+        bin_sum_quads_5_enc,
+        tag="bin_sum_quads_9_enc",
+        quadrant_threshold=9,
+        load_decoders_from_tag=bin_sum_quads_9.tag,
+        num_batches=10_000,
     )
 
     # One thing I've found is that it's hard to retrain the encoders. My hypothesis is that, since
@@ -178,10 +189,16 @@ def main():
     #     representation_loss=0,
     # )
 
-    # TODO: Scale up repr_loss as quadrant sparsity increases.
     st.header("Binary sum quads")
     _run_experiments(
-        bin_sum_quads_5, bin_sum_quads_5_enc, bin_sum_quads_8, bin_sum_quads_8_enc
+        bin_sum_quads_5,
+        bin_sum_quads_5_enc,
+        bin_sum_quads_7,
+        bin_sum_quads_7_enc,
+        bin_sum_quads_9,
+        bin_sum_quads_9_enc,
+        base,
+        retrain_enc,
     )
 
     st.header("Baseline")
@@ -209,7 +226,7 @@ def main():
     _run_experiments(perms)
 
     st.header("Retrain decoders + random permutations")
-    _run_experiments(retrain_dec)
+    _run_experiments(base, retrain_dec)
 
     st.header("Retrain encoders + random permutations")
     _run_experiments(retrain_enc)
@@ -374,7 +391,7 @@ def _train(experiment: Experiment) -> TrainResult:
     elif experiment.loss_quadrants == "bin_sum":
         repr_loss_mask_fn = _make_bin_sum_repr_mask(experiment.quadrant_threshold)
         repr_loss_scale = 2**10 / sum(
-            BINARY_COEFS_10[: experiment.quadrant_threshold + 1]
+            BINARY_COEFS_10[: experiment.quadrant_threshold]
         )
     elif experiment.loss_quadrants == "bin_val":
         repr_loss_mask_fn = _make_bin_val_repr_mask(experiment.quadrant_threshold)
@@ -383,6 +400,7 @@ def _train(experiment: Experiment) -> TrainResult:
         raise ValueError(
             f"Loss quadrant must be 'all', 'bin_sum' or 'bin_val', got {experiment.loss_quadrants}."
         )
+    print(f"repr_loss_scale = {repr_loss_scale}")
 
     if experiment.use_class:
         reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
@@ -390,10 +408,14 @@ def _train(experiment: Experiment) -> TrainResult:
         reconstruction_loss_fn = torch.nn.MSELoss()
 
     if experiment.sparsity == 1:
-        representation_loss_fn = _make_mse_loss_fn(repr_loss_mask_fn)
+        representation_loss_fn = _make_mse_loss_fn(
+            repr_loss_mask_fn, target_repr_dim=experiment.preferred_rep_size
+        )
     else:
         representation_loss_fn = _make_sparse_loss_fn(
-            sparsity=experiment.sparsity, mask_fn=repr_loss_mask_fn
+            sparsity=experiment.sparsity,
+            mask_fn=repr_loss_mask_fn,
+            target_repr_dim=experiment.preferred_rep_size,
         )
 
     if experiment.loss_geometry == "simple":
@@ -571,30 +593,33 @@ def _create_encoder(
     for _ in range(n_hidden_layers):
         layers.append(torch.nn.Linear(hidden_size, hidden_size))
         layers.append(_get_activation_fn(activation_fn))
+
     layers.append(torch.nn.Linear(hidden_size, latent_size))
     return torch.nn.Sequential(*layers)
 
 
-def _make_sparse_loss_fn(sparsity: int, mask_fn: Callable) -> Callable:
+def _make_sparse_loss_fn(
+    sparsity: int, mask_fn: Callable, target_repr_dim: int
+) -> Callable:
     repr_sparsity_p = 1 - (1 / sparsity)
     sparsity_fn = torch.nn.Dropout(p=repr_sparsity_p)
     loss_fn = torch.nn.MSELoss(reduction="none")
 
     def sparse_repr_loss_fn(_input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         losses = sparsity_fn(loss_fn(_input, target))
-        mask = mask_fn(target)
+        mask = mask_fn(target[:, :target_repr_dim])
         masked_losses = (losses.T * mask).T
         return torch.mean(masked_losses)
 
     return sparse_repr_loss_fn
 
 
-def _make_mse_loss_fn(mask_fn: Callable) -> Callable:
+def _make_mse_loss_fn(mask_fn: Callable, target_repr_dim: int) -> Callable:
     loss_fn = torch.nn.MSELoss(reduction="none")
 
     def mse_loss_fn(_input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         losses = loss_fn(_input, target)
-        mask = mask_fn(target)
+        mask = mask_fn(target[:, :target_repr_dim])
         masked_losses = (losses.T * mask).T
         return torch.mean(masked_losses)
 
@@ -626,7 +651,7 @@ def _make_random_linear_repr_fn(rep_size: int) -> Callable:
 
 def _make_bin_sum_repr_mask(threshold: int) -> Callable:
     def bin_sum_repr_mask(target: torch.Tensor) -> torch.Tensor:
-        assert target.shape[0] == 10  # Quadrant options only work with 10dims of target
+        assert target.shape[1] == 10  # Quadrant options only work with 10dims of target
         mask = target.sum(dim=1) < threshold
         return mask
 
@@ -637,7 +662,7 @@ def _make_bin_val_repr_mask(threshold: int) -> Callable:
     bin_power_t = torch.Tensor([2**x for x in range(9, -1, -1)])
 
     def bin_val_repr_mask(target: torch.Tensor) -> torch.Tensor:
-        assert target.shape[0] == 10  # Quadrant options only work with 10dims of target
+        assert target.shape[1] == 10  # Quadrant options only work with 10dims of target
         bin_vals = target * bin_power_t
         mask = bin_vals.sum(dim=1) < threshold
         return mask
