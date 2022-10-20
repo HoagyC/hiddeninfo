@@ -25,6 +25,7 @@ class Experiment:
 
     # Training setup
     num_batches: int = 10_000
+    seed: Optional[int] = None
     has_missing_knowledge: bool = False
     shuffle_decoders: bool = False
     n_models: int = 1

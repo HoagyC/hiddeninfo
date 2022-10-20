@@ -206,6 +206,11 @@ def main():
         load_encoders_from_tag=sparse_general.tag,
         shuffle_decoders=True,
     )
+
+    seed_test1 = dataclasses.replace(
+        base, tag="seedtest_1", n_models=1, num_batches=1000, seed=1
+    )
+    seed_test2 = dataclasses.replace(seed_test1, tag="seedtest_2")
     # One thing I've found is that it's hard to retrain the encoders. My hypothesis is that, since
     # the decoder is trying to find some hidden info in the latent embedding, it's *really*
     # sensitive around 0 and 1 values. This makes the loss landscape really difficult for GD to
@@ -218,12 +223,6 @@ def main():
     #     shuffle_decoders=True,
     #     representation_loss=0,
     # )
-
-    st.header("Sparse + generalization")
-    _run_experiments(sparse_general, sparse_general_dec)
-
-    st.header("Sparse + generalization")
-    _run_experiments(sparse_general, sparse_general_enc, sparse_general_dec)
 
     st.header("Binary sum quads")
     _run_experiments(
@@ -266,7 +265,8 @@ def main():
 
     st.header("Just retrain encoders")
     _run_experiments(retrain_enc_with_repr)
-    st.header("Retrain encoders + random permutations")
+
+    st.header("Retrain encoders + random permutations + sparsity")
     _run_experiments(
         base, retrain_enc_with_repr, retrain_dec, sparse_general_dec, sparse_general_enc
     )
@@ -287,6 +287,9 @@ def main():
             if exp.load_encoders_from_tag is not None:
                 exp.load_encoders_from_tag += suffix
         _run_experiments(*experiments)
+
+    st.header("Test setting seed")
+    _run_experiments(seed_test1, seed_test2)
 
     st.header("Tuning number of models")
     n_models_options = [2, 4, 8]
@@ -372,6 +375,8 @@ def _run_experiments(*experiments_iterable: Experiment):
 
 
 def _train(experiment: Experiment) -> TrainResult:
+    if experiment.seed is not None:
+        torch.manual_seed(experiment.seed)
     if experiment.load_decoders_from_tag is not None:
         decoder_train_result = _load_train_result(experiment.load_decoders_from_tag)
         assert len(decoder_train_result.models) >= experiment.n_models
