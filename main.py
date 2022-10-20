@@ -100,6 +100,16 @@ def main():
         # leaving it struggling for p2.
         representation_loss=0,
     )
+    retrain_enc_with_repr = dataclasses.replace(
+        base,
+        tag="retrain_enc_repr",
+        load_decoders_from_tag=base.tag,
+        shuffle_decoders=True,
+        # Don't use representation loss when retraining the encoders.
+        # This is kinda cheating: if the problem of retraining the encoders is too hard, then adding
+        # the representation loss gives the model a *really* easy way to fit the the decoder for p1,
+        # leaving it struggling for p2.
+    )
 
     diagonal_base = dataclasses.replace(
         base,
@@ -179,6 +189,7 @@ def main():
     sparse_general = dataclasses.replace(
         base,
         tag="sparse_general",
+        loss_quadrants="bin_sum",
         quadrant_threshold=4,
         num_batches=30_000,
         sparsity=10,
@@ -191,7 +202,7 @@ def main():
     )
     sparse_general_dec = dataclasses.replace(
         sparse_general,
-        tag="sparse_general_dec_8",
+        tag="sparse_general_dec",
         load_encoders_from_tag=sparse_general.tag,
         shuffle_decoders=True,
     )
@@ -210,6 +221,9 @@ def main():
 
     st.header("Sparse + generalization")
     _run_experiments(sparse_general, sparse_general_dec)
+
+    st.header("Sparse + generalization")
+    _run_experiments(sparse_general, sparse_general_enc, sparse_general_dec)
 
     st.header("Binary sum quads")
     _run_experiments(
@@ -250,8 +264,12 @@ def main():
     st.header("Retrain decoders + random permutations")
     _run_experiments(base, retrain_dec)
 
+    st.header("Just retrain encoders")
+    _run_experiments(retrain_enc_with_repr)
     st.header("Retrain encoders + random permutations")
-    _run_experiments(retrain_enc)
+    _run_experiments(
+        base, retrain_enc_with_repr, retrain_dec, sparse_general_dec, sparse_general_enc
+    )
 
     st.header("All strategies")
     _run_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
@@ -336,7 +354,7 @@ def _run_experiments(*experiments_iterable: Experiment):
         )
         ax.set_title(loss_name)
         ax.set_yscale("linear")
-        ax.set_ylim(([0, 0.3]))
+        ax.set_ylim(([0, 0.4]))
         # ax.set_yscale("log")
     fig.tight_layout()
     st.pyplot(fig)
