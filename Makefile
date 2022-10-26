@@ -33,7 +33,7 @@ clean:
 # TODO: Replace this with proper make dependencies.
 .PHONY: install
 install:.
-	python -m venv $(ENV)
+	python3.8 -m venv $(ENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r $(REQUIREMENTS)
 
@@ -44,7 +44,7 @@ cub:
 	$(CODA_PIP) install --upgrade pip
 	$(CODA_PIP) install codalab
 	$(CODALAB) download $(CUB_HASH)
-	$(PYTHON) CUB_200_2011/data_processing.py
+	$(PYTHON) data_processing.py
 
 	$(PIP) install --upgrade pip
 	$(PIP) install torch==1.12.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html

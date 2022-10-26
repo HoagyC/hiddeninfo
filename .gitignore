@@ -1,9 +1,11 @@
 .env
+.codaenv
 out
 __pycache__/
 .vscode
 images
 papers
 
+#
 CUB_processed/
 CUB_200_2011/
