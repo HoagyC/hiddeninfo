@@ -1,14 +1,17 @@
 ENV=.env
 PYTHON=$(ENV)/bin/python
 PIP=$(ENV)/bin/pip
-CODALAB=$(ENV)/bin/cl
 SITE_PACKAGES=$(wildcard $(ENV)/lib/python*/site-packages)
 REQUIREMENTS=requirements.txt
 STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
 MYPY=$(ENV)/bin/mypy
 PYTHON_FILES=main.py experiments.py
+
 # codalab address for downloading the main CUB dataset
+CODAENV=.codaenv
+CODA_PIP=$(CODAENV)/bin/pip
+CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
 .PHONY: run
@@ -35,9 +38,13 @@ install:.
 
 .PHONY: cub
 cub:
-	$(PIP) install --upgrade pip
-	$(PIP) install codalab
+	# codalab doesn't work with >python3.6 due to pypi dataclasses issue
+	python3.6 -m venv $(CODAENV)
+	$(CODAPIP) install --upgrade pip
+	$(CODAPIP) install codalab
 	$(CODALAB) download $(CUB_HASH)
 	$(PYTHON) CUB_200_2011/data_processing.py
-	$(PIP) install torch==1.10.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html
+
+	$(PIP) install --upgrade pip
+	$(PIP) install torch==1.12.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html
 	$(PIP) install torchvision
