@@ -34,14 +34,15 @@ clean:
 .PHONY: install
 install:.
 	python -m venv $(ENV)
+	$(PIP) install --upgrade pip
 	$(PIP) install -r $(REQUIREMENTS)
 
 .PHONY: cub
 cub:
 	# codalab doesn't work with >python3.6 due to pypi dataclasses issue
 	python3.6 -m venv $(CODAENV)
-	$(CODAPIP) install --upgrade pip
-	$(CODAPIP) install codalab
+	$(CODA_PIP) install --upgrade pip
+	$(CODA_PIP) install codalab
 	$(CODALAB) download $(CUB_HASH)
 	$(PYTHON) CUB_200_2011/data_processing.py
 
