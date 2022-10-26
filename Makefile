@@ -1,6 +1,7 @@
 ENV=.env
 PYTHON=$(ENV)/bin/python
 PIP=$(ENV)/bin/pip
+CODALAB=$(ENV)/bin/cl
 SITE_PACKAGES=$(wildcard $(ENV)/lib/python*/site-packages)
 REQUIREMENTS=requirements.txt
 STREAMLIT=$(ENV)/bin/streamlit
@@ -29,3 +30,12 @@ clean:
 install:
 	python -m venv $(ENV)
 	$(PIP) install -r $(REQUIREMENTS)
+
+.PHONY: cub
+cub:
+	$(PIP) install --upgrade pip
+	$(PIP) install codalab
+	# hash for downloading the main CUB dataset
+	$(CODALAB) download 0xd013a7ba2e88481bbc07e787f73109f5
+
+
