@@ -6,6 +6,12 @@ To run for the first time:
 make install run
 ```
 
+To prepare for running experiments on the CUB dataset:
+
+```
+make cub
+```
+
 To run subsequently:
 
 ```
