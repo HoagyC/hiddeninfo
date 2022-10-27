@@ -32,7 +32,8 @@ clean:
 
 # TODO: Replace this with proper make dependencies.
 .PHONY: install
-install:.
+install:
+	apt install python3.8-venv
 	python3.8 -m venv $(ENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r $(REQUIREMENTS)
