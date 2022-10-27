@@ -12,7 +12,7 @@ def ModelXtoC(
     num_classes: int,
     use_aux: bool,
     n_attributes: int,
-    expand_dim: bool,
+    expand_dim: int,
     three_class: bool,
 ):
     return inception_v3(
@@ -28,14 +28,10 @@ def ModelXtoC(
 
 
 # Independent Model
-def ModelCtoY(
-    n_attributes: int, num_classes: int, expand_dim: bool
-):
+def ModelCtoY(n_attributes: int, num_classes: int, hidden_dim: int):
     # X -> C part is separate, this is only the C -> Y part
     # Removed some bits with n_class_attr
-    model = MLP(
-        input_dim=n_attributes, num_classes=num_classes, expand_dim=expand_dim
-    )
+    model = MLP(input_dim=n_attributes, num_classes=num_classes, hidden_dim=hidden_dim)
     return model
 
 

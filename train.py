@@ -49,6 +49,7 @@ class CUB_Experiment:
     n_models: int = 1
     num_epochs: int = 10_000
 
+    hidden_dim_dec: int = 800
     sparsity: int = 1
 
 
@@ -78,7 +79,11 @@ def _train(experiment: CUB_Experiment) -> CUB_TrainResult:
         assert len(decoder_train_result.models) >= experiment.n_models
         dec_fn = lambda x: decoder_train_result.models[x].decoder
     else:
-        dec_fn = lambda _: ModelCtoY(n_attributes=N_ATTRIBUTES, num_classes=N_CLASSES)
+        dec_fn = lambda _: ModelCtoY(
+            n_attributes=N_ATTRIBUTES,
+            num_classes=N_CLASSES,
+            hidden_dim=experiment.hidden_dim_dec
+        )
 
     if experiment.load_encoders_from_tag is not None:
         encoder_train_result = _load_train_result(experiment.load_encoders_from_tag)
@@ -179,3 +184,8 @@ def _train(experiment: CUB_Experiment) -> CUB_TrainResult:
         bar.progress((epoch_ndx + 1) / experiment.num_epochs)
 
     return CUB_TrainResult(experiment.tag, models, epoch_results)
+
+
+if __name__ == "__main__":
+    basic_cub_exp = CUB_Experiment(tag="basic")
+    _train(basic_cub_exp)
