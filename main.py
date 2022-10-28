@@ -677,8 +677,7 @@ def _make_diagonal_repr_fn(rep_size: int) -> Callable:
     def diagonal_repr_target(_input: torch.Tensor) -> torch.Tensor:
         assert rep_size + 1 <= _input.shape[1]
         dir_1 = _input[:, :rep_size]
-        # TODO: Wrap this so that we don't use N+1 variables?
-        dir_2 = _input[:, 1 : rep_size + 1]
+        dir_2 = torch.concat([_input[:, 1 : rep_size], _input[:, :1]], dim=1)
         repr_target = (dir_1 + dir_2) / np.sqrt(2)
         return repr_target
 
