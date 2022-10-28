@@ -25,6 +25,34 @@ ZERO_INFO_LOSS = 0.5**2
 BINARY_COEFS_10 = [math.comb(10, x) for x in range(11)]
 
 
+@dataclasses.dataclass
+class Model:
+    encoder: torch.nn.Module
+    decoder: torch.nn.Module
+
+
+@dataclasses.dataclass
+class StepResult:
+    tag: str
+    step: int
+    encoder_idx: int
+    decoder_idx: int
+    total_loss: float
+    reconstruction_loss: float
+    representation_loss: float
+    # The reconstruction losses for the first & second halves of the vector.
+    reconstruction_loss_p1: float
+    reconstruction_loss_p2: float
+
+
+@dataclasses.dataclass
+class TrainResult:
+    tag: str
+    models: List[Model]
+    step_results: List[StepResult]
+    # validation_result: StepResult
+
+
 def main():
     st.title("Hidden info")
 
@@ -385,80 +413,6 @@ def _plot_results(train_results: List[TrainResult]) -> None:
     st.pyplot(fig)
 
 
-def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
-    train_results = _run_experiments(*experiments_iterable)
-    if not train_results:
-        return
-
-    # Compare results using the average p2 reconstruction loss of the last 10% of steps.
-    df = []
-    for train_result in train_results:
-        last_step = max(step_result.step for step_result in train_result.step_results)
-        reconstruction_loss_p2 = np.mean(
-            [
-                step_result.reconstruction_loss_p2
-                for step_result in train_result.step_results
-                if step_result.step >= last_step * 0.9
-            ]
-        )
-        df.append(
-            dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2)
-        )
-    df = pd.DataFrame(df)
-    fig, ax = plt.subplots()
-    sns.barplot(data=df, x="tag", y="reconstruction_loss_p2", ax=ax)
-    st.pyplot(fig)
-
-
-def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
-    train_results = _run_experiments(*experiments_iterable)
-    if not train_results:
-        return
-
-    # Compare results using the average p2 reconstruction loss of the last 10% of steps.
-    df = []
-    for train_result in train_results:
-        last_step = max(step_result.step for step_result in train_result.step_results)
-        reconstruction_loss_p2 = np.mean(
-            [
-                step_result.reconstruction_loss_p2
-                for step_result in train_result.step_results
-                if step_result.step >= last_step * 0.9
-            ]
-        )
-        df.append(
-            dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2)
-        )
-    df = pd.DataFrame(df)
-    fig, ax = plt.subplots()
-    sns.barplot(data=df, x="tag", y="reconstruction_loss_p2", ax=ax)
-    st.pyplot(fig)
-
-
-def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
-    experiments: List[Experiment] = list(experiments_iterable)
-    tags = [experiment.tag for experiment in experiments]
-    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
-    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
-        return []
-    force_retrain_models = st.checkbox(
-        "Force retrain models?", value=False, key=str((tags, "retrain"))
-    )
-    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
-
-    bar = st.progress(0.0)
-    train_results: List[TrainResult] = []
-    for i, experiment in enumerate(experiments):
-        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
-            train_result = _train(experiment=experiment)
-            _save_train_result(train_result)
-        else:
-            train_result = _load_train_result(experiment.tag)
-        train_results.append(train_result)
-        bar.progress((i + 1) / len(experiments))
-    return train_results
-
-
 def _train(experiment: Experiment) -> TrainResult:
     if experiment.seed is not None:
         torch.manual_seed(experiment.seed)
@@ -579,9 +533,9 @@ def _train(experiment: Experiment) -> TrainResult:
 
         for encoder_ndx in range(len(models)):
             optimizer.zero_grad()
-            decoder_ndx = encoder_to_decoder_ndx[encoder_ndx]
-            encoder = models[encoder_ndx].encoder
-            decoder = models[decoder_ndx].decoder
+            decoder_idx = encoder_to_decoder_idx[encoder_idx]
+            encoder = models[encoder_idx].encoder
+            decoder = models[decoder_idx].decoder
 
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
@@ -689,8 +643,8 @@ def _train(experiment: Experiment) -> TrainResult:
                     StepResult(
                         tag=experiment.tag,
                         step=step,
-                        encoder_ndx=encoder_ndx,
-                        decoder_ndx=decoder_ndx,
+                        encoder_idx=encoder_idx,
+                        decoder_idx=decoder_idx,
                         total_loss=loss.item(),
                         reconstruction_loss=reconstruction_loss.item(),
                         representation_loss=representation_loss.item(),
