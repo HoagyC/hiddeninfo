@@ -453,7 +453,6 @@ def _train(experiment: Experiment) -> TrainResult:
         raise ValueError(
             f"Loss quadrant must be 'all', 'bin_sum' or 'bin_val', got {experiment.loss_quadrants}."
         )
-    print(f"repr_loss_scale = {repr_loss_scale}")
 
     if experiment.use_class:
         reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
