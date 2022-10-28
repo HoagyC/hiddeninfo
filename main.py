@@ -32,19 +32,11 @@ class Model:
 
 
 @dataclasses.dataclass
-class Loss:
-    total_loss: float
-    reconstruction_loss: float
-    representation_loss: float
-    # The reconstruction losses for the first & second halves of the vector.
-    reconstruction_loss_p1: float
-    reconstruction_loss_p2: float
-
-
-@dataclasses.dataclass
 class StepResult:
     tag: str
     step: int
+    encoder_idx: int
+    decoder_idx: int
     total_loss: float
     reconstruction_loss: float
     representation_loss: float
@@ -363,17 +355,6 @@ def _run_experiments(*experiments_iterable: Experiment):
     st.pyplot(fig)
 
 
-### List of interventions
-# Freezing
-# Training end-to-end
-# Dropout
-#
-
-## Things to vary
-# Dimensions of hidden variation
-# Number of models used in multi-model scenarios
-
-
 def _train(experiment: Experiment) -> TrainResult:
     if experiment.seed is not None:
         torch.manual_seed(experiment.seed)
@@ -487,14 +468,14 @@ def _train(experiment: Experiment) -> TrainResult:
         # TODO: Delete this if?
         if experiment.dropout_prob is not None and step == 9000:
             pass
-        losses = []
         if experiment.shuffle_decoders:
             random.shuffle(encoder_to_decoder_idx)
 
         for encoder_idx in range(len(models)):
             optimizer.zero_grad()
+            decoder_idx = encoder_to_decoder_idx[encoder_idx]
             encoder = models[encoder_idx].encoder
-            decoder = models[encoder_to_decoder_idx[encoder_idx]].decoder
+            decoder = models[decoder_idx].decoder
 
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
@@ -583,59 +564,24 @@ def _train(experiment: Experiment) -> TrainResult:
                     vector_reconstructed[:, experiment.preferred_rep_size :],
                     vector[:, experiment.preferred_rep_size :],
                 )
-            losses.append(
-                Loss(
-                    loss.item(),
-                    reconstruction_loss.item(),
-                    representation_loss.item(),
-                    reconstruction_loss_p1.item(),
-                    reconstruction_loss_p2.item(),
+            if step % 100 == 0:
+                step_results.append(
+                    StepResult(
+                        tag=experiment.tag,
+                        step=step,
+                        encoder_idx=encoder_idx,
+                        decoder_idx=decoder_idx,
+                        total_loss=loss.item(),
+                        reconstruction_loss=reconstruction_loss.item(),
+                        representation_loss=representation_loss.item(),
+                        reconstruction_loss_p1=reconstruction_loss_p1.item(),
+                        reconstruction_loss_p2=reconstruction_loss_p2.item(),
+                    )
                 )
-            )
 
-        average_loss = _get_average_loss(losses)
-
-        if step % 100 == 0:
-            step_results.append(
-                StepResult(
-                    tag=experiment.tag,
-                    step=step,
-                    total_loss=average_loss.total_loss,
-                    reconstruction_loss=average_loss.reconstruction_loss,
-                    representation_loss=average_loss.representation_loss,
-                    reconstruction_loss_p1=average_loss.reconstruction_loss_p1,
-                    reconstruction_loss_p2=average_loss.reconstruction_loss_p2,
-                )
-            )
-        if step % 1000 == 0:
-            print(vector[0], vector_input[0], latent_repr[0], vector_reconstructed[0])
-            print(step)
         bar.progress((step + 1) / experiment.num_batches)
 
     return TrainResult(experiment.tag, models, step_results)
-
-
-def _get_average_loss(losses: List[Loss]) -> Loss:
-    if len(losses) == 1:
-        return losses[0]
-    else:
-        return Loss(
-            float(np.mean([l.total_loss for l in losses])),
-            float(np.mean([l.reconstruction_loss for l in losses])),
-            float(np.mean([l.representation_loss for l in losses])),
-            float(np.mean([l.reconstruction_loss_p1 for l in losses])),
-            float(np.mean([l.reconstruction_loss_p2 for l in losses])),
-        )
-
-
-def _get_final_result(results: List[StepResult]) -> float:
-    assert len(results) >= 200
-    if len(results) >= 2000:
-        mean_p2_loss = np.mean([r.reconstruction_loss_p2 for r in results[-1000:]])
-    else:
-        mean_p2_loss = np.mean([r.reconstruction_loss_p2 for r in results[-100:]])
-
-    return float(mean_p2_loss)
 
 
 def _create_encoder(
@@ -657,6 +603,30 @@ def _create_encoder(
     else:
         output_size = latent_size
 
+    layers.append(torch.nn.Linear(hidden_size, output_size))
+    return torch.nn.Sequential(*layers)
+
+
+def _create_decoder(
+    latent_size: int,
+    hidden_size: int,
+    vector_size: int,
+    use_class: bool,
+    n_hidden_layers: int,
+    activation_fn: str,
+    dropout_prob: Optional[float],
+) -> torch.nn.Module:
+    if use_class:
+        output_size = vector_size * 2
+    else:
+        output_size = vector_size
+    layers: List[torch.nn.Module] = []
+    if dropout_prob is not None:
+        layers.append(torch.nn.Dropout(p=dropout_prob))
+    layers.append(torch.nn.Linear(latent_size, hidden_size))
+    for _ in range(n_hidden_layers):
+        layers.append(torch.nn.Linear(hidden_size, hidden_size))
+        layers.append(_get_activation_fn(activation_fn))
     layers.append(torch.nn.Linear(hidden_size, output_size))
     return torch.nn.Sequential(*layers)
 
@@ -732,30 +702,6 @@ def _make_bin_val_repr_mask(threshold: int) -> Callable:
         return mask
 
     return bin_val_repr_mask
-
-
-def _create_decoder(
-    latent_size: int,
-    hidden_size: int,
-    vector_size: int,
-    use_class: bool,
-    n_hidden_layers: int,
-    activation_fn: str,
-    dropout_prob: Optional[float],
-) -> torch.nn.Module:
-    if use_class:
-        output_size = vector_size * 2
-    else:
-        output_size = vector_size
-    layers: List[torch.nn.Module] = []
-    if dropout_prob is not None:
-        layers.append(torch.nn.Dropout(p=dropout_prob))
-    layers.append(torch.nn.Linear(latent_size, hidden_size))
-    for _ in range(n_hidden_layers):
-        layers.append(torch.nn.Linear(hidden_size, hidden_size))
-        layers.append(_get_activation_fn(activation_fn))
-    layers.append(torch.nn.Linear(hidden_size, output_size))
-    return torch.nn.Sequential(*layers)
 
 
 def _get_activation_fn(name: str) -> torch.nn.Module:
