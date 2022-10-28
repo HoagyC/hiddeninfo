@@ -25,6 +25,37 @@ ZERO_INFO_LOSS = 0.5**2
 BINARY_COEFS_10 = [math.comb(10, x) for x in range(11)]
 
 
+<<<<<<< HEAD
+=======
+@dataclasses.dataclass
+class Model:
+    encoder: torch.nn.Module
+    decoder: torch.nn.Module
+
+
+@dataclasses.dataclass
+class StepResult:
+    tag: str
+    step: int
+    encoder_idx: int
+    decoder_idx: int
+    total_loss: float
+    reconstruction_loss: float
+    representation_loss: float
+    # The reconstruction losses for the first & second halves of the vector.
+    reconstruction_loss_p1: float
+    reconstruction_loss_p2: float
+
+
+@dataclasses.dataclass
+class TrainResult:
+    tag: str
+    models: List[Model]
+    step_results: List[StepResult]
+    # validation_result: StepResult
+
+
+>>>>>>> Bubble up per-model results to StepResults.
 def main():
     st.title("Hidden info")
 
@@ -368,6 +399,7 @@ def _plot_results(train_results: List[TrainResult]) -> None:
     st.pyplot(fig)
 
 
+<<<<<<< HEAD
 def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
     train_results = _run_experiments(*experiments_iterable)
     if not train_results:
@@ -417,6 +449,8 @@ def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
     return train_results
 
 
+=======
+>>>>>>> Bubble up per-model results to StepResults.
 def _train(experiment: Experiment) -> TrainResult:
     if experiment.seed is not None:
         torch.manual_seed(experiment.seed)
@@ -537,9 +571,15 @@ def _train(experiment: Experiment) -> TrainResult:
 
         for encoder_ndx in range(len(models)):
             optimizer.zero_grad()
+<<<<<<< HEAD
             decoder_ndx = encoder_to_decoder_ndx[encoder_ndx]
             encoder = models[encoder_ndx].encoder
             decoder = models[decoder_ndx].decoder
+=======
+            decoder_idx = encoder_to_decoder_idx[encoder_idx]
+            encoder = models[encoder_idx].encoder
+            decoder = models[decoder_idx].decoder
+>>>>>>> Bubble up per-model results to StepResults.
 
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
@@ -647,8 +687,13 @@ def _train(experiment: Experiment) -> TrainResult:
                     StepResult(
                         tag=experiment.tag,
                         step=step,
+<<<<<<< HEAD
                         encoder_ndx=encoder_ndx,
                         decoder_ndx=decoder_ndx,
+=======
+                        encoder_idx=encoder_idx,
+                        decoder_idx=decoder_idx,
+>>>>>>> Bubble up per-model results to StepResults.
                         total_loss=loss.item(),
                         reconstruction_loss=reconstruction_loss.item(),
                         representation_loss=representation_loss.item(),
