@@ -82,7 +82,7 @@ def _train(experiment: CUB_Experiment) -> CUB_TrainResult:
         dec_fn = lambda _: ModelCtoY(
             n_attributes=N_ATTRIBUTES,
             num_classes=N_CLASSES,
-            hidden_dim=experiment.hidden_dim_dec
+            hidden_dim=experiment.hidden_dim_dec,
         )
 
     if experiment.load_encoders_from_tag is not None:
@@ -121,7 +121,7 @@ def _train(experiment: CUB_Experiment) -> CUB_TrainResult:
     optimizer = torch.optim.Adam(list(itertools.chain.from_iterable(all_params)))
 
     reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
-    representation_loss_fn = torch.nn.CrossEntropyLoss()
+    representation_loss_fns = [torch.nn.CrossEntropyLoss() for _ in range(N_ATTRIBUTES)]
 
     bar = st.progress(0.0)
     epoch_results: List[EpochResult] = []
@@ -129,30 +129,37 @@ def _train(experiment: CUB_Experiment) -> CUB_TrainResult:
 
     train_data_path = "CUB_processed/train.pkl"
     data_loader = load_data(
-        pkl_paths=[train_data_path], use_attr=False, no_img=False, batch_size=100
+        pkl_paths=[train_data_path], use_attr=True, no_img=False, batch_size=2
     )
 
     for epoch_ndx in range(experiment.num_epochs):
         losses = []
         for batch_ndx, data in enumerate(data_loader):
+            encoder_ndx = random.randint(0, len(models) - 1)
             if experiment.shuffle_decoders:
-                encoder_ndx = random.randint(0, len(models) - 1)
                 decoder_ndx = random.randint(0, len(models) - 1)
+            else:
+                decoder_ndx = encoder_ndx
 
             inputs, labels, attr_labels = data
+
+            print(inputs, labels, attr_labels)
 
             optimizer.zero_grad()
             encoder = models[encoder_ndx].encoder
             decoder = models[decoder_ndx].decoder
 
             attrs_reconstructed = encoder(inputs)
+            print(attrs_reconstructed, len(attrs_reconstructed))
             labels_reconstructed = decoder(attrs_reconstructed)
 
             reconstruction_loss = reconstruction_loss_fn(labels_reconstructed, labels)
-            representation_loss = representation_loss_fn(
-                attrs_reconstructed,
-                attr_labels,
-            )
+            representation_losses = []
+            for i, attr_result in enumerate(attrs_reconstructed):
+                representation_losses.append(representation_loss_fns[i](
+                    attr_result.squeeze(),
+                    attr_labels,
+                )
 
             loss = reconstruction_loss
             if experiment.representation_loss is not None:

@@ -28,10 +28,18 @@ def ModelXtoC(
 
 
 # Independent Model
-def ModelCtoY(n_attributes: int, num_classes: int, hidden_dim: int):
+def ModelOracleCtoY(n_class_attr, n_attributes, num_classes, hidden_dim):
     # X -> C part is separate, this is only the C -> Y part
-    # Removed some bits with n_class_attr
-    model = MLP(input_dim=n_attributes, num_classes=num_classes, hidden_dim=hidden_dim)
+    if n_class_attr == 3:
+        model = MLP(
+            input_dim=n_attributes * n_class_attr,
+            num_classes=num_classes,
+            hidden_dim=hidden_dim,
+        )
+    else:
+        model = MLP(
+            input_dim=n_attributes, num_classes=num_classes, hidden_dim=hidden_dim
+        )
     return model
 
 
