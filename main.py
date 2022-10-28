@@ -217,7 +217,7 @@ def main():
     # )
 
     st.header("Binary sum quads")
-    _run_experiments(
+    _display_experiments(
         bin_sum_quads_5,
         bin_sum_quads_5_enc,
         bin_sum_quads_7,
@@ -229,42 +229,42 @@ def main():
     )
 
     st.header("Baseline")
-    _run_experiments(base)
+    _display_experiments(base)
 
     st.header("Regularisation strategies")
-    _run_experiments(l1, l2)
+    _display_experiments(l1, l2)
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
-    _run_experiments(dropout)
+    _display_experiments(dropout)
 
     st.header("Noise strategy")
-    _run_experiments(noisy)
+    _display_experiments(noisy)
 
     st.header("Testing alternate target latents")
-    _run_experiments(diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec)
-    _run_experiments(rand_lin_base, rand_lin_retrain_enc)
+    _display_experiments(diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec)
+    _display_experiments(rand_lin_base, rand_lin_retrain_enc)
 
     st.header("Increasing sparsity")
     sparsity_exps = exps.make_sparse_exps()
-    _run_experiments(*sparsity_exps)
+    _display_experiments(*sparsity_exps)
 
     st.header("Random permutations")
-    _run_experiments(perms)
+    _display_experiments(perms)
 
     st.header("Retrain decoders + random permutations")
-    _run_experiments(base, retrain_dec)
+    _display_experiments(base, retrain_dec)
 
     st.header("Just retrain encoders")
-    _run_experiments(retrain_enc_with_repr)
+    _display_experiments(retrain_enc_with_repr)
 
     st.header("Retrain encoders + random permutations + sparsity")
-    _run_experiments(
+    _display_experiments(
         base, retrain_enc_with_repr, retrain_dec, sparse_general_dec, sparse_general_enc
     )
 
     st.header("All strategies")
-    _run_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
+    _display_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
 
     st.header("Experimenting with different numbers of models")
     for n_models in [2, 4, 8, 16]:
@@ -278,18 +278,18 @@ def main():
                 exp.load_decoders_from_tag += suffix
             if exp.load_encoders_from_tag is not None:
                 exp.load_encoders_from_tag += suffix
-        _run_experiments(*experiments)
+        _display_experiments(*experiments)
 
     st.header("Test setting seed")
-    _run_experiments(seed_test1, seed_test2)
+    _display_experiments(seed_test1, seed_test2)
 
     st.header("Tuning number of models")
     n_models_options = [2, 4, 8]
     tuning_n_models_base = dataclasses.replace(
         base, tag="tuning_n_models_base", n_models=max(n_models_options)
     )
-    _run_experiments(tuning_n_models_base)
-    _run_experiments(
+    _display_experiments(tuning_n_models_base)
+    _display_experiments(
         *(
             dataclasses.replace(
                 tuning_n_models_base,
@@ -304,28 +304,10 @@ def main():
     )
 
 
-def _run_experiments(*experiments_iterable: Experiment):
-    experiments: List[Experiment] = list(experiments_iterable)
-    tags = [experiment.tag for experiment in experiments]
-    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
-    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+def _display_experiments(*experiments_iterable: Experiment) -> None:
+    train_results = _run_experiments(*experiments_iterable)
+    if not train_results:
         return
-    force_retrain_models = st.checkbox(
-        "Force retrain models?", value=False, key=str((tags, "retrain"))
-    )
-    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
-
-    bar = st.progress(0.0)
-    train_results: List[TrainResult] = []
-    for i, experiment in enumerate(experiments):
-        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
-            train_result = _train(experiment=experiment)
-            _save_train_result(train_result)
-        else:
-            train_result = _load_train_result(experiment.tag)
-        train_results.append(train_result)
-        bar.progress((i + 1) / len(experiments))
-
     df = pd.DataFrame(
         dataclasses.asdict(result)
         for train_result in train_results
@@ -353,6 +335,30 @@ def _run_experiments(*experiments_iterable: Experiment):
         # ax.set_yscale("log")
     fig.tight_layout()
     st.pyplot(fig)
+
+
+def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
+    experiments: List[Experiment] = list(experiments_iterable)
+    tags = [experiment.tag for experiment in experiments]
+    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
+    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+        return []
+    force_retrain_models = st.checkbox(
+        "Force retrain models?", value=False, key=str((tags, "retrain"))
+    )
+    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
+
+    bar = st.progress(0.0)
+    train_results: List[TrainResult] = []
+    for i, experiment in enumerate(experiments):
+        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
+            train_result = _train(experiment=experiment)
+            _save_train_result(train_result)
+        else:
+            train_result = _load_train_result(experiment.tag)
+        train_results.append(train_result)
+        bar.progress((i + 1) / len(experiments))
+    return train_results
 
 
 def _train(experiment: Experiment) -> TrainResult:
