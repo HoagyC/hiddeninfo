@@ -40,8 +40,6 @@ class Experiment:
     quadrant_threshold: int = 0
     sparsity: int = 1  # repr_loss scaled up by sparsity, applied every 1/sparsity
     latent_noise_std: float = 0
-    latent_masking: bool = False
-    latent_masking_incentive: float = 0.1
 
 
 baseline = Experiment(
