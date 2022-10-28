@@ -291,20 +291,6 @@ def main():
     st.header("Regularisation strategies")
     _display_experiments(l1, l2)
 
-    st.header("Sequential")
-    _display_experiments(sequential_encoder, sequential_decoder, sequential_test)
-
-    st.header("Sequential sparse")
-    _display_experiments(seq_sparse_encoder, seq_sparse_decoder, seq_sparse_test)
-
-    st.header("E2E sparse")
-    _display_experiments(sparse_general, sparse_general_enc, sparse_general_dec)
-
-    st.header("seq and e2e sparse")
-    _display_experiments(
-        seq_sparse_test, seq_sparse_decoder, seq_sparse_encoder, sparse_general_dec
-    )
-
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
     _display_experiments(dropout)
@@ -379,10 +365,6 @@ def _display_experiments(*experiments_iterable: Experiment) -> None:
     train_results = _run_experiments(*experiments_iterable)
     if not train_results:
         return
-    _plot_results(train_results)
-
-
-def _plot_results(train_results: List[TrainResult]) -> None:
     df = pd.DataFrame(
         dataclasses.asdict(result)
         for train_result in train_results
@@ -411,6 +393,30 @@ def _plot_results(train_results: List[TrainResult]) -> None:
         # ax.set_yscale("log")
     fig.tight_layout()
     st.pyplot(fig)
+
+
+def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
+    experiments: List[Experiment] = list(experiments_iterable)
+    tags = [experiment.tag for experiment in experiments]
+    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
+    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+        return []
+    force_retrain_models = st.checkbox(
+        "Force retrain models?", value=False, key=str((tags, "retrain"))
+    )
+    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
+
+    bar = st.progress(0.0)
+    train_results: List[TrainResult] = []
+    for i, experiment in enumerate(experiments):
+        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
+            train_result = _train(experiment=experiment)
+            _save_train_result(train_result)
+        else:
+            train_result = _load_train_result(experiment.tag)
+        train_results.append(train_result)
+        bar.progress((i + 1) / len(experiments))
+    return train_results
 
 
 def _train(experiment: Experiment) -> TrainResult:
