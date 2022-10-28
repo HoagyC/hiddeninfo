@@ -542,7 +542,6 @@ def _train(experiment: Experiment) -> TrainResult:
                 target_latent_fn(latent_repr),
             )
             # Scaling here to compensate for quadrant sparsity
-            # TODO: Should we roll this into `experiment.representation_loss`?
             representation_loss *= repr_loss_scale
             loss = reconstruction_loss
             if experiment.representation_loss is not None:
