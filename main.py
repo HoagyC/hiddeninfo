@@ -32,19 +32,11 @@ class Model:
 
 
 @dataclasses.dataclass
-class Loss:
-    total_loss: float
-    reconstruction_loss: float
-    representation_loss: float
-    # The reconstruction losses for the first & second halves of the vector.
-    reconstruction_loss_p1: float
-    reconstruction_loss_p2: float
-
-
-@dataclasses.dataclass
 class StepResult:
     tag: str
     step: int
+    encoder_idx: int
+    decoder_idx: int
     total_loss: float
     reconstruction_loss: float
     representation_loss: float
@@ -225,7 +217,7 @@ def main():
     # )
 
     st.header("Binary sum quads")
-    _run_experiments(
+    _display_experiments(
         bin_sum_quads_5,
         bin_sum_quads_5_enc,
         bin_sum_quads_7,
@@ -237,42 +229,42 @@ def main():
     )
 
     st.header("Baseline")
-    _run_experiments(base)
+    _display_experiments(base)
 
     st.header("Regularisation strategies")
-    _run_experiments(l1, l2)
+    _display_experiments(l1, l2)
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
-    _run_experiments(dropout)
+    _display_experiments(dropout)
 
     st.header("Noise strategy")
-    _run_experiments(noisy)
+    _display_experiments(noisy)
 
     st.header("Testing alternate target latents")
-    _run_experiments(diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec)
-    _run_experiments(rand_lin_base, rand_lin_retrain_enc)
+    _display_experiments(diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec)
+    _display_experiments(rand_lin_base, rand_lin_retrain_enc)
 
     st.header("Increasing sparsity")
     sparsity_exps = exps.make_sparse_exps()
-    _run_experiments(*sparsity_exps)
+    _display_experiments(*sparsity_exps)
 
     st.header("Random permutations")
-    _run_experiments(perms)
+    _display_experiments(perms)
 
     st.header("Retrain decoders + random permutations")
-    _run_experiments(base, retrain_dec)
+    _display_experiments(base, retrain_dec)
 
     st.header("Just retrain encoders")
-    _run_experiments(retrain_enc_with_repr)
+    _display_experiments(retrain_enc_with_repr)
 
     st.header("Retrain encoders + random permutations + sparsity")
-    _run_experiments(
+    _display_experiments(
         base, retrain_enc_with_repr, retrain_dec, sparse_general_dec, sparse_general_enc
     )
 
     st.header("All strategies")
-    _run_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
+    _display_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
 
     st.header("Experimenting with different numbers of models")
     for n_models in [2, 4, 8, 16]:
@@ -286,18 +278,18 @@ def main():
                 exp.load_decoders_from_tag += suffix
             if exp.load_encoders_from_tag is not None:
                 exp.load_encoders_from_tag += suffix
-        _run_experiments(*experiments)
+        _display_experiments(*experiments)
 
     st.header("Test setting seed")
-    _run_experiments(seed_test1, seed_test2)
+    _display_experiments(seed_test1, seed_test2)
 
     st.header("Tuning number of models")
     n_models_options = [2, 4, 8]
     tuning_n_models_base = dataclasses.replace(
         base, tag="tuning_n_models_base", n_models=max(n_models_options)
     )
-    _run_experiments(tuning_n_models_base)
-    _run_experiments(
+    _display_experiments(tuning_n_models_base)
+    _display_experiments(
         *(
             dataclasses.replace(
                 tuning_n_models_base,
@@ -312,28 +304,10 @@ def main():
     )
 
 
-def _run_experiments(*experiments_iterable: Experiment):
-    experiments: List[Experiment] = list(experiments_iterable)
-    tags = [experiment.tag for experiment in experiments]
-    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
-    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+def _display_experiments(*experiments_iterable: Experiment) -> None:
+    train_results = _run_experiments(*experiments_iterable)
+    if not train_results:
         return
-    force_retrain_models = st.checkbox(
-        "Force retrain models?", value=False, key=str((tags, "retrain"))
-    )
-    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
-
-    bar = st.progress(0.0)
-    train_results: List[TrainResult] = []
-    for i, experiment in enumerate(experiments):
-        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
-            train_result = _train(experiment=experiment)
-            _save_train_result(train_result)
-        else:
-            train_result = _load_train_result(experiment.tag)
-        train_results.append(train_result)
-        bar.progress((i + 1) / len(experiments))
-
     df = pd.DataFrame(
         dataclasses.asdict(result)
         for train_result in train_results
@@ -363,15 +337,49 @@ def _run_experiments(*experiments_iterable: Experiment):
     st.pyplot(fig)
 
 
-### List of interventions
-# Freezing
-# Training end-to-end
-# Dropout
-#
+def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
+    train_results = _run_experiments(*experiments_iterable)
+    if not train_results:
+        return
 
-## Things to vary
-# Dimensions of hidden variation
-# Number of models used in multi-model scenarios
+    # Compare results using the average p2 reconstruction loss of the last 10% of steps.
+    df = []
+    for train_result in train_results:
+        last_step = max(step_result.step for step_result in train_result.step_results)
+        reconstruction_loss_p2 = np.mean([
+            step_result.reconstruction_loss_p2
+            for step_result in train_result.step_results
+            if step_result.step >= last_step * 0.9
+        ])
+        df.append(dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2))
+    df = pd.DataFrame(df)
+    fig, ax = plt.subplots()
+    sns.barplot(data=df, x="tag", y="reconstruction_loss_p2", ax=ax)
+    st.pyplot(fig)
+
+
+def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
+    experiments: List[Experiment] = list(experiments_iterable)
+    tags = [experiment.tag for experiment in experiments]
+    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
+    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+        return []
+    force_retrain_models = st.checkbox(
+        "Force retrain models?", value=False, key=str((tags, "retrain"))
+    )
+    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
+
+    bar = st.progress(0.0)
+    train_results: List[TrainResult] = []
+    for i, experiment in enumerate(experiments):
+        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
+            train_result = _train(experiment=experiment)
+            _save_train_result(train_result)
+        else:
+            train_result = _load_train_result(experiment.tag)
+        train_results.append(train_result)
+        bar.progress((i + 1) / len(experiments))
+    return train_results
 
 
 def _train(experiment: Experiment) -> TrainResult:
@@ -484,16 +492,17 @@ def _train(experiment: Experiment) -> TrainResult:
     step_results = []
     encoder_to_decoder_idx = list(range(len(models)))
     for step in range(experiment.num_batches):
+        # TODO: Delete this if?
         if experiment.dropout_prob is not None and step == 9000:
             pass
-        losses = []
         if experiment.shuffle_decoders:
             random.shuffle(encoder_to_decoder_idx)
 
         for encoder_idx in range(len(models)):
             optimizer.zero_grad()
+            decoder_idx = encoder_to_decoder_idx[encoder_idx]
             encoder = models[encoder_idx].encoder
-            decoder = models[encoder_to_decoder_idx[encoder_idx]].decoder
+            decoder = models[decoder_idx].decoder
 
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
@@ -521,6 +530,7 @@ def _train(experiment: Experiment) -> TrainResult:
             if experiment.latent_masking:
                 latent_repr = latent_repr[: experiment.preferred_rep_size]
                 repr_mask = latent_use_mask_fn(latent_repr)
+                # TODO: Unused variable?
                 repr_use_loss = torch.mean(repr_mask)
             else:
                 repr_use_loss = torch.Tensor(0)
@@ -545,6 +555,7 @@ def _train(experiment: Experiment) -> TrainResult:
                 target_latent_fn(latent_repr),
             )
             # Scaling here to compensate for quadrant sparsity
+            # TODO: Should we roll this into `experiment.representation_loss`?
             representation_loss *= repr_loss_scale
             loss = reconstruction_loss
             if experiment.representation_loss is not None:
@@ -580,59 +591,24 @@ def _train(experiment: Experiment) -> TrainResult:
                     vector_reconstructed[:, experiment.preferred_rep_size :],
                     vector[:, experiment.preferred_rep_size :],
                 )
-            losses.append(
-                Loss(
-                    loss.item(),
-                    reconstruction_loss.item(),
-                    representation_loss.item(),
-                    reconstruction_loss_p1.item(),
-                    reconstruction_loss_p2.item(),
+            if step % 100 == 0:
+                step_results.append(
+                    StepResult(
+                        tag=experiment.tag,
+                        step=step,
+                        encoder_idx=encoder_idx,
+                        decoder_idx=decoder_idx,
+                        total_loss=loss.item(),
+                        reconstruction_loss=reconstruction_loss.item(),
+                        representation_loss=representation_loss.item(),
+                        reconstruction_loss_p1=reconstruction_loss_p1.item(),
+                        reconstruction_loss_p2=reconstruction_loss_p2.item(),
+                    )
                 )
-            )
 
-        average_loss = _get_average_loss(losses)
-
-        if step % 100 == 0:
-            step_results.append(
-                StepResult(
-                    tag=experiment.tag,
-                    step=step,
-                    total_loss=average_loss.total_loss,
-                    reconstruction_loss=average_loss.reconstruction_loss,
-                    representation_loss=average_loss.representation_loss,
-                    reconstruction_loss_p1=average_loss.reconstruction_loss_p1,
-                    reconstruction_loss_p2=average_loss.reconstruction_loss_p2,
-                )
-            )
-        if step % 1000 == 0:
-            print(vector[0], vector_input[0], latent_repr[0], vector_reconstructed[0])
-            print(step)
         bar.progress((step + 1) / experiment.num_batches)
 
     return TrainResult(experiment.tag, models, step_results)
-
-
-def _get_average_loss(losses: List[Loss]) -> Loss:
-    if len(losses) == 1:
-        return losses[0]
-    else:
-        return Loss(
-            float(np.mean([l.total_loss for l in losses])),
-            float(np.mean([l.reconstruction_loss for l in losses])),
-            float(np.mean([l.representation_loss for l in losses])),
-            float(np.mean([l.reconstruction_loss_p1 for l in losses])),
-            float(np.mean([l.reconstruction_loss_p2 for l in losses])),
-        )
-
-
-def _get_final_result(results: List[StepResult]) -> float:
-    assert len(results) >= 200
-    if len(results) >= 2000:
-        mean_p2_loss = np.mean([r.reconstruction_loss_p2 for r in results[-1000:]])
-    else:
-        mean_p2_loss = np.mean([r.reconstruction_loss_p2 for r in results[-100:]])
-
-    return float(mean_p2_loss)
 
 
 def _create_encoder(
@@ -654,6 +630,30 @@ def _create_encoder(
     else:
         output_size = latent_size
 
+    layers.append(torch.nn.Linear(hidden_size, output_size))
+    return torch.nn.Sequential(*layers)
+
+
+def _create_decoder(
+    latent_size: int,
+    hidden_size: int,
+    vector_size: int,
+    use_class: bool,
+    n_hidden_layers: int,
+    activation_fn: str,
+    dropout_prob: Optional[float],
+) -> torch.nn.Module:
+    if use_class:
+        output_size = vector_size * 2
+    else:
+        output_size = vector_size
+    layers: List[torch.nn.Module] = []
+    if dropout_prob is not None:
+        layers.append(torch.nn.Dropout(p=dropout_prob))
+    layers.append(torch.nn.Linear(latent_size, hidden_size))
+    for _ in range(n_hidden_layers):
+        layers.append(torch.nn.Linear(hidden_size, hidden_size))
+        layers.append(_get_activation_fn(activation_fn))
     layers.append(torch.nn.Linear(hidden_size, output_size))
     return torch.nn.Sequential(*layers)
 
@@ -690,6 +690,7 @@ def _make_diagonal_repr_fn(rep_size: int) -> Callable:
     def diagonal_repr_target(_input: torch.Tensor) -> torch.Tensor:
         assert rep_size + 1 <= _input.shape[1]
         dir_1 = _input[:, :rep_size]
+        # TODO: Wrap this so that we don't use N+1 variables?
         dir_2 = _input[:, 1 : rep_size + 1]
         repr_target = (dir_1 + dir_2) / np.sqrt(2)
         return repr_target
@@ -728,30 +729,6 @@ def _make_bin_val_repr_mask(threshold: int) -> Callable:
         return mask
 
     return bin_val_repr_mask
-
-
-def _create_decoder(
-    latent_size: int,
-    hidden_size: int,
-    vector_size: int,
-    use_class: bool,
-    n_hidden_layers: int,
-    activation_fn: str,
-    dropout_prob: Optional[float],
-) -> torch.nn.Module:
-    if use_class:
-        output_size = vector_size * 2
-    else:
-        output_size = vector_size
-    layers: List[torch.nn.Module] = []
-    if dropout_prob is not None:
-        layers.append(torch.nn.Dropout(p=dropout_prob))
-    layers.append(torch.nn.Linear(latent_size, hidden_size))
-    for _ in range(n_hidden_layers):
-        layers.append(torch.nn.Linear(hidden_size, hidden_size))
-        layers.append(_get_activation_fn(activation_fn))
-    layers.append(torch.nn.Linear(hidden_size, output_size))
-    return torch.nn.Sequential(*layers)
 
 
 def _get_activation_fn(name: str) -> torch.nn.Module:

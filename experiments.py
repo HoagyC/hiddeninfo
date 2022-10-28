@@ -21,6 +21,7 @@ class Experiment:
     dropout_prob: Optional[float] = None
     l1_loss: Optional[float] = None
     l2_loss: Optional[float] = None
+    # TODO: Use enums for this & other strings?
     activation_fn: str = "relu"
 
     # Training setup
