@@ -490,9 +490,6 @@ def _train(experiment: Experiment) -> TrainResult:
     step_results = []
     encoder_to_decoder_idx = list(range(len(models)))
     for step in range(experiment.num_batches):
-        # TODO: Delete this if?
-        if experiment.dropout_prob is not None and step == 9000:
-            pass
         if experiment.shuffle_decoders:
             random.shuffle(encoder_to_decoder_idx)
 
