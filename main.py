@@ -484,6 +484,7 @@ def _train(experiment: Experiment) -> TrainResult:
     step_results = []
     encoder_to_decoder_idx = list(range(len(models)))
     for step in range(experiment.num_batches):
+        # TODO: Delete this if?
         if experiment.dropout_prob is not None and step == 9000:
             pass
         losses = []
@@ -521,6 +522,7 @@ def _train(experiment: Experiment) -> TrainResult:
             if experiment.latent_masking:
                 latent_repr = latent_repr[: experiment.preferred_rep_size]
                 repr_mask = latent_use_mask_fn(latent_repr)
+                # TODO: Unused variable?
                 repr_use_loss = torch.mean(repr_mask)
             else:
                 repr_use_loss = torch.Tensor(0)
@@ -545,6 +547,7 @@ def _train(experiment: Experiment) -> TrainResult:
                 target_latent_fn(latent_repr),
             )
             # Scaling here to compensate for quadrant sparsity
+            # TODO: Should we roll this into `experiment.representation_loss`?
             representation_loss *= repr_loss_scale
             loss = reconstruction_loss
             if experiment.representation_loss is not None:
@@ -690,6 +693,7 @@ def _make_diagonal_repr_fn(rep_size: int) -> Callable:
     def diagonal_repr_target(_input: torch.Tensor) -> torch.Tensor:
         assert rep_size + 1 <= _input.shape[1]
         dir_1 = _input[:, :rep_size]
+        # TODO: Wrap this so that we don't use N+1 variables?
         dir_2 = _input[:, 1 : rep_size + 1]
         repr_target = (dir_1 + dir_2) / np.sqrt(2)
         return repr_target
