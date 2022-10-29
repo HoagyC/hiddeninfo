@@ -6,7 +6,7 @@ REQUIREMENTS=requirements.txt
 STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
 MYPY=$(ENV)/bin/mypy
-PYTHON_FILES=main.py experiments.py
+PYTHON_FILES=main.py experiments.py pages/adversarial.py
 
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
