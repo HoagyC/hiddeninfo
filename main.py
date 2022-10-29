@@ -346,12 +346,16 @@ def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
     df = []
     for train_result in train_results:
         last_step = max(step_result.step for step_result in train_result.step_results)
-        reconstruction_loss_p2 = np.mean([
-            step_result.reconstruction_loss_p2
-            for step_result in train_result.step_results
-            if step_result.step >= last_step * 0.9
-        ])
-        df.append(dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2))
+        reconstruction_loss_p2 = np.mean(
+            [
+                step_result.reconstruction_loss_p2
+                for step_result in train_result.step_results
+                if step_result.step >= last_step * 0.9
+            ]
+        )
+        df.append(
+            dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2)
+        )
     df = pd.DataFrame(df)
     fig, ax = plt.subplots()
     sns.barplot(data=df, x="tag", y="reconstruction_loss_p2", ax=ax)
@@ -675,7 +679,7 @@ def _make_diagonal_repr_fn(rep_size: int) -> Callable:
     def diagonal_repr_target(_input: torch.Tensor) -> torch.Tensor:
         assert rep_size + 1 <= _input.shape[1]
         dir_1 = _input[:, :rep_size]
-        dir_2 = torch.concat([_input[:, 1 : rep_size], _input[:, :1]], dim=1)
+        dir_2 = torch.concat([_input[:, 1:rep_size], _input[:, :1]], dim=1)
         repr_target = (dir_1 + dir_2) / np.sqrt(2)
         return repr_target
 
