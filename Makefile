@@ -8,12 +8,6 @@ BLACK=$(ENV)/bin/black
 MYPY=$(ENV)/bin/mypy
 PYTHON_FILES=main.py experiments.py pages/adversarial.py
 
-# codalab address for downloading the main CUB dataset
-CODAENV=.codaenv
-CODA_PIP=$(CODAENV)/bin/pip
-CODALAB=$(CODAENV)/bin/cl
-CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
-
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
 	$(STREAMLIT) run main.py
