@@ -346,12 +346,16 @@ def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
     df = []
     for train_result in train_results:
         last_step = max(step_result.step for step_result in train_result.step_results)
-        reconstruction_loss_p2 = np.mean([
-            step_result.reconstruction_loss_p2
-            for step_result in train_result.step_results
-            if step_result.step >= last_step * 0.9
-        ])
-        df.append(dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2))
+        reconstruction_loss_p2 = np.mean(
+            [
+                step_result.reconstruction_loss_p2
+                for step_result in train_result.step_results
+                if step_result.step >= last_step * 0.9
+            ]
+        )
+        df.append(
+            dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2)
+        )
     df = pd.DataFrame(df)
     fig, ax = plt.subplots()
     sns.barplot(data=df, x="tag", y="reconstruction_loss_p2", ax=ax)
