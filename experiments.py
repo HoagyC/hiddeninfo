@@ -18,6 +18,7 @@ class Experiment:
     batch_size: int = 32
     vector_p2_scale: int = 1
     representation_loss: Optional[float] = 5
+    reconstruction_loss_scale: float = 1
     dropout_prob: Optional[float] = None
     l1_loss: Optional[float] = None
     l2_loss: Optional[float] = None
@@ -32,6 +33,8 @@ class Experiment:
     n_models: int = 1
     load_encoders_from_tag: Optional[str] = None
     load_decoders_from_tag: Optional[str] = None
+    give_full_info: bool = False
+    learning_rate: float = 1e-03
 
     # Representation loss options
     loss_geometry: str = "simple"

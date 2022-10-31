@@ -199,6 +199,20 @@ def main():
         shuffle_decoders=True,
     )
 
+    sequential_encoder = dataclasses.replace(
+        base, tag="sequential_enc", reconstruction_loss_scale=0, num_batches=5000
+    )
+    sequential_decoder = dataclasses.replace(
+        base, tag="sequential_dec", give_full_info=True, num_batches=5000
+    )
+    sequential_test = dataclasses.replace(
+        base,
+        tag="sequential_test",
+        load_decoders_from_tag=sequential_decoder.tag,
+        load_encoders_from_tag=sequential_encoder.tag,
+        num_batches=2000,
+    )
+
     seed_test1 = dataclasses.replace(
         base, tag="seedtest_1", n_models=1, num_batches=1000, seed=1
     )
@@ -233,6 +247,9 @@ def main():
 
     st.header("Regularisation strategies")
     _display_experiments(l1, l2)
+
+    st.header("Sequential")
+    _display_experiments(sequential_encoder, sequential_decoder, sequential_test)
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
@@ -435,7 +452,9 @@ def _train(experiment: Experiment) -> TrainResult:
             for model in models
         ]
 
-    optimizer = torch.optim.Adam(list(itertools.chain.from_iterable(all_params)))
+    optimizer = torch.optim.Adam(
+        list(itertools.chain.from_iterable(all_params)), lr=experiment.learning_rate
+    )
 
     reconstruction_loss_fn: Callable  # I thought this was PYTHON
     representation_loss_fn: Callable
@@ -542,7 +561,12 @@ def _train(experiment: Experiment) -> TrainResult:
             noise = torch.normal(
                 mean=0, std=experiment.latent_noise_std, size=latent_repr.shape
             )
-            vector_reconstructed = decoder(latent_repr + noise)
+            target_latent = target_latent_fn(vector_input)
+            if experiment.give_full_info:
+                decoder_input = target_latent
+            else:
+                decoder_input = latent_repr + noise
+            vector_reconstructed = decoder(decoder_input)
             if experiment.use_class:
                 vector_reconstructed = vector_reconstructed.reshape(
                     experiment.batch_size, 2, experiment.vector_size
@@ -556,12 +580,12 @@ def _train(experiment: Experiment) -> TrainResult:
             )
             representation_loss = representation_loss_fn(
                 vector[:, : experiment.preferred_rep_size],
-                target_latent_fn(latent_repr),
+                target_latent,
             )
             # Scaling here to compensate for quadrant sparsity
             # TODO: Should we roll this into `experiment.representation_loss`?
             representation_loss *= repr_loss_scale
-            loss = reconstruction_loss
+            loss = reconstruction_loss * experiment.reconstruction_loss_scale
             if experiment.representation_loss is not None:
                 loss += experiment.representation_loss * representation_loss
             if experiment.l1_loss is not None:
