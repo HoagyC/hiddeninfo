@@ -35,8 +35,8 @@ class Model:
 class StepResult:
     tag: str
     step: int
-    encoder_idx: int
-    decoder_idx: int
+    encoder_ndx: int
+    decoder_ndx: int
     total_loss: float
     reconstruction_loss: float
     representation_loss: float
@@ -61,7 +61,7 @@ def main():
         n_models=8,
         activation_fn="sigmoid",
         use_class=False,
-        num_batches=30_000,
+        num_batches=2_000,
         latent_size=10,
         hidden_size=80,
         n_hidden_layers=1,
@@ -212,6 +212,22 @@ def main():
         load_encoders_from_tag=sequential_encoder.tag,
         num_batches=2000,
     )
+    seq_sparse_encoder = dataclasses.replace(
+        base,
+        tag="seq_sparse_enc",
+        loss_quadrants="bin_sum",
+        quadrant_threshold=4,
+        sparsity=10,
+        reconstruction_loss_scale=0,
+        num_batches=5000,
+    )
+    seq_sparse_test = dataclasses.replace(
+        base,
+        tag="sequential_test",
+        load_decoders_from_tag=sequential_decoder.tag,
+        load_encoders_from_tag=seq_sparse_encoder.tag,
+        num_batches=2000,
+    )
 
     seed_test1 = dataclasses.replace(
         base, tag="seedtest_1", n_models=1, num_batches=1000, seed=1
@@ -250,6 +266,9 @@ def main():
 
     st.header("Sequential")
     _display_experiments(sequential_encoder, sequential_decoder, sequential_test)
+
+    st.header("Sequential sparse")
+    _display_experiments(seq_sparse_encoder, sequential_decoder, seq_sparse_test)
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
@@ -478,7 +497,6 @@ def _train(experiment: Experiment) -> TrainResult:
         raise ValueError(
             f"Loss quadrant must be 'all', 'bin_sum' or 'bin_val', got {experiment.loss_quadrants}."
         )
-    print(f"repr_loss_scale = {repr_loss_scale}")
 
     if experiment.use_class:
         reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
@@ -513,19 +531,19 @@ def _train(experiment: Experiment) -> TrainResult:
 
     bar = st.progress(0.0)
     step_results = []
-    encoder_to_decoder_idx = list(range(len(models)))
+    encoder_to_decoder_ndx = list(range(len(models)))
     for step in range(experiment.num_batches):
         # TODO: Delete this if?
         if experiment.dropout_prob is not None and step == 9000:
             pass
         if experiment.shuffle_decoders:
-            random.shuffle(encoder_to_decoder_idx)
+            random.shuffle(encoder_to_decoder_ndx)
 
-        for encoder_idx in range(len(models)):
+        for encoder_ndx in range(len(models)):
             optimizer.zero_grad()
-            decoder_idx = encoder_to_decoder_idx[encoder_idx]
-            encoder = models[encoder_idx].encoder
-            decoder = models[decoder_idx].decoder
+            decoder_ndx = encoder_to_decoder_ndx[encoder_ndx]
+            encoder = models[encoder_ndx].encoder
+            decoder = models[decoder_ndx].decoder
 
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
@@ -579,8 +597,8 @@ def _train(experiment: Experiment) -> TrainResult:
                 vector_reconstructed, vector_target
             )
             representation_loss = representation_loss_fn(
-                vector[:, : experiment.preferred_rep_size],
-                target_latent,
+                _input=latent_repr,
+                target=target_latent_fn(vector),
             )
             # Scaling here to compensate for quadrant sparsity
             # TODO: Should we roll this into `experiment.representation_loss`?
@@ -624,8 +642,8 @@ def _train(experiment: Experiment) -> TrainResult:
                     StepResult(
                         tag=experiment.tag,
                         step=step,
-                        encoder_idx=encoder_idx,
-                        decoder_idx=decoder_idx,
+                        encoder_ndx=encoder_ndx,
+                        decoder_ndx=decoder_ndx,
                         total_loss=loss.item(),
                         reconstruction_loss=reconstruction_loss.item(),
                         representation_loss=representation_loss.item(),
