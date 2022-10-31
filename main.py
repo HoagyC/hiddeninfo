@@ -210,49 +210,6 @@ def main():
         tag="sequential_test",
         load_decoders_from_tag=sequential_decoder.tag,
         load_encoders_from_tag=sequential_encoder.tag,
-        num_batches=10000,
-    )
-    seq_sparse_decoder = dataclasses.replace(
-        base,
-        tag="seq_sparse_dec",
-        loss_quadrants="bin_sum",
-        quadrant_threshold=4,
-        sparsity=10,
-        give_full_info=True,
-        num_batches=10000,
-    )
-
-    seq_sparse_encoder = dataclasses.replace(
-        base,
-        tag="seq_sparse_enc",
-        loss_quadrants="bin_sum",
-        quadrant_threshold=4,
-        sparsity=10,
-        reconstruction_loss_scale=0,
-        num_batches=10000,
-    )
-    seq_sparse_test = dataclasses.replace(
-        base,
-        tag="sequential_test",
-        load_decoders_from_tag=seq_sparse_decoder.tag,
-        load_encoders_from_tag=seq_sparse_encoder.tag,
-        num_batches=2000,
-    )
-
-    seq_sparse_encoder = dataclasses.replace(
-        base,
-        tag="seq_sparse_enc",
-        loss_quadrants="bin_sum",
-        quadrant_threshold=4,
-        sparsity=10,
-        reconstruction_loss_scale=0,
-        num_batches=10000,
-    )
-    seq_sparse_test = dataclasses.replace(
-        base,
-        tag="sequential_test",
-        load_decoders_from_tag=seq_sparse_decoder.tag,
-        load_encoders_from_tag=seq_sparse_encoder.tag,
         num_batches=2000,
     )
 
@@ -290,6 +247,9 @@ def main():
 
     st.header("Regularisation strategies")
     _display_experiments(l1, l2)
+
+    st.header("Sequential")
+    _display_experiments(sequential_encoder, sequential_decoder, sequential_test)
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
@@ -604,8 +564,8 @@ def _train(experiment: Experiment) -> TrainResult:
                     vector_reconstructed, vector_target
                 )
             representation_loss = representation_loss_fn(
-                _input=latent_repr,
-                target=target_latent_fn(vector),
+                vector[:, : experiment.preferred_rep_size],
+                target_latent,
             )
             # Scaling here to compensate for quadrant sparsity
             # TODO: Should we roll this into `experiment.representation_loss`?
