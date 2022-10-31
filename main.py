@@ -210,6 +210,22 @@ def main():
         load_encoders_from_tag=seq_sparse_encoder.tag,
         num_batches=2000,
     )
+    seq_sparse_encoder = dataclasses.replace(
+        base,
+        tag="seq_sparse_enc",
+        loss_quadrants="bin_sum",
+        quadrant_threshold=4,
+        sparsity=10,
+        reconstruction_loss_scale=0,
+        num_batches=5000,
+    )
+    seq_sparse_test = dataclasses.replace(
+        base,
+        tag="sequential_test",
+        load_decoders_from_tag=sequential_decoder.tag,
+        load_encoders_from_tag=seq_sparse_encoder.tag,
+        num_batches=2000,
+    )
 
     seed_test1 = dataclasses.replace(
         base, tag="seedtest_1", n_models=1, num_batches=1000, seed=1
