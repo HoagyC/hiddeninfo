@@ -7,3 +7,4 @@ seaborn==0.12.0
 seaborn==0.12.0
 streamlit==1.13.0
 mypy==0.981
+transformers==4.24.0
