@@ -210,8 +210,18 @@ def main():
         tag="sequential_test",
         load_decoders_from_tag=sequential_decoder.tag,
         load_encoders_from_tag=sequential_encoder.tag,
-        num_batches=2000,
+        num_batches=10000,
     )
+    seq_sparse_decoder = dataclasses.replace(
+        base,
+        tag="seq_sparse_dec",
+        loss_quadrants="bin_sum",
+        quadrant_threshold=4,
+        sparsity=10,
+        give_full_info=True,
+        num_batches=10000,
+    )
+
     seq_sparse_encoder = dataclasses.replace(
         base,
         tag="seq_sparse_enc",
@@ -219,12 +229,12 @@ def main():
         quadrant_threshold=4,
         sparsity=10,
         reconstruction_loss_scale=0,
-        num_batches=5000,
+        num_batches=10000,
     )
     seq_sparse_test = dataclasses.replace(
         base,
         tag="sequential_test",
-        load_decoders_from_tag=sequential_decoder.tag,
+        load_decoders_from_tag=seq_sparse_decoder.tag,
         load_encoders_from_tag=seq_sparse_encoder.tag,
         num_batches=2000,
     )
@@ -268,7 +278,15 @@ def main():
     _display_experiments(sequential_encoder, sequential_decoder, sequential_test)
 
     st.header("Sequential sparse")
-    _display_experiments(seq_sparse_encoder, sequential_decoder, seq_sparse_test)
+    _display_experiments(seq_sparse_encoder, seq_sparse_decoder, seq_sparse_test)
+
+    st.header("E2E sparse")
+    _display_experiments(sparse_general, sparse_general_enc, sparse_general_dec)
+
+    st.header("seq and e2e sparse")
+    _display_experiments(
+        seq_sparse_test, seq_sparse_decoder, seq_sparse_encoder, sparse_general_dec
+    )
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
@@ -545,13 +563,6 @@ def _train(experiment: Experiment) -> TrainResult:
                 vector_input = vector
 
             latent_repr = encoder(vector_input)
-            if experiment.latent_masking:
-                latent_repr = latent_repr[: experiment.preferred_rep_size]
-                repr_mask = latent_use_mask_fn(latent_repr)
-                # TODO: Unused variable?
-                repr_use_loss = torch.mean(repr_mask)
-            else:
-                repr_use_loss = torch.Tensor(0)
 
             noise = torch.normal(
                 mean=0, std=experiment.latent_noise_std, size=latent_repr.shape
