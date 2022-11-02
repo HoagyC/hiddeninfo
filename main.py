@@ -210,6 +210,7 @@ def main():
         load_encoders_from_tag=seq_sparse_encoder.tag,
         num_batches=2000,
     )
+
     seq_sparse_encoder = dataclasses.replace(
         base,
         tag="seq_sparse_enc",
@@ -217,12 +218,12 @@ def main():
         quadrant_threshold=4,
         sparsity=10,
         reconstruction_loss_scale=0,
-        num_batches=5000,
+        num_batches=10000,
     )
     seq_sparse_test = dataclasses.replace(
         base,
         tag="sequential_test",
-        load_decoders_from_tag=sequential_decoder.tag,
+        load_decoders_from_tag=seq_sparse_decoder.tag,
         load_encoders_from_tag=seq_sparse_encoder.tag,
         num_batches=2000,
     )
@@ -605,13 +606,6 @@ def _train(experiment: Experiment) -> TrainResult:
                 vector_input = vector
 
             latent_repr = encoder(vector_input)
-            if experiment.latent_masking:
-                latent_repr = latent_repr[: experiment.preferred_rep_size]
-                repr_mask = latent_use_mask_fn(latent_repr)
-                # TODO: Unused variable?
-                repr_use_loss = torch.mean(repr_mask)
-            else:
-                repr_use_loss = torch.Tensor(0)
 
             noise = torch.normal(
                 mean=0, std=experiment.latent_noise_std, size=latent_repr.shape
