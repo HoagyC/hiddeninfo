@@ -9,11 +9,11 @@ import torch
 
 VECTOR_SIZE = 5
 HIDDEN_SIZE = 16
-LATENT_SIZE = 5
+LATENT_SIZE = 4
 N_HIDDEN_LAYERS = 0
-NUM_BATCHES = 20_000
+NUM_BATCHES = 100_000
 NUM_BATCHES_PER_PHASE = 1_000
-ADVERSARIAL_LOSS_COEFFICIENT = 1e-2
+ADVERSARIAL_LOSS_COEFFICIENT = 0.5
 
 
 @dataclasses.dataclass
@@ -41,9 +41,8 @@ def main():
     if not st.checkbox("Run?"):
         return
 
-    use_adversarial_loss = st.checkbox("Use adversarial loss?", True)
-
     st.header("Training")
+    use_adversarial_loss = st.checkbox("Use adversarial loss?", True)
     result = _train(use_adversarial_loss)
 
     st.header("Results")
@@ -103,7 +102,7 @@ def main():
     fig, ax = plt.subplots()
     inputs_latents_corr = np.array(
         [
-            [np.corrcoef(inputs[:, i], latents[:, j])[0, 1] for i in range(LATENT_SIZE)]
+            [np.corrcoef(inputs[:, i], latents[:, j])[0, 1] for i in range(VECTOR_SIZE)]
             for j in range(LATENT_SIZE)
         ]
     )
