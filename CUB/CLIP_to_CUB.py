@@ -39,7 +39,7 @@ class CLIP_CUB_Dataset(Dataset):
 def _make_data_dict() -> Dict:
     path_to_id_dict = dict() #map from full image path to image id
     id_to_path_dict = dict()
-    with open(CUB_PATH / "images.txt" 'r') as f:
+    with open(CUB_PATH / "images.txt", 'r') as f:
         for line in f:
             items = line.strip().split()
             path = join(data_path, items[1])
