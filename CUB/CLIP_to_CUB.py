@@ -14,6 +14,7 @@ HIDDEN_DIM = 1024
 N_EPOCHS = 500
 
 DATA_ADDR = Path("../out/CLIP_embeddings.pkl")
+CUB_PATH = Path("../CUB_200_2011")
 
 class CLIP_CUB_entry:
     ndx: int
@@ -38,7 +39,7 @@ class CLIP_CUB_Dataset(Dataset):
 def _make_data_dict() -> Dict:
     path_to_id_dict = dict() #map from full image path to image id
     id_to_path_dict = dict()
-    with open(data_path.replace('images', 'images.txt'), 'r') as f:
+    with open(CUB_PATH / "images.txt" 'r') as f:
         for line in f:
             items = line.strip().split()
             path = join(data_path, items[1])
@@ -47,13 +48,13 @@ def _make_data_dict() -> Dict:
             id_to_path_dict[ndx] = path
             
     is_train_test = dict() #map from image id to 0 / 1 (1 = train)
-    with open(join(cwd, data_dir + '/train_test_split.txt'), 'r') as f:
+    with open(CUB_PATH + 'train_test_split.txt', 'r') as f:
         for line in f:
             idx, is_train = line.strip().split()
             is_train_test[int(idx)] = int(is_train)
 
     id_to_class_dict = dict()
-    with open(join(cwd, data_dir + '/image_class_labels.txt'), 'r') as f:
+    with open(CUB_PATH + '/image_class_labels.txt', 'r') as f:
         for line in f:
             idx, class_label = line.strip().split()
             is_train_test[int(idx)] = int(class_label)
@@ -81,8 +82,8 @@ def _make_data_dict() -> Dict:
     return data
     
     
-def _train(dataloader):
-    f
+# def _train(dataloader):
+#     f
 
 def main():
     model = torch.nn.Sequential(
