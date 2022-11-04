@@ -42,7 +42,7 @@ def _make_data_dict() -> Dict:
     with open(CUB_PATH / "images.txt", 'r') as f:
         for line in f:
             items = line.strip().split()
-            path = join(data_path, items[1])
+            path = CUB_PATH / "images" / items[1]
             ndx = int(items[0])
             path_to_id_dict[path] = ndx
             id_to_path_dict[ndx] = path
