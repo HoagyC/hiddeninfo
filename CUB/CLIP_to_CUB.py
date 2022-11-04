@@ -73,8 +73,8 @@ def _make_data_dict() -> Dict:
             ndx = ndx,
             CLIP_embedding=item_embedding,
             is_train=is_train,
-            entry_class=item_class
-            image_path=item_path
+            entry_class=item_class,
+            image_path=item_path,
         )
         data.append = data_entry
 
@@ -96,7 +96,7 @@ def main():
     data = _make_data_dict()
     
     train_data = [d for d in data if d.is_train]
-    test_data = [d for d in data if not d.is_train]
+    test_data = [d for d in data if not d.is_train]     
     
     train_dataset = CLIP_CUB_Dataset(train_data)
     test_dataset = CLIP_CUB_Dataset(test_data)
