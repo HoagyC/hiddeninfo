@@ -54,7 +54,7 @@ def _make_data_dict() -> Dict:
             is_train_test[int(idx)] = int(is_train)
 
     id_to_class_dict = dict()
-    with open(CUB_PATH / '/image_class_labels.txt', 'r') as f:
+    with open(CUB_PATH / 'image_class_labels.txt', 'r') as f:
         for line in f:
             idx, class_label = line.strip().split()
             is_train_test[int(idx)] = int(class_label)
