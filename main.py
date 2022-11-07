@@ -296,8 +296,13 @@ def _run_experiments(*experiments_iterable: Experiment):
         else:
             train_result = _load_train_result(experiment.tag)
         train_results.append(train_result)
+        
         bar.progress((i + 1) / len(experiments))
+    
+    _plot_results(train_results)
 
+
+def _plot_results(train_results: List[TrainResult]) -> None:
     df = pd.DataFrame(
         dataclasses.asdict(result)
         for train_result in train_results
@@ -312,13 +317,14 @@ def _run_experiments(*experiments_iterable: Experiment):
     fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
     for loss_name, ax in zip(losses, axs):
         sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
-        sns.lineplot(
-            x=[0, max(df.step)],
-            y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
-            label="zero info loss",
-            linestyle="dashed",
-            ax=ax,
-        )
+        if "reconstruction" in loss_name:
+            sns.lineplot(
+                x=[0, max(df.step)],
+                y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
+                label="zero info loss",
+                linestyle="dashed",
+                ax=ax,
+            )
         ax.set_title(loss_name)
         ax.set_yscale("linear")
         ax.set_ylim(([0, 0.4]))
@@ -728,6 +734,16 @@ def _generate_vector_batch(
     ).float()
     return torch.concat([p1, p2], dim=1)
 
+def load_results(pkl_path: Path):
+    with open(pkl_path, "rb") as f:
+        results = pickle.load(f)
+    
+    _plot_results(results)
 
 if __name__ == "__main__":
-    main()
+    # main()
+    
+    st.header("Showing big batch of sparase results")
+    results_path = Path("out/multiresult.pkl")
+    load_results(results_path)
+    
