@@ -3,7 +3,10 @@ from pathlib import Path
 import pickle
 import streamlit as st
 
-from ..main import _run_experiments
+from classes import TrainResult, StepResult, Model, Loss
+from main import _run_experiments
+from experiments import Experiment
+
 
 base = Experiment(
     tag="base",
@@ -22,7 +25,9 @@ base = Experiment(
 
 results = []
 out_loc = Path("out/multi_seq_results.pkl")
-for quadrant_sparsity in range(1, 6):
+for quadrant_sparsity in range(4, 6):
+    with open(out_loc, "rb") as f:
+        results = pickle.load(f)
     st.header(f"running sparsity {quadrant_sparsity}")
     seq_sparse_decoder = dataclasses.replace(
         base,
