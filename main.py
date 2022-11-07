@@ -392,6 +392,31 @@ def _display_experiments(*experiments_iterable: Experiment) -> None:
     st.pyplot(fig)
 
 
+def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
+    train_results = _run_experiments(*experiments_iterable)
+    if not train_results:
+        return
+
+    # Compare results using the average p2 reconstruction loss of the last 10% of steps.
+    df = []
+    for train_result in train_results:
+        last_step = max(step_result.step for step_result in train_result.step_results)
+        reconstruction_loss_p2 = np.mean(
+            [
+                step_result.reconstruction_loss_p2
+                for step_result in train_result.step_results
+                if step_result.step >= last_step * 0.9
+            ]
+        )
+        df.append(
+            dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2)
+        )
+    df = pd.DataFrame(df)
+    fig, ax = plt.subplots()
+    sns.barplot(data=df, x="tag", y="reconstruction_loss_p2", ax=ax)
+    st.pyplot(fig)
+
+
 def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
     experiments: List[Experiment] = list(experiments_iterable)
     tags = [experiment.tag for experiment in experiments]
