@@ -17,11 +17,17 @@ import experiments as exps
 from experiments import Experiment, base
 
 from classes import Model, TrainResult, StepResult, Loss
-from utils import _get_train_result_path, _load_train_result, _save_train_result, _get_average_loss
+from utils import (
+    _get_train_result_path,
+    _load_train_result,
+    _save_train_result,
+    _get_average_loss,
+)
 from train import _train
 
 # With binary data and zero info, ideal prediction is always 0.5
 ZERO_INFO_LOSS = 0.5**2
+
 
 def main():
     st.title("Hidden info")
@@ -320,8 +326,8 @@ def _display_experiments(*experiments_iterable: Experiment) -> None:
         return
 
     _plot_results(train_results)
-    
-    
+
+
 def _plot_results(train_results: List[TrainResult]) -> None:
     df = pd.DataFrame(
         dataclasses.asdict(result)
@@ -405,14 +411,13 @@ def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
 def load_results(pkl_path: Path):
     with open(pkl_path, "rb") as f:
         results = pickle.load(f)
-    
+
     _plot_results(results)
+
 
 if __name__ == "__main__":
     main()
-    
+
     # st.header("Showing big batch of sparase results")
     # results_path = Path("out/multiresult.pkl")
     # load_results(results_path)
-
-        

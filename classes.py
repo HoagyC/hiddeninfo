@@ -3,6 +3,7 @@ from typing import List, Optional
 
 import torch
 
+
 @dataclasses.dataclass
 class Experiment:
     tag: str
@@ -47,7 +48,6 @@ class Experiment:
     latent_masking_incentive: float = 0.1
 
 
-
 @dataclasses.dataclass
 class Model:
     encoder: torch.nn.Module
@@ -74,7 +74,7 @@ class StepResult:
     # The reconstruction losses for the first & second halves of the vector.
     reconstruction_loss_p1: float
     reconstruction_loss_p2: float
-    
+
     # Optional for backwards compatibility
     encoder_ndx: Optional[int] = None
     decoder_ndx: Optional[int] = None
