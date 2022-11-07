@@ -1,5 +1,5 @@
 import dataclasses
-from typing import List
+from typing import List, Optional
 
 import torch
 
@@ -30,6 +30,10 @@ class StepResult:
     # The reconstruction losses for the first & second halves of the vector.
     reconstruction_loss_p1: float
     reconstruction_loss_p2: float
+    
+    # Optional for backwards compatibility
+    encoder_ndx: Optional[int] = None
+    decoder_ndx: Optional[int] = None
 
 
 @dataclasses.dataclass

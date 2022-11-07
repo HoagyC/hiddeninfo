@@ -33,7 +33,7 @@ def main():
         n_models=8,
         activation_fn="sigmoid",
         use_class=False,
-        num_batches=30_000,
+        num_batches=2_000,
         latent_size=10,
         hidden_size=80,
         n_hidden_layers=1,
@@ -171,6 +171,46 @@ def main():
         shuffle_decoders=True,
     )
 
+    sequential_encoder = dataclasses.replace(
+        base, tag="sequential_enc", reconstruction_loss_scale=0, num_batches=5000
+    )
+    sequential_decoder = dataclasses.replace(
+        base, tag="sequential_dec", give_full_info=True, num_batches=5000
+    )
+    sequential_test = dataclasses.replace(
+        base,
+        tag="sequential_test",
+        load_decoders_from_tag=sequential_decoder.tag,
+        load_encoders_from_tag=sequential_encoder.tag,
+        num_batches=10000,
+    )
+    seq_sparse_decoder = dataclasses.replace(
+        base,
+        tag="seq_sparse_dec",
+        loss_quadrants="bin_sum",
+        quadrant_threshold=4,
+        sparsity=10,
+        give_full_info=True,
+        num_batches=10000,
+    )
+
+    seq_sparse_encoder = dataclasses.replace(
+        base,
+        tag="seq_sparse_enc",
+        loss_quadrants="bin_sum",
+        quadrant_threshold=4,
+        sparsity=10,
+        reconstruction_loss_scale=0,
+        num_batches=10000,
+    )
+    seq_sparse_test = dataclasses.replace(
+        base,
+        tag="sequential_test",
+        load_decoders_from_tag=seq_sparse_decoder.tag,
+        load_encoders_from_tag=seq_sparse_encoder.tag,
+        num_batches=2000,
+    )
+
     seed_test1 = dataclasses.replace(
         base, tag="seedtest_1", n_models=1, num_batches=1000, seed=1
     )
@@ -189,7 +229,7 @@ def main():
     # )
 
     st.header("Binary sum quads")
-    _run_experiments(
+    _display_experiments(
         bin_sum_quads_5,
         bin_sum_quads_5_enc,
         bin_sum_quads_7,
@@ -201,42 +241,56 @@ def main():
     )
 
     st.header("Baseline")
-    _run_experiments(base)
+    _display_experiments(base)
 
     st.header("Regularisation strategies")
-    _run_experiments(l1, l2)
+    _display_experiments(l1, l2)
+
+    st.header("Sequential")
+    _display_experiments(sequential_encoder, sequential_decoder, sequential_test)
+
+    st.header("Sequential sparse")
+    _display_experiments(seq_sparse_encoder, seq_sparse_decoder, seq_sparse_test)
+
+    st.header("E2E sparse")
+    _display_experiments(sparse_general, sparse_general_enc, sparse_general_dec)
+
+    st.header("seq and e2e sparse")
+    _display_experiments(
+        seq_sparse_test, seq_sparse_decoder, seq_sparse_encoder, sparse_general_dec
+    )
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
-    _run_experiments(dropout)
+    _display_experiments(dropout)
 
     st.header("Noise strategy")
-    _run_experiments(noisy)
+    _display_experiments(noisy)
 
     st.header("Testing alternate target latents")
-    _run_experiments(diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec)
-    _run_experiments(rand_lin_base, rand_lin_retrain_enc)
+    _display_experiments(diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec)
+    _display_experiments(rand_lin_base, rand_lin_retrain_enc)
 
     st.header("Increasing sparsity")
     sparsity_exps = exps.make_sparse_exps()
-    _run_experiments(*sparsity_exps)
+    _display_experiments(*sparsity_exps)
 
     st.header("Random permutations")
-    _run_experiments(perms)
+    _display_experiments(perms)
 
     st.header("Retrain decoders + random permutations")
-    _run_experiments(base, retrain_dec)
+    _display_experiments(base, retrain_dec)
 
     st.header("Just retrain encoders")
-    _run_experiments(retrain_enc_with_repr)
+    _display_experiments(retrain_enc_with_repr)
 
     st.header("Retrain encoders + random permutations + sparsity")
-    _run_experiments(
+    _display_experiments(
         base, retrain_enc_with_repr, retrain_dec, sparse_general_dec, sparse_general_enc
     )
 
     st.header("All strategies")
-    _run_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
+    _display_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
 
     st.header("Experimenting with different numbers of models")
     for n_models in [2, 4, 8, 16]:
@@ -250,18 +304,18 @@ def main():
                 exp.load_decoders_from_tag += suffix
             if exp.load_encoders_from_tag is not None:
                 exp.load_encoders_from_tag += suffix
-        _run_experiments(*experiments)
+        _display_experiments(*experiments)
 
     st.header("Test setting seed")
-    _run_experiments(seed_test1, seed_test2)
+    _display_experiments(seed_test1, seed_test2)
 
     st.header("Tuning number of models")
     n_models_options = [2, 4, 8]
     tuning_n_models_base = dataclasses.replace(
         base, tag="tuning_n_models_base", n_models=max(n_models_options)
     )
-    _run_experiments(tuning_n_models_base)
-    _run_experiments(
+    _display_experiments(tuning_n_models_base)
+    _display_experiments(
         *(
             dataclasses.replace(
                 tuning_n_models_base,
@@ -276,29 +330,10 @@ def main():
     )
 
 
-def _run_experiments(*experiments_iterable: Experiment):
-    experiments: List[Experiment] = list(experiments_iterable)
-    tags = [experiment.tag for experiment in experiments]
-    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
-    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+def _display_experiments(*experiments_iterable: Experiment) -> None:
+    train_results = _run_experiments(*experiments_iterable)
+    if not train_results:
         return
-    force_retrain_models = st.checkbox(
-        "Force retrain models?", value=False, key=str((tags, "retrain"))
-    )
-    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
-
-    bar = st.progress(0.0)
-    train_results: List[TrainResult] = []
-    for i, experiment in enumerate(experiments):
-        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
-            train_result = _train(experiment=experiment)
-            _save_train_result(train_result)
-        else:
-            train_result = _load_train_result(experiment.tag)
-        train_results.append(train_result)
-        
-        bar.progress((i + 1) / len(experiments))
-    
     _plot_results(train_results)
 
 
@@ -333,15 +368,53 @@ def _plot_results(train_results: List[TrainResult]) -> None:
     st.pyplot(fig)
 
 
-### List of interventions
-# Freezing
-# Training end-to-end
-# Dropout
-#
+def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
+    train_results = _run_experiments(*experiments_iterable)
+    if not train_results:
+        return
 
-## Things to vary
-# Dimensions of hidden variation
-# Number of models used in multi-model scenarios
+    # Compare results using the average p2 reconstruction loss of the last 10% of steps.
+    df = []
+    for train_result in train_results:
+        last_step = max(step_result.step for step_result in train_result.step_results)
+        reconstruction_loss_p2 = np.mean(
+            [
+                step_result.reconstruction_loss_p2
+                for step_result in train_result.step_results
+                if step_result.step >= last_step * 0.9
+            ]
+        )
+        df.append(
+            dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2)
+        )
+    df = pd.DataFrame(df)
+    fig, ax = plt.subplots()
+    sns.barplot(data=df, x="tag", y="reconstruction_loss_p2", ax=ax)
+    st.pyplot(fig)
+
+
+def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
+    experiments: List[Experiment] = list(experiments_iterable)
+    tags = [experiment.tag for experiment in experiments]
+    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
+    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+        return []
+    force_retrain_models = st.checkbox(
+        "Force retrain models?", value=False, key=str((tags, "retrain"))
+    )
+    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
+
+    bar = st.progress(0.0)
+    train_results: List[TrainResult] = []
+    for i, experiment in enumerate(experiments):
+        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
+            train_result = _train(experiment=experiment)
+            _save_train_result(train_result)
+        else:
+            train_result = _load_train_result(experiment.tag)
+        train_results.append(train_result)
+        bar.progress((i + 1) / len(experiments))
+    return train_results
 
 
 def _train(experiment: Experiment) -> TrainResult:
@@ -393,14 +466,14 @@ def _train(experiment: Experiment) -> TrainResult:
             for model in models
         ]
 
-    optimizer = torch.optim.Adam(list(itertools.chain.from_iterable(all_params)))
+    optimizer = torch.optim.Adam(
+        list(itertools.chain.from_iterable(all_params)), lr=experiment.learning_rate
+    )
 
     reconstruction_loss_fn: Callable  # I thought this was PYTHON
     representation_loss_fn: Callable
     target_latent_fn: Callable
     repr_loss_mask_fn: Callable
-
-    latent_use_mask_fn = torch.nn.Sigmoid()
 
     if experiment.loss_quadrants == "all":
         repr_loss_mask_fn = lambda x: torch.ones(x.shape[0])
@@ -417,7 +490,6 @@ def _train(experiment: Experiment) -> TrainResult:
         raise ValueError(
             f"Loss quadrant must be 'all', 'bin_sum' or 'bin_val', got {experiment.loss_quadrants}."
         )
-    print(f"repr_loss_scale = {repr_loss_scale}")
 
     if experiment.use_class:
         reconstruction_loss_fn = torch.nn.CrossEntropyLoss()
@@ -425,12 +497,15 @@ def _train(experiment: Experiment) -> TrainResult:
         reconstruction_loss_fn = torch.nn.MSELoss()
 
     if experiment.sparsity == 1:
+        sparsity_fn = lambda x: x
         representation_loss_fn = _make_mse_loss_fn(
             repr_loss_mask_fn, target_repr_dim=experiment.preferred_rep_size
         )
     else:
+        repr_sparsity_p = 1 - (1 / experiment.sparsity)
+        sparsity_fn = torch.nn.Dropout(p=repr_sparsity_p)
         representation_loss_fn = _make_sparse_loss_fn(
-            sparsity=experiment.sparsity,
+            sparsity_fn=sparsity_fn,
             mask_fn=repr_loss_mask_fn,
             target_repr_dim=experiment.preferred_rep_size,
         )
@@ -452,18 +527,19 @@ def _train(experiment: Experiment) -> TrainResult:
 
     bar = st.progress(0.0)
     step_results = []
-    encoder_to_decoder_idx = list(range(len(models)))
+    encoder_to_decoder_ndx = list(range(len(models)))
     for step in range(experiment.num_batches):
+        # TODO: Delete this if?
         if experiment.dropout_prob is not None and step == 9000:
             pass
-        losses = []
         if experiment.shuffle_decoders:
-            random.shuffle(encoder_to_decoder_idx)
+            random.shuffle(encoder_to_decoder_ndx)
 
-        for encoder_idx in range(len(models)):
+        for encoder_ndx in range(len(models)):
             optimizer.zero_grad()
-            encoder = models[encoder_idx].encoder
-            decoder = models[encoder_to_decoder_idx[encoder_idx]].decoder
+            decoder_ndx = encoder_to_decoder_ndx[encoder_ndx]
+            encoder = models[encoder_ndx].encoder
+            decoder = models[decoder_ndx].decoder
 
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
@@ -488,17 +564,16 @@ def _train(experiment: Experiment) -> TrainResult:
                 vector_input = vector
 
             latent_repr = encoder(vector_input)
-            if experiment.latent_masking:
-                latent_repr = latent_repr[: experiment.preferred_rep_size]
-                repr_mask = latent_use_mask_fn(latent_repr)
-                repr_use_loss = torch.mean(repr_mask)
-            else:
-                repr_use_loss = torch.Tensor(0)
 
             noise = torch.normal(
                 mean=0, std=experiment.latent_noise_std, size=latent_repr.shape
             )
-            vector_reconstructed = decoder(latent_repr + noise)
+            target_latent = target_latent_fn(vector_input)
+            if experiment.give_full_info:
+                decoder_input = target_latent
+            else:
+                decoder_input = latent_repr + noise
+            vector_reconstructed = decoder(decoder_input)
             if experiment.use_class:
                 vector_reconstructed = vector_reconstructed.reshape(
                     experiment.batch_size, 2, experiment.vector_size
@@ -507,16 +582,26 @@ def _train(experiment: Experiment) -> TrainResult:
             else:
                 vector_target = vector
 
-            reconstruction_loss = reconstruction_loss_fn(
-                vector_reconstructed, vector_target
-            )
+            if experiment.give_full_info:
+                sparsity_fn = torch.nn.Dropout(p=repr_sparsity_p)
+                loss_fn = torch.nn.MSELoss(reduction="none")
+                losses = sparsity_fn(loss_fn(vector_reconstructed, vector_target))
+                mask = repr_loss_mask_fn(target_latent)
+                masked_losses = (losses.T * mask).T
+                reconstruction_loss = torch.mean(masked_losses) * repr_loss_scale
+
+            else:
+                reconstruction_loss = reconstruction_loss_fn(
+                    vector_reconstructed, vector_target
+                )
             representation_loss = representation_loss_fn(
-                vector[:, : experiment.preferred_rep_size],
-                target_latent_fn(latent_repr),
+                _input=latent_repr,
+                target=target_latent_fn(vector),
             )
             # Scaling here to compensate for quadrant sparsity
+            # TODO: Should we roll this into `experiment.representation_loss`?
             representation_loss *= repr_loss_scale
-            loss = reconstruction_loss
+            loss = reconstruction_loss * experiment.reconstruction_loss_scale
             if experiment.representation_loss is not None:
                 loss += experiment.representation_loss * representation_loss
             if experiment.l1_loss is not None:
@@ -550,46 +635,24 @@ def _train(experiment: Experiment) -> TrainResult:
                     vector_reconstructed[:, experiment.preferred_rep_size :],
                     vector[:, experiment.preferred_rep_size :],
                 )
-            losses.append(
-                Loss(
-                    loss.item(),
-                    reconstruction_loss.item(),
-                    representation_loss.item(),
-                    reconstruction_loss_p1.item(),
-                    reconstruction_loss_p2.item(),
+            if step % 100 == 0:
+                step_results.append(
+                    StepResult(
+                        tag=experiment.tag,
+                        step=step,
+                        encoder_ndx=encoder_ndx,
+                        decoder_ndx=decoder_ndx,
+                        total_loss=loss.item(),
+                        reconstruction_loss=reconstruction_loss.item(),
+                        representation_loss=representation_loss.item(),
+                        reconstruction_loss_p1=reconstruction_loss_p1.item(),
+                        reconstruction_loss_p2=reconstruction_loss_p2.item(),
+                    )
                 )
-            )
 
-        average_loss = _get_average_loss(losses)
-
-        if step % 100 == 0:
-            step_results.append(
-                StepResult(
-                    tag=experiment.tag,
-                    step=step,
-                    total_loss=average_loss.total_loss,
-                    reconstruction_loss=average_loss.reconstruction_loss,
-                    representation_loss=average_loss.representation_loss,
-                    reconstruction_loss_p1=average_loss.reconstruction_loss_p1,
-                    reconstruction_loss_p2=average_loss.reconstruction_loss_p2,
-                )
-            )
-        if step % 1000 == 0:
-            print(vector[0], vector_input[0], latent_repr[0], vector_reconstructed[0])
-            print(step)
         bar.progress((step + 1) / experiment.num_batches)
 
     return TrainResult(experiment.tag, models, step_results)
-
-
-def _get_final_result(results: List[StepResult]) -> float:
-    assert len(results) >= 200
-    if len(results) >= 2000:
-        mean_p2_loss = np.mean([r.reconstruction_loss_p2 for r in results[-1000:]])
-    else:
-        mean_p2_loss = np.mean([r.reconstruction_loss_p2 for r in results[-100:]])
-
-    return float(mean_p2_loss)
 
 
 def _create_encoder(
@@ -615,11 +678,33 @@ def _create_encoder(
     return torch.nn.Sequential(*layers)
 
 
+def _create_decoder(
+    latent_size: int,
+    hidden_size: int,
+    vector_size: int,
+    use_class: bool,
+    n_hidden_layers: int,
+    activation_fn: str,
+    dropout_prob: Optional[float],
+) -> torch.nn.Module:
+    if use_class:
+        output_size = vector_size * 2
+    else:
+        output_size = vector_size
+    layers: List[torch.nn.Module] = []
+    if dropout_prob is not None:
+        layers.append(torch.nn.Dropout(p=dropout_prob))
+    layers.append(torch.nn.Linear(latent_size, hidden_size))
+    for _ in range(n_hidden_layers):
+        layers.append(torch.nn.Linear(hidden_size, hidden_size))
+        layers.append(_get_activation_fn(activation_fn))
+    layers.append(torch.nn.Linear(hidden_size, output_size))
+    return torch.nn.Sequential(*layers)
+
+
 def _make_sparse_loss_fn(
-    sparsity: int, mask_fn: Callable, target_repr_dim: int
+    sparsity_fn: Callable, mask_fn: Callable, target_repr_dim: int
 ) -> Callable:
-    repr_sparsity_p = 1 - (1 / sparsity)
-    sparsity_fn = torch.nn.Dropout(p=repr_sparsity_p)
     loss_fn = torch.nn.MSELoss(reduction="none")
 
     def sparse_repr_loss_fn(_input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -647,6 +732,7 @@ def _make_diagonal_repr_fn(rep_size: int) -> Callable:
     def diagonal_repr_target(_input: torch.Tensor) -> torch.Tensor:
         assert rep_size + 1 <= _input.shape[1]
         dir_1 = _input[:, :rep_size]
+        # TODO: Wrap this so that we don't use N+1 variables?
         dir_2 = _input[:, 1 : rep_size + 1]
         repr_target = (dir_1 + dir_2) / np.sqrt(2)
         return repr_target
@@ -687,30 +773,6 @@ def _make_bin_val_repr_mask(threshold: int) -> Callable:
     return bin_val_repr_mask
 
 
-def _create_decoder(
-    latent_size: int,
-    hidden_size: int,
-    vector_size: int,
-    use_class: bool,
-    n_hidden_layers: int,
-    activation_fn: str,
-    dropout_prob: Optional[float],
-) -> torch.nn.Module:
-    if use_class:
-        output_size = vector_size * 2
-    else:
-        output_size = vector_size
-    layers: List[torch.nn.Module] = []
-    if dropout_prob is not None:
-        layers.append(torch.nn.Dropout(p=dropout_prob))
-    layers.append(torch.nn.Linear(latent_size, hidden_size))
-    for _ in range(n_hidden_layers):
-        layers.append(torch.nn.Linear(hidden_size, hidden_size))
-        layers.append(_get_activation_fn(activation_fn))
-    layers.append(torch.nn.Linear(hidden_size, output_size))
-    return torch.nn.Sequential(*layers)
-
-
 def _get_activation_fn(name: str) -> torch.nn.Module:
     if name == "relu":
         return torch.nn.ReLU()
@@ -741,9 +803,9 @@ def load_results(pkl_path: Path):
     _plot_results(results)
 
 if __name__ == "__main__":
-    # main()
+    main()
     
-    st.header("Showing big batch of sparase results")
-    results_path = Path("out/multiresult.pkl")
-    load_results(results_path)
+    # st.header("Showing big batch of sparase results")
+    # results_path = Path("out/multiresult.pkl")
+    # load_results(results_path)
     
