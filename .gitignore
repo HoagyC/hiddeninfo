@@ -3,6 +3,7 @@
 out
 __pycache__/
 .vscode
+.gitconfig
 images
 papers
 
