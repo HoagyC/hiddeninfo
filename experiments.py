@@ -64,6 +64,21 @@ fuzzed = Experiment(
     has_missing_knowledge=True,
 )
 
+base = Experiment(
+    tag="base",
+    n_models=8,
+    activation_fn="sigmoid",
+    use_class=False,
+    num_batches=2_000,
+    latent_size=10,
+    hidden_size=80,
+    n_hidden_layers=1,
+    # Ideally, we want the representation loss to be as high as possible, conditioned on the
+    # autoencoders still exhibiting the "hidden info" behaviour.
+    # TODO: Experiment with making this number larger.
+    representation_loss=1,
+)
+
 dropout = Experiment(tag="dropout", dropout_prob=0.3)
 
 freeze2 = Experiment(tag="freeze_2", shuffle_decoders=True, n_models=2)
