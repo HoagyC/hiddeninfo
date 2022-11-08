@@ -217,6 +217,14 @@ def main():
     #     shuffle_decoders=True,
     #     representation_loss=0,
     # )
+    st.header("Multiprocessing test")
+    multiproc_test = dataclasses.replace(
+        base, tag="multitest", use_multiprocess=True, n_models=4, num_batches=1000
+    )
+    multiproc_comp = dataclasses.replace(
+        multiproc_test, tag="multicomp", use_multiprocess=False
+    )
+    _display_experiments(multiproc_test, multiproc_comp)
 
     st.header("Binary sum quads")
     _display_experiments(

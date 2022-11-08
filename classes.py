@@ -36,6 +36,7 @@ class Experiment:
     load_decoders_from_tag: Optional[str] = None
     give_full_info: bool = False
     learning_rate: float = 1e-03
+    use_multiprocess: bool = False
 
     # Representation loss options
     loss_geometry: str = "simple"

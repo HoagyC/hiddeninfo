@@ -1,17 +1,20 @@
-import random
-from typing import List, Optional, Callable
+import dataclasses
 import itertools
 import math
+import multiprocessing as mp
 import numpy as np
+import random
 import streamlit as st
 import torch
+from typing import List, Optional, Callable, Dict
 
 from classes import TrainResult, StepResult, Model, Loss
 from experiments import Experiment
-
 from utils import _load_train_result, _save_train_result
 
 BINARY_COEFS_10 = [math.comb(10, x) for x in range(11)]
+NUM_PROCESSES = 4
+
 
 def _train(experiment: Experiment) -> TrainResult:
     if experiment.seed is not None:
@@ -51,6 +54,48 @@ def _train(experiment: Experiment) -> TrainResult:
         )
         for ndx in range(experiment.n_models)
     ]
+
+    if (
+        experiment.n_models > 1
+        and not experiment.shuffle_decoders
+        and experiment.use_multiprocess
+    ):
+        result = _run_separate_models(experiment, models)
+    else:
+        result = _run_models(experiment, models)
+
+    return result
+
+
+def _combine_results(results=List[TrainResult]) -> TrainResult:
+    models = [r.models for r in results]
+    tag = results[0].tag
+    step_results = []
+    for ndx, r in enumerate(results):
+        step_results += [
+            dataclasses.replace(sr, encoder_ndx=ndx, decoder_ndx=ndx)
+            for sr in r.step_results
+        ]
+
+    return TrainResult(tag=tag, models=models, step_results=step_results)
+
+
+def _run_separate_models(experiment: Experiment, models: List[Model]):
+    args_iter = [{"experiment": experiment, "models": [model]} for model in models]
+    results = []
+    with mp.Pool(NUM_PROCESSES) as pool:
+        results_iter = pool.imap_unordered(_run_models_helper, args_iter)
+        for r in results_iter:
+            results.append(r)
+    result = _combine_results(results)
+    return result
+
+
+def _run_models_helper(args: Dict) -> TrainResult:
+    return _run_models(**args)
+
+
+def _run_models(experiment: Experiment, models: List[Model]) -> TrainResult:
 
     if experiment.load_decoders_from_tag is not None:
         all_params = [[*model.encoder.parameters()] for model in models]
@@ -92,7 +137,6 @@ def _train(experiment: Experiment) -> TrainResult:
     else:
         reconstruction_loss_fn = torch.nn.MSELoss()
 
-        
     repr_sparsity_p = 1 - (1 / experiment.sparsity)
     if experiment.sparsity == 1:
         sparsity_fn = lambda x: x

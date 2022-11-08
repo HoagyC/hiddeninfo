@@ -7,6 +7,11 @@ STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
 MYPY=$(ENV)/bin/mypy
 PYTHON_FILES=main.py experiments.py pages/adversarial.py
+# codalab address for downloading the main CUB dataset
+CODAENV=.codaenv
+CODA_PIP=$(CODAENV)/bin/pip
+CODALAB=$(CODAENV)/bin/cl
+CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
@@ -26,20 +31,18 @@ clean:
 
 # TODO: Replace this with proper make dependencies.
 .PHONY: install
-install:
-	apt install python3.8-venv
-	python3.8 -m venv $(ENV)
-	$(PIP) install --upgrade pip
+install:.
+	python -m venv $(ENV)
 	$(PIP) install -r $(REQUIREMENTS)
 
 .PHONY: cub
 cub:
 	# codalab doesn't work with >python3.6 due to pypi dataclasses issue
 	python3.6 -m venv $(CODAENV)
-	$(CODA_PIP) install --upgrade pip
-	$(CODA_PIP) install codalab
+	$(CODAPIP) install --upgrade pip
+	$(CODAPIP) install codalab
 	$(CODALAB) download $(CUB_HASH)
-	$(PYTHON) data_processing.py
+	$(PYTHON) CUB_200_2011/data_processing.py
 
 	$(PIP) install --upgrade pip
 	$(PIP) install torch==1.12.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html
