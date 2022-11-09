@@ -1,3 +1,0 @@
-Namespace(attr_loss_weight=1.0, batch_size=64, bottleneck=False, ckpt='', connect_CY=False, data_dir='ConceptModel1__PredConcepts', dataset='cub', end2end=False, epochs=1000, exp='Sequential_CtoY', expand_dim=0, freeze=False, image_dir='images', log_dir='SequentialModel_WithVal__Seed1/outputs/', lr=0.001, n_attributes=112, n_class_attr=2, no_img=True, normalize_loss=False, optimizer='sgd', pretrained=True, resampling=False, save_step=1000, scheduler_step=1000, seed=1, three_class=False, uncertain_labels=False, use_attr=True, use_aux=True, use_relu=False, use_sigmoid=False, weight_decay=4e-05, weighted_loss='')
-None
-train data path: /root/hiddeninfo/ConceptModel1__PredConcepts/train.pkl
