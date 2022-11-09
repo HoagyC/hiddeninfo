@@ -1,0 +1,1 @@
+python CUB/train_CUB.py cub Concept_XtoC --seed 1 -ckpt 1 -log_dir out -e 1000 -optimizer sgd -pretrained -use_aux -use_attr -data_dir CUB_processed -n_attributes 112 -normalize_loss -b 64 -weight_decay 0.00004 -lr 0.01 -scheduler_step 1000

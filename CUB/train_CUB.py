@@ -95,7 +95,7 @@ def run_epoch(
             attr_labels, attr_labels_var = None, None
         else:
             inputs, labels, attr_labels = data
-            if sn_attributes > 1:
+            if args.n_attributes > 1:
                 attr_labels = [i.long() for i in attr_labels]
                 attr_labels = torch.stack(attr_labels).t()  # .float() #N x 312
             else:
@@ -119,6 +119,9 @@ def run_epoch(
             if (
                 not args.bottleneck
             ):  # loss main is for the main task label (always the first output)
+                print(
+                    len(labels_var), len(outputs), labels_var[0].shape, outputs[0].shape
+                )
                 loss_main = 1.0 * criterion(outputs[0], labels_var) + 0.4 * criterion(
                     aux_outputs[0], labels_var
                 )
@@ -246,18 +249,19 @@ def run_multimodel_epoch(
         labels = labels.cuda() if torch.cuda.is_available() else labels
 
         concepts = pre_model(inputs)
-        concepts_t = torch.cat(classes, dim=1)
-        labels = post_model(concepts_t)
+        concepts_t = torch.cat(concepts, dim=1)
+        output_labels = post_model(concepts_t)
 
         losses = []
         # Loss main is for the main task label (always the first output)
-        loss_main = 1.0 * criterion(labels[0], labels)
+        print(labels.shape, output_labels.shape)
+        loss_main = 1.0 * criterion(output_labels[0], labels)
         losses.append(loss_main)
 
         # Adding losses separately for the different classes
         for i in range(len(attr_criterion)):
             value = concepts[i].squeeze().type(torch.cuda.FloatTensor)
-            target = attr_labels_var[:, i]
+            target = attr_labels[:, i]
             attr_loss = attr_criterion[i](value, target)
             losses.append(args.attr_loss_weight * attr_loss)
 
@@ -724,6 +728,8 @@ def parse_arguments(experiment):
         action="store_true",
         help="Whether to use concepts as auxiliary features (in multitasking) to predict Y",
     )
+
+    parser.add_argument("--multimodel", default=False)
     args = parser.parse_args()
     args.three_class = args.n_class_attr == 3
     return (args,)
@@ -775,4 +781,8 @@ class Experiment:
 if __name__ == "__main__":
     args = Experiment()
 
-    train_multimodel(args)
+    # train_multimodel(args)
+
+    args = parse_arguments(None)[0]
+    print(args)
+    train_X_to_C(args)
