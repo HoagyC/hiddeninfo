@@ -199,7 +199,7 @@ def run_epoch(
 
 
 def run_multimodel_epoch(
-    models,
+    model,
     optimizer,
     loader,
     loss_meter,
@@ -209,22 +209,21 @@ def run_multimodel_epoch(
     args,
     is_training,
 ):
-    pre_models, post_models = models
 
     if is_training:
-        [model.train() for model in pre_models + post_models]
+        model.train()
     else:
-        [model.eval() for model in pre_models + post_models]
+        model.eval()
 
     for _, data in enumerate(loader):
-        pre_model_ndx = random.randint(0, len(pre_models) - 1)
+        pre_model_ndx = random.randint(0, len(model.pre_models) - 1)
         if args.shuffle_post_models:
-            post_model_ndx = random.randint(0, len(pre_models) - 1)
+            post_model_ndx = random.randint(0, len(model.pre_models) - 1)
         else:
             post_model_ndx = pre_model_ndx
 
-        pre_model = pre_models[pre_model_ndx]
-        post_model = post_models[post_model_ndx]
+        pre_model = model.pre_models[pre_model_ndx]
+        post_model = model.post_models[post_model_ndx]
 
         if attr_criterion is None:
             inputs, labels = data
@@ -246,24 +245,24 @@ def run_multimodel_epoch(
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
 
-        classes = pre_model(inputs)
-        classes_t = torch.cat(classes, dim=1)
-        output_labels = post_model(classes_t)
+        concepts = pre_model(inputs)
+        concepts_t = torch.cat(classes, dim=1)
+        labels = post_model(concepts_t)
 
         losses = []
         # Loss main is for the main task label (always the first output)
-        loss_main = 1.0 * criterion(outputs[0], labels)
+        loss_main = 1.0 * criterion(labels[0], labels)
         losses.append(loss_main)
 
         # Adding losses separately for the different classes
         for i in range(len(attr_criterion)):
-            value = classes[i].squeeze().type(torch.cuda.FloatTensor)
+            value = concepts[i].squeeze().type(torch.cuda.FloatTensor)
             target = attr_labels_var[:, i]
             attr_loss = attr_criterion[i](value, target)
             losses.append(args.attr_loss_weight * attr_loss)
 
         # Calculating attribute accuracy
-        sigmoid_outputs = torch.nn.Sigmoid()(classes_t)
+        sigmoid_outputs = torch.nn.Sigmoid()(concepts_t)
         acc = binary_accuracy(sigmoid_outputs, attr_labels)
         acc_meter.update(acc.data.cpu().numpy(), inputs.size(0))
 
@@ -393,6 +392,7 @@ def train(model, args, split_models=False):
                 train_loss_meter,
                 train_acc_meter,
                 criterion,
+                attr_criterion,
                 args,
                 is_training=True,
             )
@@ -733,9 +733,10 @@ def parse_arguments(experiment):
 class Experiment:
     dataset = "CUB"
     exp = "multimodel"
+    multimodel = True
     seed = 0
     log_dir = "out"
-    data_dir = "CUB_200_2011"
+    data_dir = "CUB_processed"
     image_dir = "images"
     end2end = True
     optimizer = "SGD"
@@ -758,8 +759,9 @@ class Experiment:
     attr_loss_weight = 1.0
     no_img = False
     bottleneck = True
-    weighted_loss = True
+    weighted_loss = False
     uncertain_labels = True
+    shuffle_post_models = False
     n_models = 2
     n_attributes = N_ATTRIBUTES
     num_classes = N_CLASSES

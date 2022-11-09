@@ -47,5 +47,5 @@ cub:
 	$(PYTHON) data_processing.py
 
 	$(PIP) install --upgrade pip
-	$(PIP) install torch==1.12.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html
-	$(PIP) install torchvision scipy
+	$(PIP) install torch==1.13.0+cu113 -f https://download.pytorch.org/whl/torch_stable.html
+	$(PIP) install torchvision scipy scikit-learn

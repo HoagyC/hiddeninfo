@@ -13,7 +13,7 @@ class Multimodel(nn.Module):
             ModelXtoC(
                 pretrained=args.pretrained,
                 freeze=args.freeze,
-                num_classes=N_CLASSES,
+                num_classes=args.num_classes,
                 use_aux=args.use_aux,
                 n_attributes=args.n_attributes,
                 expand_dim=args.expand_dim,
@@ -27,13 +27,13 @@ class Multimodel(nn.Module):
             ModelOracleCtoY(
                 n_class_attr=args.n_class_attr,
                 n_attributes=args.n_attributes,
-                num_classes=N_CLASSES,
+                num_classes=args.num_classes,
                 expand_dim=args.expand_dim,
             )
             for _ in range(args.n_models)
         ]
-        
-        self.post_models=nn.ModuleList(post_models_list)
+
+        self.post_models = nn.ModuleList(post_models_list)
 
 
 # Independent & Sequential Model
