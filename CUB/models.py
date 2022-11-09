@@ -1,8 +1,39 @@
 """
 Taken from yewsiang/ConceptBottlenecks
 """
+from torch import nn
 
 from CUB.template_model import MLP, inception_v3, End2EndModel
+
+
+class Multimodel(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        pre_models_list = [
+            ModelXtoC(
+                pretrained=args.pretrained,
+                freeze=args.freeze,
+                num_classes=N_CLASSES,
+                use_aux=args.use_aux,
+                n_attributes=args.n_attributes,
+                expand_dim=args.expand_dim,
+                three_class=args.three_class,
+            )
+            for _ in range(args.n_models)
+        ]
+        self.pre_models = nn.ModuleList(pre_models_list)
+
+        post_models_list = [
+            ModelOracleCtoY(
+                n_class_attr=args.n_class_attr,
+                n_attributes=args.n_attributes,
+                num_classes=N_CLASSES,
+                expand_dim=args.expand_dim,
+            )
+            for _ in range(args.n_models)
+        ]
+        
+        self.post_models=nn.ModuleList(post_models_list)
 
 
 # Independent & Sequential Model
@@ -28,17 +59,17 @@ def ModelXtoC(
 
 
 # Independent Model
-def ModelOracleCtoY(n_class_attr, n_attributes, num_classes, hidden_dim):
+def ModelOracleCtoY(n_class_attr, n_attributes, num_classes, expand_dim):
     # X -> C part is separate, this is only the C -> Y part
     if n_class_attr == 3:
         model = MLP(
             input_dim=n_attributes * n_class_attr,
             num_classes=num_classes,
-            hidden_dim=hidden_dim,
+            expand_dim=expand_dim,
         )
     else:
         model = MLP(
-            input_dim=n_attributes, num_classes=num_classes, hidden_dim=hidden_dim
+            input_dim=n_attributes, num_classes=num_classes, expand_dim=expand_dim
         )
     return model
 

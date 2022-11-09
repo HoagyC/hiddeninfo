@@ -1,11 +1,12 @@
 """
 Train InceptionV3 Network using the CUB-200-2011 dataset
 """
+import argparse
+import dataclasses
 import pdb
 import os
 import random
 import sys
-import argparse
 
 from typing import Dict
 
@@ -24,6 +25,7 @@ from CUB.models import (
     ModelXtoC,
     ModelOracleCtoY,
     ModelXtoCtoY,
+    Multimodel,
 )
 
 
@@ -93,7 +95,7 @@ def run_epoch(
             attr_labels, attr_labels_var = None, None
         else:
             inputs, labels, attr_labels = data
-            if args.n_attributes > 1:
+            if sn_attributes > 1:
                 attr_labels = [i.long() for i in attr_labels]
                 attr_labels = torch.stack(attr_labels).t()  # .float() #N x 312
             else:
@@ -498,30 +500,8 @@ def train(model, args, split_models=False):
 
 
 def train_multimodel(args):
-    pre_models = [
-        ModelXtoC(
-            pretrained=args.pretrained,
-            freeze=args.freeze,
-            num_classes=N_CLASSES,
-            use_aux=args.use_aux,
-            n_attributes=args.n_attributes,
-            expand_dim=args.expand_dim,
-            three_class=args.three_class,
-        )
-        for _ in range(args.n_models)
-    ]
-
-    post_models = [
-        ModelOracleCtoY(
-            n_class_attr=args.n_class_attr,
-            n_attributes=args.n_attributes,
-            num_classes=N_CLASSES,
-            expand_dim=args.expand_dim,
-        )
-        for _ in range(args.n_models)
-    ]
-    models = [pre_models, post_models]
-    train(models, args)
+    model = Multimodel(args)
+    train(model, args)
 
 
 def train_X_to_C(args):
@@ -749,21 +729,48 @@ def parse_arguments(experiment):
     return (args,)
 
 
+@dataclasses.dataclass
 class Experiment:
-    pass
+    dataset = "CUB"
+    exp = "multimodel"
+    seed = 0
+    log_dir = "out"
+    data_dir = "CUB_200_2011"
+    image_dir = "images"
+    end2end = True
+    optimizer = "SGD"
+    ckpt = False
+    scheduler_step = 1000
+    normalize_loss = False
+    use_relu = True
+    use_sigmoid = False
+    connect_CY = False
+    resampling = False
+    batch_size = 32
+    epochs = 100
+    save_step = 10
+    lr = 1e-03
+    weight_decay = 5e-5
+    pretrained = True
+    freeze = False
+    use_aux = False
+    use_attr = True
+    attr_loss_weight = 1.0
+    no_img = False
+    bottleneck = True
+    weighted_loss = True
+    uncertain_labels = True
+    n_models = 2
+    n_attributes = N_ATTRIBUTES
+    num_classes = N_CLASSES
+    expand_dim = 500
+    n_class_attr = 2
+    three_class = (
+        n_class_attr == 3
+    )  # predict notvisible as a third class instead of binary
 
 
 if __name__ == "__main__":
     args = Experiment()
-    args.n_models = 2
-    args.pretrained = True
-    args.freeze = False
-    args.use_aux = False
-    args.n_attributes = N_ATTRIBUTES
-    args.num_classes = N_CLASSES
-    args.expand_dim = 500
-    args.n_class_attr = 2
-    args.three_class = (
-        args.n_class_attr == 3
-    )  # predict notvisible as a third class instead of binary
+
     train_multimodel(args)

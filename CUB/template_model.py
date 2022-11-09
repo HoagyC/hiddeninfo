@@ -53,12 +53,12 @@ class End2EndModel(torch.nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, num_classes, hidden_dim: int = 800):
+    def __init__(self, input_dim, num_classes, expand_dim: int = 800):
         super(MLP, self).__init__()
-        self.linear = nn.Linear(input_dim, hidden_dim)
+        self.linear = nn.Linear(input_dim, expand_dim)
         self.activation = torch.nn.ReLU()
         self.linear2 = nn.Linear(
-            hidden_dim, num_classes
+            expand_dim, num_classes
         )  # softmax is automatically handled by loss function
 
     def forward(self, x):
