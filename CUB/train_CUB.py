@@ -437,6 +437,7 @@ def train(model, args, split_models=False):
         if not args.ckpt:  # evaluate on val set
             val_loss_meter = AverageMeter()
             val_acc_meter = AverageMeter()
+            val_conc_acc_meter = AverageMeter()
 
             with torch.no_grad():
                 if args.multimodel:
