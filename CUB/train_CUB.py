@@ -247,6 +247,7 @@ def run_multimodel_epoch(
 
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
+        attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
 
         concepts = pre_model(inputs)
         concepts_t = torch.cat(concepts, dim=1)
@@ -255,7 +256,7 @@ def run_multimodel_epoch(
         losses = []
         # Loss main is for the main task label (always the first output)
         print(labels.shape, output_labels.shape)
-        loss_main = 1.0 * criterion(output_labels[0], labels)
+        loss_main = 1.0 * criterion(output_labels, target=labels)
         losses.append(loss_main)
 
         # Adding losses separately for the different classes
@@ -267,6 +268,7 @@ def run_multimodel_epoch(
 
         # Calculating attribute accuracy
         sigmoid_outputs = torch.nn.Sigmoid()(concepts_t)
+        print(sigmoid_outputs.device, attr_labels.device)
         acc = binary_accuracy(sigmoid_outputs, attr_labels)
         acc_meter.update(acc.data.cpu().numpy(), inputs.size(0))
 
@@ -430,7 +432,19 @@ def train(model, args, split_models=False):
             val_acc_meter = AverageMeter()
 
             with torch.no_grad():
-                if args.no_img:
+                if args.multimodel:
+                    val_loss_meter, val_acc_meter = run_multimodel_epoch(
+                        model,
+                        optimizer,
+                        val_loader,
+                        val_loss_meter,
+                        val_acc_meter,
+                        criterion,
+                        attr_criterion,
+                        args,
+                        is_training=False,
+                    )
+                elif args.no_img:
                     val_loss_meter, val_acc_meter = run_epoch_simple(
                         model,
                         optimizer,
@@ -767,7 +781,7 @@ class Experiment:
     bottleneck = True
     weighted_loss = False
     uncertain_labels = True
-    shuffle_post_models = False
+    shuffle_post_models = True
     n_models = 2
     n_attributes = N_ATTRIBUTES
     num_classes = N_CLASSES
@@ -781,8 +795,8 @@ class Experiment:
 if __name__ == "__main__":
     args = Experiment()
 
-    # train_multimodel(args)
+    train_multimodel(args)
 
-    args = parse_arguments(None)[0]
-    print(args)
-    train_X_to_C(args)
+    # args = parse_arguments(None)[0]
+    # print(args)
+    # train_X_to_C(args)

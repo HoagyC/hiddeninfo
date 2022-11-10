@@ -388,6 +388,7 @@ def binary_accuracy(output, target):
     output and target are Torch tensors
     """
     pred = output.cpu() >= 0.5
+    target = target.cpu()
     # print(list(output.data.cpu().numpy()))
     # print(list(pred.data[0].numpy()))
     # print(list(target.data[0].numpy()))
