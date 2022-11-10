@@ -119,9 +119,6 @@ def run_epoch(
             if (
                 not args.bottleneck
             ):  # loss main is for the main task label (always the first output)
-                print(
-                    len(labels_var), len(outputs), labels_var[0].shape, outputs[0].shape
-                )
                 loss_main = 1.0 * criterion(outputs[0], labels_var) + 0.4 * criterion(
                     aux_outputs[0], labels_var
                 )
@@ -206,7 +203,8 @@ def run_multimodel_epoch(
     optimizer,
     loader,
     loss_meter,
-    acc_meter,
+    concept_acc_meter,
+    label_acc_meter,
     criterion,
     attr_criterion,
     args,
@@ -255,7 +253,6 @@ def run_multimodel_epoch(
 
         losses = []
         # Loss main is for the main task label (always the first output)
-        print(labels.shape, output_labels.shape)
         loss_main = 1.0 * criterion(output_labels, target=labels)
         losses.append(loss_main)
 
@@ -268,9 +265,13 @@ def run_multimodel_epoch(
 
         # Calculating attribute accuracy
         sigmoid_outputs = torch.nn.Sigmoid()(concepts_t)
-        print(sigmoid_outputs.device, attr_labels.device)
-        acc = binary_accuracy(sigmoid_outputs, attr_labels)
-        acc_meter.update(acc.data.cpu().numpy(), inputs.size(0))
+        concept_acc = binary_accuracy(sigmoid_outputs, attr_labels)
+        concept_acc_meter.update(concept_acc.data.cpu().numpy(), inputs.size(0))
+
+        label_acc = accuracy(
+            output_labels, labels, topk=(1,)
+        )  # only care about class prediction accuracy
+        label_acc_meter.update(label_acc[0], inputs.size(0))
 
         total_loss = sum(losses)
         loss_meter.update(total_loss.item(), inputs.size(0))
@@ -278,7 +279,7 @@ def run_multimodel_epoch(
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
-    return loss_meter, acc_meter
+    return loss_meter, concept_acc_meter, label_acc_meter
 
 
 def train(model, args, split_models=False):
@@ -389,13 +390,19 @@ def train(model, args, split_models=False):
 
     for epoch in range(0, args.epochs):
         train_loss_meter = AverageMeter()
+        train_conc_acc_meter = AverageMeter()
         train_acc_meter = AverageMeter()
         if args.multimodel:
-            train_loss_meter, train_acc_meter = run_multimodel_epoch(
+            (
+                train_loss_meter,
+                train_conc_acc_meter,
+                train_acc_meter,
+            ) = run_multimodel_epoch(
                 model,
                 optimizer,
                 train_loader,
                 train_loss_meter,
+                train_conc_acc_meter,
                 train_acc_meter,
                 criterion,
                 attr_criterion,
@@ -433,11 +440,16 @@ def train(model, args, split_models=False):
 
             with torch.no_grad():
                 if args.multimodel:
-                    val_loss_meter, val_acc_meter = run_multimodel_epoch(
+                    (
+                        val_loss_meter,
+                        val_conc_acc_meter,
+                        val_acc_meter,
+                    ) = run_multimodel_epoch(
                         model,
                         optimizer,
                         val_loader,
                         val_loss_meter,
+                        val_conc_acc_meter,
                         val_acc_meter,
                         criterion,
                         attr_criterion,
@@ -772,7 +784,7 @@ class Experiment:
     save_step = 10
     lr = 1e-03
     weight_decay = 5e-5
-    pretrained = True
+    pretrained = False
     freeze = False
     use_aux = False
     use_attr = True
