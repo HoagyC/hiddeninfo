@@ -262,7 +262,7 @@ def run_multimodel_epoch(
             value = concepts[i].squeeze().type(torch.cuda.FloatTensor)
             target = attr_labels[:, i]
             attr_loss = attr_criterion[i](value, target)
-            losses.append(args.attr_loss_weight * attr_loss)
+            losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
 
         # Calculating attribute accuracy
         sigmoid_outputs = torch.nn.Sigmoid()(concepts_t)
@@ -506,7 +506,7 @@ def train(model, args, split_models=False):
             "val_loss": val_loss_avg,
             "val_acc": val_acc_meter.avg,
             "best_val_epoch": best_val_epoch,
-            "concept_train_acc": train_conc_acc_meter.arg
+            "concept_train_acc": train_conc_acc_meter.avg,
             "concept_val_acc": val_conc_acc_meter.avg,
         }
 
@@ -620,6 +620,16 @@ def train_X_to_Cy(args):
     train(model, args)
 
 
+def _save_CUB_result(train_result):
+    now_str = datetime.now().strftime(DATETIME_FMT)
+    train_result_path = RESULTS_DIR / train_result.tag / now_str / "train-result.pickle"
+    if not train_result_path.parent.is_dir():
+        train_result_path.parent.mkdir(parents=True)
+    with train_result_path.open("wb") as f:
+        print(train_result)
+        pickle.dump(train_result, f)
+
+
 @dataclasses.dataclass
 class Experiment:
     tag = "baics"
@@ -634,7 +644,7 @@ class Experiment:
     optimizer = "SGD"
     ckpt = False
     scheduler_step = 1000
-    normalize_loss = False
+    normalize_loss = True
     use_relu = True
     use_sigmoid = False
     connect_CY = False
@@ -644,7 +654,7 @@ class Experiment:
     save_step = 10
     lr = 1e-03
     weight_decay = 5e-5
-    pretrained = False
+    pretrained = True
     freeze = False
     use_aux = False
     use_attr = True
@@ -673,4 +683,3 @@ if __name__ == "__main__":
     # args = parse_arguments(None)[0]
     # print(args)
     # train_X_to_C(args)
- 
