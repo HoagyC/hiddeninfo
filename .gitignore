@@ -6,6 +6,7 @@ __pycache__/
 .gitconfig
 images
 papers
+wandb/
 
 CUB_processed/
 CUB_200_2011/
