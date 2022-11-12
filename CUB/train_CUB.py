@@ -663,7 +663,7 @@ class Experiment:
     bottleneck = True
     weighted_loss = False
     uncertain_labels = True
-    shuffle_post_models = True
+    shuffle_post_models = False
     n_models = 2
     n_attributes = N_ATTRIBUTES
     num_classes = N_CLASSES
@@ -677,7 +677,7 @@ class Experiment:
 if __name__ == "__main__":
     args = Experiment()
 
-    wandb.init(project="distill_CUB")
+    wandb.init(project="distill_CUB", config=args)
     train_multimodel(args)
 
     # args = parse_arguments(None)[0]
