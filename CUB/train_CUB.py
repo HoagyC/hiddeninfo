@@ -681,7 +681,7 @@ class Experiment:
     num_classes = N_CLASSES
     expand_dim = 500
     n_class_attr = 2
-    attr_sparsity = 1
+    attr_sparsity = 4
     three_class = (
         n_class_attr == 3
     )  # predict notvisible as a third class instead of binary
