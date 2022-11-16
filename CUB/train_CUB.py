@@ -261,7 +261,8 @@ def run_multimodel_epoch(
         for i in range(len(attr_criterion)):
             value = concepts[i].squeeze().type(torch.cuda.FloatTensor)
             target = attr_labels[:, i]
-            print(value.shape, target.shape)
+            value[attr_mask_bin] = 0
+            target[attr_mask_bin] = 0
             attr_loss = attr_criterion[i](value, target)
             losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
 
@@ -666,7 +667,7 @@ class Experiment:
     weighted_loss = False
     uncertain_labels = True
     shuffle_post_models = False
-    n_models = 2
+    n_models = 1
     n_attributes = N_ATTRIBUTES
     num_classes = N_CLASSES
     expand_dim = 500
