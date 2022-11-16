@@ -244,6 +244,9 @@ def run_multimodel_epoch(
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
         attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
+        attr_mask_bin = (
+            attr_mask_bin.cuda() if torch.cuda.is_available() else attr_mask_bin
+        )
 
         concepts = pre_model(inputs)
         concepts_t = torch.cat(concepts, dim=1)
