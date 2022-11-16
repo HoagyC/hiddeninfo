@@ -29,6 +29,7 @@ class CUBDataset(Dataset):
         image_dir,
         n_class_attr,
         transform=None,
+        attr_sparsity: int = 1,
     ):
         """
         Arguments:
@@ -52,6 +53,7 @@ class CUBDataset(Dataset):
         self.uncertain_label = uncertain_label
         self.image_dir = image_dir
         self.n_class_attr = n_class_attr
+        self.attr_sparsity = attr_sparsity
 
     def __len__(self):
         return len(self.data)
@@ -59,6 +61,7 @@ class CUBDataset(Dataset):
     def __getitem__(self, idx):
         img_data = self.data[idx]
         img_path = img_data["img_path"]
+        attr_mask_bin = not (idx % self.attr_sparsity == 0)
         # Trim unnecessary paths
         try:
             idx = img_path.split("/").index("CUB_200_2011")
@@ -91,7 +94,7 @@ class CUBDataset(Dataset):
                 else:
                     return attr_label, class_label
             else:
-                return img, class_label, attr_label
+                return img, class_label, attr_label, attr_mask_bin
         else:
             return img, class_label
 

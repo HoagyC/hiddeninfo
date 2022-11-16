@@ -231,7 +231,7 @@ def run_multimodel_epoch(
             inputs, labels = data
             attr_labels, attr_labels_var = None, None
         else:
-            inputs, labels, attr_labels = data
+            inputs, labels, attr_labels, attr_mask_bin = data
             if args.n_attributes > 1:
                 attr_labels = [i.long() for i in attr_labels]
                 attr_labels = torch.stack(attr_labels).t()  # .float() #N x 312
@@ -261,6 +261,7 @@ def run_multimodel_epoch(
         for i in range(len(attr_criterion)):
             value = concepts[i].squeeze().type(torch.cuda.FloatTensor)
             target = attr_labels[:, i]
+            print(value.shape, target.shape)
             attr_loss = attr_criterion[i](value, target)
             losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
 
@@ -363,6 +364,7 @@ def train(model, args, split_models=False):
             image_dir=args.image_dir,
             n_class_attr=args.n_class_attr,
             resampling=args.resampling,
+            attr_sparsity=args.attr_sparsity,
         )
         val_loader = None
     else:
@@ -669,6 +671,7 @@ class Experiment:
     num_classes = N_CLASSES
     expand_dim = 500
     n_class_attr = 2
+    attr_sparsity = 1
     three_class = (
         n_class_attr == 3
     )  # predict notvisible as a third class instead of binary
