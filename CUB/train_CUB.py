@@ -260,7 +260,7 @@ def run_multimodel_epoch(
         # Adding losses separately for the different classes
         for i in range(len(attr_criterion)):
             value = torch.masked_select(
-                concepts[i].type(torch.cuda.FloatTensor), attr_mask_bin
+                concepts[i].type(torch.cuda.FloatTensor).squeeze(), attr_mask_bin
             )
             target = torch.masked_select(attr_labels[:, i], attr_mask_bin)
 
