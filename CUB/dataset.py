@@ -154,6 +154,7 @@ def load_data(
     image_dir: str = "images",
     resampling: bool = False,
     resol: int = 299,
+    attr_sparsity: int = 1,
 ):
     """
     Note: Inception needs (299,299,3) images with inputs scaled between -1 and 1
@@ -187,7 +188,14 @@ def load_data(
         )
 
     dataset = CUBDataset(
-        pkl_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr, transform
+        pkl_paths,
+        use_attr,
+        no_img,
+        uncertain_label,
+        image_dir,
+        n_class_attr,
+        transform,
+        attr_sparsity,
     )
     if is_training:
         drop_last = True
