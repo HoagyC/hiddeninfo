@@ -264,7 +264,7 @@ def run_multimodel_epoch(
             attr_loss = attr_criterion[i](value, target)
             if args.attr_sparsity != 1:
                 attr_loss *= attr_mask_bin
-                attr_loss = attr_loss.mean()
+                attr_loss = sum(attr_loss) / sum(attr_mask_bin)
             losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
 
         # Calculating attribute accuracy
@@ -688,7 +688,7 @@ class Experiment:
 if __name__ == "__main__":
     args = Experiment()
 
-    wandb.init(project="distill_CUB", config=args)
+    wandb.init(project="distill_CUB", config=args.__dict__)
     train_multimodel(args)
 
     # args = parse_arguments(None)[0]
