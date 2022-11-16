@@ -259,7 +259,7 @@ def run_multimodel_epoch(
 
         # Adding losses separately for the different classes
         for i in range(len(attr_criterion)):
-            value = concepts[i].squeeze().type(torch.cuda.FloatTensor)
+            value = concepts[i].type(torch.cuda.FloatTensor)
             target = attr_labels[:, i]
             attr_loss = attr_criterion[i](value, target)
             print(attr_mask_bin, attr_loss)
@@ -387,6 +387,7 @@ def train(model, args, split_models=False):
             image_dir=args.image_dir,
             n_class_attr=args.n_class_attr,
             resampling=args.resampling,
+            attr_sparsity=args.attr_sparsity,
         )
         val_loader = load_data(
             [val_data_path],
@@ -395,6 +396,7 @@ def train(model, args, split_models=False):
             args.batch_size,
             image_dir=args.image_dir,
             n_class_attr=args.n_class_attr,
+            attr_sparsity=args.attr_sparsity,
         )
 
     best_val_epoch = -1
