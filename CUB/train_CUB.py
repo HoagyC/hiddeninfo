@@ -262,7 +262,7 @@ def run_multimodel_epoch(
             value = concepts[i].squeeze().type(torch.cuda.FloatTensor)
             target = attr_labels[:, i]
             attr_loss = attr_criterion[i](value, target)
-            print(attr_mask_bin)
+            print(attr_mask_bin, attr_loss)
 
             if args.attr_sparsity != 1:
                 attr_loss *= attr_mask_bin

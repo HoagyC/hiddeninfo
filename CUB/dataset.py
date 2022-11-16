@@ -61,7 +61,7 @@ class CUBDataset(Dataset):
     def __getitem__(self, idx):
         img_data = self.data[idx]
         img_path = img_data["img_path"]
-        attr_mask_bin = np.ndarray(not (idx % self.attr_sparsity == 0))
+        attr_mask_bin = idx % self.attr_sparsity == 0
         # Trim unnecessary paths
         try:
             idx = img_path.split("/").index("CUB_200_2011")
