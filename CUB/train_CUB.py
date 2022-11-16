@@ -160,15 +160,12 @@ def run_epoch(
                 attr_criterion is not None and args.attr_loss_weight > 0
             ):  # X -> A, cotraining, end2end
                 for i in range(len(attr_criterion)):
-                    losses.append(
-                        args.attr_loss_weight
-                        * attr_criterion[i](
-                            outputs[i + out_start]
-                            .squeeze()
-                            .type(torch.cuda.FloatTensor),
-                            attr_labels_var[:, i],
-                        )
+                    value = (
+                        outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
                     )
+                    target = attr_labels_var[:, i]
+                    attr_loss = attr_criterion[i](value, target)
+                    losses.append(args.attr_loss_weight * attr_loss)
 
         if args.bottleneck:  # attribute accuracy
             sigmoid_outputs = torch.nn.Sigmoid()(torch.cat(outputs, dim=1))
@@ -259,14 +256,12 @@ def run_multimodel_epoch(
 
         # Adding losses separately for the different classes
         for i in range(len(attr_criterion)):
-            value = concepts[i].type(torch.cuda.FloatTensor)
-            target = attr_labels[:, i]
-            attr_loss = attr_criterion[i](value, target)
-            print(attr_mask_bin, attr_loss)
+            value = torch.masked_select(
+                concepts[i].type(torch.cuda.FloatTensor), attr_mask_bin
+            )
+            target = torch.masked_select(attr_labels[:, i], attr_mask_bin)
 
-            if args.attr_sparsity != 1:
-                attr_loss *= attr_mask_bin
-                attr_loss = sum(attr_loss) / sum(attr_mask_bin)
+            attr_loss = attr_criterion[i](value, target)
             losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
 
         # Calculating attribute accuracy
@@ -313,21 +308,15 @@ def train(model, args, split_models=False):
     criterion = torch.nn.CrossEntropyLoss()
     if args.use_attr and not args.no_img:
         attr_criterion = []  # separate criterion (loss function) for each attribute
-        if args.attr_sparsity == 1:
-            reduction = "mean"
-        else:
-            reduction = "none"
         if args.weighted_loss:
             assert imbalance is not None
             for ratio in imbalance:
                 attr_criterion.append(
-                    torch.nn.BCEWithLogitsLoss(
-                        weight=torch.FloatTensor([ratio]).cuda(), reduction=reduction
-                    )
+                    torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
                 )
         else:
             for i in range(args.n_attributes):
-                attr_criterion.append(torch.nn.CrossEntropyLoss(reduction=reduction))
+                attr_criterion.append(torch.nn.CrossEntropyLoss())
     else:
         attr_criterion = None
 
