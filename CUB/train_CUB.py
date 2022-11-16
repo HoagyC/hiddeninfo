@@ -261,9 +261,10 @@ def run_multimodel_epoch(
         for i in range(len(attr_criterion)):
             value = concepts[i].squeeze().type(torch.cuda.FloatTensor)
             target = attr_labels[:, i]
-            value[attr_mask_bin] = 0
-            target[attr_mask_bin] = 0
             attr_loss = attr_criterion[i](value, target)
+            if args.attr_sparsity != 1:
+                attr_loss *= attr_mask_bin
+                attr_loss = attr_loss.mean()
             losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
 
         # Calculating attribute accuracy
@@ -310,15 +311,21 @@ def train(model, args, split_models=False):
     criterion = torch.nn.CrossEntropyLoss()
     if args.use_attr and not args.no_img:
         attr_criterion = []  # separate criterion (loss function) for each attribute
+        if args.attr_sparsity == 1:
+            reduction = "mean"
+        else:
+            reduction = "none"
         if args.weighted_loss:
             assert imbalance is not None
             for ratio in imbalance:
                 attr_criterion.append(
-                    torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
+                    torch.nn.BCEWithLogitsLoss(
+                        weight=torch.FloatTensor([ratio]).cuda(), reduction=reduction
+                    )
                 )
         else:
             for i in range(args.n_attributes):
-                attr_criterion.append(torch.nn.CrossEntropyLoss())
+                attr_criterion.append(torch.nn.CrossEntropyLoss(reduction=reduction))
     else:
         attr_criterion = None
 
