@@ -111,59 +111,21 @@ def run_epoch(
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
 
-        if is_training and args.use_aux:
-            outputs, aux_outputs = model(inputs_var)
-            losses = []
-            out_start = 0
-            # loss main is for the main task label (always the first output)
-            if not args.bottleneck:
-
-                loss_main = 1.0 * criterion(outputs[0], labels_var) + 0.4 * criterion(
-                    aux_outputs[0], labels_var
-                )
-                losses.append(loss_main)
-                out_start = 1
-            if (
-                attr_criterion is not None and args.attr_loss_weight > 0
-            ):  # X -> A, cotraining, end2end
-                for i in range(len(attr_criterion)):
-                    losses.append(
-                        args.attr_loss_weight
-                        * (
-                            1.0
-                            * attr_criterion[i](
-                                outputs[i + out_start]
-                                .squeeze()
-                                .type(torch.cuda.FloatTensor),
-                                attr_labels_var[:, i],
-                            )
-                            + 0.4
-                            * attr_criterion[i](
-                                aux_outputs[i + out_start]
-                                .squeeze()
-                                .type(torch.cuda.FloatTensor),
-                                attr_labels_var[:, i],
-                            )
-                        )
-                    )
-        else:  # testing or no aux logits
-            outputs = model(inputs_var)
-            losses = []
-            out_start = 0
-            if not args.bottleneck:
-                loss_main = criterion(outputs[0], labels_var)
-                losses.append(loss_main)
-                out_start = 1
-            if (
-                attr_criterion is not None and args.attr_loss_weight > 0
-            ):  # X -> A, cotraining, end2end
-                for i in range(len(attr_criterion)):
-                    value = (
-                        outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
-                    )
-                    target = attr_labels_var[:, i]
-                    attr_loss = attr_criterion[i](value, target)
-                    losses.append(args.attr_loss_weight * attr_loss)
+        outputs = model(inputs_var)
+        losses = []
+        out_start = 0
+        if not args.bottleneck:
+            loss_main = criterion(outputs[0], labels_var)
+            losses.append(loss_main)
+            out_start = 1
+        if (
+            attr_criterion is not None and args.attr_loss_weight > 0
+        ):  # X -> A, cotraining, end2end
+            for i in range(len(attr_criterion)):
+                value = outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
+                target = attr_labels_var[:, i]
+                attr_loss = attr_criterion[i](value, target)
+                losses.append(args.attr_loss_weight * attr_loss)
 
         if args.bottleneck:  # attribute accuracy
             sigmoid_outputs = torch.nn.Sigmoid()(torch.cat(outputs, dim=1))
@@ -558,7 +520,6 @@ def train_X_to_C(args):
         pretrained=args.pretrained,
         freeze=args.freeze,
         num_classes=N_CLASSES,
-        use_aux=args.use_aux,
         n_attributes=args.n_attributes,
         expand_dim=args.expand_dim,
         three_class=args.three_class,
@@ -592,7 +553,6 @@ def train_X_to_C_to_y(args):
         pretrained=args.pretrained,
         freeze=args.freeze,
         num_classes=N_CLASSES,
-        use_aux=args.use_aux,
         n_attributes=args.n_attributes,
         expand_dim=args.expand_dim,
         use_relu=args.use_relu,
@@ -606,7 +566,6 @@ def train_X_to_y(args):
         pretrained=args.pretrained,
         freeze=args.freeze,
         num_classes=N_CLASSES,
-        use_aux=args.use_aux,
     )
     train(model, args)
 
@@ -616,7 +575,6 @@ def train_X_to_Cy(args):
         pretrained=args.pretrained,
         freeze=args.freeze,
         num_classes=N_CLASSES,
-        use_aux=args.use_aux,
         n_attributes=args.n_attributes,
         three_class=args.three_class,
         connect_CY=args.connect_CY,
@@ -636,45 +594,44 @@ def _save_CUB_result(train_result):
 
 @dataclasses.dataclass
 class Experiment:
-    tag = "basic"
-    dataset = "CUB"
-    exp = "multimodel"
-    multimodel = True
-    seed = 0
-    log_dir = "out"
-    data_dir = "CUB_processed"
-    image_dir = "images"
-    end2end = True
-    optimizer = "SGD"
-    ckpt = False
-    scheduler_step = 1000
-    normalize_loss = True
-    use_relu = True
-    use_sigmoid = False
-    connect_CY = False
-    resampling = False
-    batch_size = 32
-    epochs = 100
-    save_step = 10
-    lr = 1e-03
-    weight_decay = 5e-5
-    pretrained = True
-    freeze = False
-    use_aux = False
-    use_attr = True
-    attr_loss_weight = 1.0
-    no_img = False
-    bottleneck = True
-    weighted_loss = False
-    uncertain_labels = True
-    shuffle_post_models = False
-    n_models = 1
-    n_attributes = N_ATTRIBUTES
-    num_classes = N_CLASSES
-    expand_dim = 500
-    n_class_attr = 2
-    attr_sparsity = 4
-    three_class = (
+    tag: str = "basic"
+    dataset: str = "CUB"
+    exp: str = "multimodel"
+    multimodel: bool = True
+    seed: int = 0
+    log_dir: str = "out"
+    data_dir: str = "CUB_processed"
+    image_dir: str = "images"
+    end2end: bool = True
+    optimizer: str = "SGD"
+    ckpt: bool = False
+    scheduler_step: int = 1000
+    normalize_loss: bool = True
+    use_relu: bool = True
+    use_sigmoid: bool = False
+    connect_CY: bool = False
+    resampling: bool = False
+    batch_size: int = 32
+    epochs: int = 100
+    save_step: int = 10
+    lr: float = 1e-03
+    weight_decay: float = 5e-5
+    pretrained: bool = True
+    freeze: bool = False
+    use_attr: bool = True
+    attr_loss_weight: float = 1.0
+    no_img: bool = False
+    bottleneck: bool = True
+    weighted_loss: bool = False
+    uncertain_labels: bool = True
+    shuffle_post_models: bool = False
+    n_models: int = 1
+    n_attributes: int = N_ATTRIBUTES
+    num_classes: int = N_CLASSES
+    expand_dim: int = 500
+    n_class_attr: int = 2
+    attr_sparsity: int = 4
+    three_class: int = (
         n_class_attr == 3
     )  # predict notvisible as a third class instead of binary
 
