@@ -93,7 +93,7 @@ def run_epoch(
     for _, data in enumerate(loader):
         if attr_criterion is None:
             inputs, labels = data
-            attr_labels, attr_labels_var = None, None
+            attr_labels = None
         else:
             inputs, labels, attr_labels = data
             if args.n_attributes > 1:
@@ -103,23 +103,21 @@ def run_epoch(
                 if isinstance(attr_labels, list):
                     attr_labels = attr_labels[0]
                 attr_labels = attr_labels.unsqueeze(1)
-            attr_labels_var = torch.autograd.Variable(attr_labels).float()
-            attr_labels_var = (
-                attr_labels_var.cuda() if torch.cuda.is_available() else attr_labels_var
+            attr_labels = attr_labels.float()
+            attr_labels = (
+                attr_labels.cuda() if torch.cuda.is_available() else attr_labels
             )
 
-        inputs_var = torch.autograd.Variable(inputs)
-        inputs_var = inputs_var.cuda() if torch.cuda.is_available() else inputs_var
-        labels_var = torch.autograd.Variable(labels)
-        labels_var = labels_var.cuda() if torch.cuda.is_available() else labels_var
+        inputs = inputs.cuda() if torch.cuda.is_available() else inputs
+        labels = labels.cuda() if torch.cuda.is_available() else labels
 
         if is_training and args.use_aux:
             outputs, aux_outputs = model(inputs_var)
             losses = []
             out_start = 0
-            if (
-                not args.bottleneck
-            ):  # loss main is for the main task label (always the first output)
+            # loss main is for the main task label (always the first output)
+            if not args.bottleneck:
+
                 loss_main = 1.0 * criterion(outputs[0], labels_var) + 0.4 * criterion(
                     aux_outputs[0], labels_var
                 )
@@ -638,7 +636,7 @@ def _save_CUB_result(train_result):
 
 @dataclasses.dataclass
 class Experiment:
-    tag = "baics"
+    tag = "basic"
     dataset = "CUB"
     exp = "multimodel"
     multimodel = True
