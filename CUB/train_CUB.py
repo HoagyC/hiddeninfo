@@ -8,7 +8,7 @@ import os
 import random
 import sys
 
-from typing import Dict
+from typing import Dict, Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -176,7 +176,7 @@ def run_multimodel_epoch(
 
     for _, data in enumerate(loader):
         pre_model_ndx = random.randint(0, len(model.pre_models) - 1)
-        if args.shuffle_post_models:
+        if args.shuffle_post_models and epoch_ndx > args.shuffle_post_models:
             post_model_ndx = random.randint(0, len(model.pre_models) - 1)
         else:
             post_model_ndx = pre_model_ndx
@@ -283,30 +283,13 @@ def train(model, args, split_models=False):
     else:
         attr_criterion = None
 
-    if args.optimizer == "Adam":
-        optimizer = torch.optim.Adam(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=args.lr,
-            weight_decay=args.weight_decay,
-        )
-    elif args.optimizer == "RMSprop":
-        optimizer = torch.optim.RMSprop(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=args.lr,
-            momentum=0.9,
-            weight_decay=args.weight_decay,
-        )
-    else:
-        optimizer = torch.optim.SGD(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=args.lr,
-            momentum=0.9,
-            weight_decay=args.weight_decay,
-        )
+    params = filter(lambda p: p.requires_grad, model.parameters())
+    optimizer = make_optimizer(params, args)
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=5, threshold=0.00001, min_lr=0.00001, eps=1e-08)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=args.scheduler_step, gamma=0.1
     )
+
     stop_epoch = (
         int(math.log(MIN_LR / args.lr) / math.log(LR_DECAY_SIZE)) * args.scheduler_step
     )
@@ -316,40 +299,26 @@ def train(model, args, split_models=False):
     val_data_path = train_data_path.replace("train.pkl", "val.pkl")
     logger.write("train data path: %s\n" % train_data_path)
 
-    if args.ckpt:  # retraining
-        train_loader = load_data(
-            [train_data_path, val_data_path],
-            args.use_attr,
-            args.no_img,
-            args.batch_size,
-            args.uncertain_labels,
-            image_dir=args.image_dir,
-            n_class_attr=args.n_class_attr,
-            resampling=args.resampling,
-            attr_sparsity=args.attr_sparsity,
-        )
-        val_loader = None
-    else:
-        train_loader = load_data(
-            [train_data_path],
-            args.use_attr,
-            args.no_img,
-            args.batch_size,
-            args.uncertain_labels,
-            image_dir=args.image_dir,
-            n_class_attr=args.n_class_attr,
-            resampling=args.resampling,
-            attr_sparsity=args.attr_sparsity,
-        )
-        val_loader = load_data(
-            [val_data_path],
-            args.use_attr,
-            args.no_img,
-            args.batch_size,
-            image_dir=args.image_dir,
-            n_class_attr=args.n_class_attr,
-            attr_sparsity=args.attr_sparsity,
-        )
+    train_loader = load_data(
+        [train_data_path],
+        args.use_attr,
+        args.no_img,
+        args.batch_size,
+        args.uncertain_labels,
+        image_dir=args.image_dir,
+        n_class_attr=args.n_class_attr,
+        resampling=args.resampling,
+        attr_sparsity=args.attr_sparsity,
+    )
+    val_loader = load_data(
+        [val_data_path],
+        args.use_attr,
+        args.no_img,
+        args.batch_size,
+        image_dir=args.image_dir,
+        n_class_attr=args.n_class_attr,
+        attr_sparsity=args.attr_sparsity,
+    )
 
     best_val_epoch = -1
     best_val_loss = float("inf")
@@ -360,6 +329,23 @@ def train(model, args, split_models=False):
         train_conc_acc_meter = AverageMeter()
         train_acc_meter = AverageMeter()
         if args.multimodel:
+            if args.shuffle_post_models and epoch == args.shuffle_post_models:
+                if not args.freeze_encoder:
+                    pre_params = list(
+                        filter(lambda p: p.requires_grad, model.pre_models.parameters())
+                    )
+                else:
+                    pre_params = []
+                if not args.freeze_decoder:
+                    post_params = list(
+                        filter(
+                            lambda p: p.requires_grad, model.post_models.parameters()
+                        )
+                    )
+                else:
+                    post_params = []
+
+                scheduler.optimizer = make_optimizer(pre_params + post_params, args)
             (
                 train_loss_meter,
                 train_conc_acc_meter,
@@ -401,56 +387,51 @@ def train(model, args, split_models=False):
                 is_training=True,
             )
 
-        if not args.ckpt:  # evaluate on val set
-            val_loss_meter = AverageMeter()
-            val_acc_meter = AverageMeter()
-            val_conc_acc_meter = AverageMeter()
+        val_loss_meter = AverageMeter()
+        val_acc_meter = AverageMeter()
+        val_conc_acc_meter = AverageMeter()
 
-            with torch.no_grad():
-                if args.multimodel:
-                    (
-                        val_loss_meter,
-                        val_conc_acc_meter,
-                        val_acc_meter,
-                    ) = run_multimodel_epoch(
-                        model,
-                        optimizer,
-                        val_loader,
-                        val_loss_meter,
-                        val_conc_acc_meter,
-                        val_acc_meter,
-                        criterion,
-                        attr_criterion,
-                        args,
-                        is_training=False,
-                    )
-                elif args.no_img:
-                    val_loss_meter, val_acc_meter = run_epoch_simple(
-                        model,
-                        optimizer,
-                        val_loader,
-                        val_loss_meter,
-                        val_acc_meter,
-                        criterion,
-                        args,
-                        is_training=False,
-                    )
-                else:
-                    val_loss_meter, val_acc_meter = run_epoch(
-                        model,
-                        optimizer,
-                        val_loader,
-                        val_loss_meter,
-                        val_acc_meter,
-                        criterion,
-                        attr_criterion,
-                        args,
-                        is_training=False,
-                    )
-
-        else:  # retraining
-            val_loss_meter = train_loss_meter
-            val_acc_meter = train_acc_meter
+        with torch.no_grad():
+            if args.multimodel:
+                (
+                    val_loss_meter,
+                    val_conc_acc_meter,
+                    val_acc_meter,
+                ) = run_multimodel_epoch(
+                    model,
+                    optimizer,
+                    val_loader,
+                    val_loss_meter,
+                    val_conc_acc_meter,
+                    val_acc_meter,
+                    criterion,
+                    attr_criterion,
+                    args,
+                    is_training=False,
+                )
+            elif args.no_img:
+                val_loss_meter, val_acc_meter = run_epoch_simple(
+                    model,
+                    optimizer,
+                    val_loader,
+                    val_loss_meter,
+                    val_acc_meter,
+                    criterion,
+                    args,
+                    is_training=False,
+                )
+            else:
+                val_loss_meter, val_acc_meter = run_epoch(
+                    model,
+                    optimizer,
+                    val_loader,
+                    val_loss_meter,
+                    val_acc_meter,
+                    criterion,
+                    attr_criterion,
+                    args,
+                    is_training=False,
+                )
 
         if best_val_acc < val_acc_meter.avg:
             best_val_epoch = epoch
@@ -510,7 +491,34 @@ def train(model, args, split_models=False):
             break
 
 
+def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
+    if args.optimizer == "Adam":
+
+        optimizer = torch.optim.Adam(
+            params,
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+        )
+    elif args.optimizer == "RMSprop":
+        optimizer = torch.optim.RMSprop(
+            params,
+            lr=args.lr,
+            momentum=0.9,
+            weight_decay=args.weight_decay,
+        )
+    elif args.optimizer == "SGD":
+        optimizer = torch.optim.SGD(
+            params,
+            lr=args.lr,
+            momentum=0.9,
+            weight_decay=args.weight_decay,
+        )
+    else:
+        raise ValueError(f"Optimizer type {args.optimizer} not recognized")
+
+
 def train_multimodel(args):
+
     model = Multimodel(args)
     train(model, args)
 
@@ -604,7 +612,6 @@ class Experiment:
     image_dir: str = "images"
     end2end: bool = True
     optimizer: str = "SGD"
-    ckpt: bool = False
     scheduler_step: int = 1000
     normalize_loss: bool = True
     use_relu: bool = True
@@ -624,7 +631,7 @@ class Experiment:
     bottleneck: bool = True
     weighted_loss: bool = False
     uncertain_labels: bool = True
-    shuffle_post_models: bool = False
+    shuffle_post_models: Optional[int] = None
     n_models: int = 1
     n_attributes: int = N_ATTRIBUTES
     num_classes: int = N_CLASSES
