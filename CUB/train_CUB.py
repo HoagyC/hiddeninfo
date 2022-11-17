@@ -142,10 +142,9 @@ def run_epoch(
                 total_loss = sum(losses) / args.n_attributes
             else:  # cotraining, loss by class prediction and loss by attribute prediction have the same weight
                 total_loss = losses[0] + sum(losses[1:])
-                if args.normalize_loss:
-                    total_loss = total_loss / (
-                        1 + args.attr_loss_weight * args.n_attributes
-                    )
+                total_loss = total_loss / (
+                    1 + args.attr_loss_weight * args.n_attributes
+                )
         else:  # finetune
             total_loss = sum(losses)
         loss_meter.update(total_loss.item(), inputs.size(0))
@@ -329,6 +328,7 @@ def train(model, args, split_models=False):
         train_conc_acc_meter = AverageMeter()
         train_acc_meter = AverageMeter()
         if args.multimodel:
+            # Switch to shuffling models and freezing
             if args.shuffle_post_models and epoch == args.shuffle_post_models:
                 if not args.freeze_encoder:
                     pre_params = list(
@@ -603,44 +603,55 @@ def _save_CUB_result(train_result):
 @dataclasses.dataclass
 class Experiment:
     tag: str = "basic"
-    dataset: str = "CUB"
     exp: str = "multimodel"
-    multimodel: bool = True
     seed: int = 0
+
+    # Data
     log_dir: str = "out"
     data_dir: str = "CUB_processed"
     image_dir: str = "images"
+    save_step: int = 10
+
+    # Model
+    multimodel: bool = True
+    n_attributes: int = N_ATTRIBUTES
+    num_classes: int = N_CLASSES
+    expand_dim: int = 500
+    use_relu: bool = True
+    use_sigmoid: bool = False
+    pretrained: bool = True
+
+    # Training
     end2end: bool = True
     optimizer: str = "SGD"
     scheduler_step: int = 1000
-    normalize_loss: bool = True
-    use_relu: bool = True
-    use_sigmoid: bool = False
+    attr_loss_weight: float = 1.0
+    lr: float = 1e-03
+    weight_decay: float = 5e-5
+    epochs: int = 100
+    attr_sparsity: int = 1
+
+    # Legacy
     connect_CY: bool = False
     resampling: bool = False
     batch_size: int = 32
-    epochs: int = 100
-    save_step: int = 10
-    lr: float = 1e-03
-    weight_decay: float = 5e-5
-    pretrained: bool = True
+
     freeze: bool = False
     use_attr: bool = True
-    attr_loss_weight: float = 1.0
     no_img: bool = False
     bottleneck: bool = True
     weighted_loss: bool = False
     uncertain_labels: bool = True
+
+    # Shuffling
     shuffle_post_models: Optional[int] = None
+    freeze_decoder: bool = False
+    freeze_encoder: bool = False
     n_models: int = 1
-    n_attributes: int = N_ATTRIBUTES
-    num_classes: int = N_CLASSES
-    expand_dim: int = 500
+
+    # Can predict whethe trait is visible as a third class, n_class_attr=3
     n_class_attr: int = 2
-    attr_sparsity: int = 4
-    three_class: int = (
-        n_class_attr == 3
-    )  # predict notvisible as a third class instead of binary
+    three_class: bool = n_class_attr == 3
 
 
 if __name__ == "__main__":
