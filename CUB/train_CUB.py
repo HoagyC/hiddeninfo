@@ -8,7 +8,7 @@ import os
 import random
 import sys
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Iterable
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -35,6 +35,60 @@ N_CLASSES = 200
 MIN_LR = 1e-04
 BASE_DIR = "/root/hiddeninfo"
 LR_DECAY_SIZE = 0.1
+
+
+@dataclasses.dataclass
+class Experiment:
+    tag: str = "basic"
+    exp: str = "multimodel"
+    seed: int = 0
+
+    # Data
+    log_dir: str = "out"
+    data_dir: str = "CUB_processed"
+    image_dir: str = "images"
+    save_step: int = 10
+
+    # Model
+    multimodel: bool = True
+    n_attributes: int = N_ATTRIBUTES
+    num_classes: int = N_CLASSES
+    expand_dim: int = 500
+    use_relu: bool = True
+    use_sigmoid: bool = False
+    pretrained: bool = True
+
+    # Training
+    end2end: bool = True
+    optimizer: str = "SGD"
+    scheduler_step: int = 1000
+    attr_loss_weight: float = 1.0
+    lr: float = 1e-03
+    weight_decay: float = 5e-5
+    epochs: int = 100
+    attr_sparsity: int = 1
+
+    # Legacy
+    connect_CY: bool = False
+    resampling: bool = False
+    batch_size: int = 32
+
+    freeze: bool = False
+    use_attr: bool = True
+    no_img: bool = False
+    bottleneck: bool = True
+    weighted_loss: bool = False
+    uncertain_labels: bool = True
+
+    # Shuffling
+    shuffle_post_models: Optional[int] = 0
+    freeze_decoder: bool = True
+    freeze_encoder: bool = False
+    n_models: int = 1
+
+    # Can predict whethe trait is visible as a third class, n_class_attr=3
+    n_class_attr: int = 2
+    three_class: bool = n_class_attr == 3
 
 
 def run_epoch_simple(
@@ -156,6 +210,7 @@ def run_epoch(
 
 
 def run_multimodel_epoch(
+    epoch_ndx,
     model,
     optimizer,
     loader,
@@ -175,7 +230,10 @@ def run_multimodel_epoch(
 
     for _, data in enumerate(loader):
         pre_model_ndx = random.randint(0, len(model.pre_models) - 1)
-        if args.shuffle_post_models and epoch_ndx > args.shuffle_post_models:
+        if (
+            args.shuffle_post_models is not None
+            and epoch_ndx > args.shuffle_post_models
+        ):
             post_model_ndx = random.randint(0, len(model.pre_models) - 1)
         else:
             post_model_ndx = pre_model_ndx
@@ -351,6 +409,7 @@ def train(model, args, split_models=False):
                 train_conc_acc_meter,
                 train_acc_meter,
             ) = run_multimodel_epoch(
+                epoch,
                 model,
                 optimizer,
                 train_loader,
@@ -398,6 +457,7 @@ def train(model, args, split_models=False):
                     val_conc_acc_meter,
                     val_acc_meter,
                 ) = run_multimodel_epoch(
+                    epoch,
                     model,
                     optimizer,
                     val_loader,
@@ -475,7 +535,7 @@ def train(model, args, split_models=False):
         logger.flush()
 
         if epoch <= stop_epoch:
-            scheduler.step(epoch)  # scheduler step to update lr at the end of epoch
+            scheduler.step()  # scheduler step to update lr at the end of epoch
         # inspect lr
         if epoch % 10 == 0:
             print("Current lr:", scheduler.get_lr())
@@ -515,6 +575,8 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
         )
     else:
         raise ValueError(f"Optimizer type {args.optimizer} not recognized")
+
+    return optimizer
 
 
 def train_multimodel(args):
@@ -598,60 +660,6 @@ def _save_CUB_result(train_result):
     with train_result_path.open("wb") as f:
         print(train_result)
         pickle.dump(train_result, f)
-
-
-@dataclasses.dataclass
-class Experiment:
-    tag: str = "basic"
-    exp: str = "multimodel"
-    seed: int = 0
-
-    # Data
-    log_dir: str = "out"
-    data_dir: str = "CUB_processed"
-    image_dir: str = "images"
-    save_step: int = 10
-
-    # Model
-    multimodel: bool = True
-    n_attributes: int = N_ATTRIBUTES
-    num_classes: int = N_CLASSES
-    expand_dim: int = 500
-    use_relu: bool = True
-    use_sigmoid: bool = False
-    pretrained: bool = True
-
-    # Training
-    end2end: bool = True
-    optimizer: str = "SGD"
-    scheduler_step: int = 1000
-    attr_loss_weight: float = 1.0
-    lr: float = 1e-03
-    weight_decay: float = 5e-5
-    epochs: int = 100
-    attr_sparsity: int = 1
-
-    # Legacy
-    connect_CY: bool = False
-    resampling: bool = False
-    batch_size: int = 32
-
-    freeze: bool = False
-    use_attr: bool = True
-    no_img: bool = False
-    bottleneck: bool = True
-    weighted_loss: bool = False
-    uncertain_labels: bool = True
-
-    # Shuffling
-    shuffle_post_models: Optional[int] = None
-    freeze_decoder: bool = False
-    freeze_encoder: bool = False
-    n_models: int = 1
-
-    # Can predict whethe trait is visible as a third class, n_class_attr=3
-    n_class_attr: int = 2
-    three_class: bool = n_class_attr == 3
 
 
 if __name__ == "__main__":
