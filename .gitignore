@@ -2,6 +2,7 @@
 .codaenv
 out
 __pycache__/
+.mypy_cache/
 .vscode
 .gitconfig
 images
