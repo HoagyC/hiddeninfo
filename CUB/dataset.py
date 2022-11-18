@@ -155,7 +155,7 @@ def load_data(
     resampling: bool = False,
     resol: int = 299,
     attr_sparsity: int = 1,
-):
+) -> DataLoader:
     """
     Note: Inception needs (299,299,3) images with inputs scaled between -1 and 1
     Loads data with transformations applied, and upsample the minority class if there is class imbalance and weighted loss is not used

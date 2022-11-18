@@ -8,12 +8,14 @@ import os
 import random
 import sys
 
-from typing import Dict, Optional, Iterable
+from typing import Dict, Optional, Iterable, List
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import math
 import torch
+from torch.utils.data import DataLoader
+
 import numpy as np
 import wandb
 
@@ -125,7 +127,7 @@ def run_epoch_simple(
     return loss_meter, acc_meter
 
 
-def run_epoch(
+def run_twopart_epoch(
     model,
     optimizer,
     loader,
@@ -210,7 +212,6 @@ def run_epoch(
 
 
 def run_multimodel_epoch(
-    epoch_ndx,
     model,
     optimizer,
     loader,
@@ -230,10 +231,7 @@ def run_multimodel_epoch(
 
     for _, data in enumerate(loader):
         pre_model_ndx = random.randint(0, len(model.pre_models) - 1)
-        if (
-            args.shuffle_post_models is not None
-            and epoch_ndx > args.shuffle_post_models
-        ):
+        if args.shuffle_post_models:
             post_model_ndx = random.randint(0, len(model.pre_models) - 1)
         else:
             post_model_ndx = pre_model_ndx
@@ -382,120 +380,11 @@ def train(model, args, split_models=False):
     best_val_acc = 0
 
     for epoch in range(0, args.epochs):
-        train_loss_meter = AverageMeter()
-        train_conc_acc_meter = AverageMeter()
-        train_acc_meter = AverageMeter()
-        if args.multimodel:
-            # Switch to shuffling models and freezing
-            if args.shuffle_post_models and epoch == args.shuffle_post_models:
-                if not args.freeze_encoder:
-                    pre_params = list(
-                        filter(lambda p: p.requires_grad, model.pre_models.parameters())
-                    )
-                else:
-                    pre_params = []
-                if not args.freeze_decoder:
-                    post_params = list(
-                        filter(
-                            lambda p: p.requires_grad, model.post_models.parameters()
-                        )
-                    )
-                else:
-                    post_params = []
+        epoch_meters = run_epoch()
 
-                scheduler.optimizer = make_optimizer(pre_params + post_params, args)
-            (
-                train_loss_meter,
-                train_conc_acc_meter,
-                train_acc_meter,
-            ) = run_multimodel_epoch(
-                epoch,
-                model,
-                optimizer,
-                train_loader,
-                train_loss_meter,
-                train_conc_acc_meter,
-                train_acc_meter,
-                criterion,
-                attr_criterion,
-                args,
-                is_training=True,
-            )
-
-        elif args.no_img:
-            train_loss_meter, train_acc_meter = run_epoch_simple(
-                model,
-                optimizer,
-                train_loader,
-                train_loss_meter,
-                train_acc_meter,
-                criterion,
-                args,
-                is_training=True,
-            )
-        else:
-            train_loss_meter, train_acc_meter = run_epoch(
-                model,
-                optimizer,
-                train_loader,
-                train_loss_meter,
-                train_acc_meter,
-                criterion,
-                attr_criterion,
-                args,
-                is_training=True,
-            )
-
-        val_loss_meter = AverageMeter()
-        val_acc_meter = AverageMeter()
-        val_conc_acc_meter = AverageMeter()
-
-        with torch.no_grad():
-            if args.multimodel:
-                (
-                    val_loss_meter,
-                    val_conc_acc_meter,
-                    val_acc_meter,
-                ) = run_multimodel_epoch(
-                    epoch,
-                    model,
-                    optimizer,
-                    val_loader,
-                    val_loss_meter,
-                    val_conc_acc_meter,
-                    val_acc_meter,
-                    criterion,
-                    attr_criterion,
-                    args,
-                    is_training=False,
-                )
-            elif args.no_img:
-                val_loss_meter, val_acc_meter = run_epoch_simple(
-                    model,
-                    optimizer,
-                    val_loader,
-                    val_loss_meter,
-                    val_acc_meter,
-                    criterion,
-                    args,
-                    is_training=False,
-                )
-            else:
-                val_loss_meter, val_acc_meter = run_epoch(
-                    model,
-                    optimizer,
-                    val_loader,
-                    val_loss_meter,
-                    val_acc_meter,
-                    criterion,
-                    attr_criterion,
-                    args,
-                    is_training=False,
-                )
-
-        if best_val_acc < val_acc_meter.avg:
+        if best_val_acc < epoch_meters["val_acc"].avg:
             best_val_epoch = epoch
-            best_val_acc = val_acc_meter.avg
+            best_val_acc = epoch_meters["val_acc"].avg
             logger.write("New model best model at epoch %d\n" % epoch)
             torch.save(
                 model, os.path.join(args.log_dir, "best_model_%d.pth" % args.seed)
@@ -503,18 +392,18 @@ def train(model, args, split_models=False):
             # if best_val_acc >= 100: #in the case of retraining, stop when the model reaches 100% accuracy on both train + val sets
             #    break
 
-        train_loss_avg = train_loss_meter.avg
-        val_loss_avg = val_loss_meter.avg
+        train_loss_avg = epoch_meters["train_loss"].avg
+        val_loss_avg = epoch_meters["val_loss"].avg
 
         metrics_dict = {
             "epoch": epoch,
             "train_loss": train_loss_avg,
-            "train_acc": train_acc_meter.avg,
+            "train_acc": epoch_meters["train_acc"].avg,
             "val_loss": val_loss_avg,
-            "val_acc": val_acc_meter.avg,
+            "val_acc": epoch_meters["val_acc"].avg,
             "best_val_epoch": best_val_epoch,
-            "concept_train_acc": train_conc_acc_meter.avg,
-            "concept_val_acc": val_conc_acc_meter.avg,
+            "concept_train_acc": epoch_meters["train_conc_acc"].avg,
+            "concept_val_acc": epoch_meters["val_conc_acc"].avg,
         }
 
         wandb.log(metrics_dict)
@@ -525,9 +414,9 @@ def train(model, args, split_models=False):
             % (
                 epoch,
                 train_loss_avg,
-                train_acc_meter.avg,
+                epoch_meters["train_acc"].avg,
                 val_loss_avg,
-                val_acc_meter.avg,
+                epoch_meters["val_acc"].avg,
                 best_val_epoch,
             )
         )
@@ -535,25 +424,136 @@ def train(model, args, split_models=False):
         logger.flush()
 
         if epoch <= stop_epoch:
-            scheduler.step()  # scheduler step to update lr at the end of epoch
-        # inspect lr
+            scheduler.step()
+
         if epoch % 10 == 0:
             print("Current lr:", scheduler.get_lr())
 
-        # if epoch % args.save_step == 0:
-        #     torch.save(model, os.path.join(args.log_dir, '%d_model.pth' % epoch))
+        if epoch % args.save_step == 0:
+            torch.save(model, os.path.join(args.log_dir, "%d_model.pth" % epoch))
 
-        if epoch >= 100 and val_acc_meter.avg < 3:
+        if epoch >= 100 and epoch_meters["val_acc"].avg < 3:
             print("Early stopping because of low accuracy")
             break
         if epoch - best_val_epoch >= 100:
             print("Early stopping because acc hasn't improved for a long time")
             break
 
+    # Switch to shuffling models and freezing
+    if args.shuffle_post_models and epoch == args.shuffle_post_models:
+        if not args.freeze_encoder:
+            pre_params = list(
+                filter(lambda p: p.requires_grad, model.pre_models.parameters())
+            )
+        else:
+            pre_params = []
+        if not args.freeze_decoder:
+            post_params = list(
+                filter(lambda p: p.requires_grad, model.post_models.parameters())
+            )
+        else:
+            post_params = []
+
+
+def run_epoch(
+    model: torch.nn.Module,
+    args: Experiment,
+    optimizer: torch.optim.Optimizer,
+    criterion: torch.nn.Module,
+    attr_criterion: List[torch.nn.Module],
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+) -> Dict[str, AverageMeter]:
+    meters = {
+        "train_loss": AverageMeter(),
+        "train_conc_acc": AverageMeter(),
+        "train_acc": AverageMeter(),
+        "val_loss": AverageMeter(),
+        "val_acc": AverageMeter(),
+        "val_conc_acc": AverageMeter(),
+    }
+
+    if args.multimodel:
+        run_multimodel_epoch(
+            model,
+            optimizer,
+            train_loader,
+            meters["train_loss"],
+            meters["train_conc_acc"],
+            meters["train_acc"],
+            criterion,
+            attr_criterion,
+            args,
+            is_training=True,
+        )
+
+    elif args.no_img:
+        run_epoch_simple(
+            model,
+            optimizer,
+            train_loader,
+            meters["train_loss"],
+            meters["train_acc"],
+            criterion,
+            args,
+            is_training=True,
+        )
+    else:
+        run_twopart_epoch(
+            model,
+            optimizer,
+            train_loader,
+            meters["train_loss"],
+            meters["train_acc"],
+            criterion,
+            attr_criterion,
+            args,
+            is_training=True,
+        )
+
+    with torch.no_grad():
+        if args.multimodel:
+            run_multimodel_epoch(
+                model,
+                optimizer,
+                val_loader,
+                meters["val_loss"],
+                meters["val_conc_acc"],
+                meters["val_acc"],
+                criterion,
+                attr_criterion,
+                args,
+                is_training=False,
+            )
+        elif args.no_img:
+            run_epoch_simple(
+                model,
+                optimizer,
+                val_loader,
+                meters["val_loss"],
+                meters["val_acc"],
+                criterion,
+                args,
+                is_training=False,
+            )
+        else:
+            run_twopart_epoch(
+                model,
+                optimizer,
+                val_loader,
+                meters["val_loss"],
+                meters["val_acc"],
+                criterion,
+                attr_criterion,
+                args,
+                is_training=False,
+            )
+    return meters
+
 
 def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
+    optimizer: torch.optim.Optimizer
     if args.optimizer == "Adam":
-
         optimizer = torch.optim.Adam(
             params,
             lr=args.lr,
