@@ -377,7 +377,7 @@ def train(model, args, split_models=False):
 
     val_records = {"epoch": -1, "loss": float("inf"), "acc": 0}
 
-    for epoch in range(0, args.epochs):
+    for epoch_ndx in range(0, args.epochs):
         epoch_meters = run_epoch(
             model,
             args,
@@ -388,26 +388,26 @@ def train(model, args, split_models=False):
             val_loader,
         )
 
-        write_metrics(epoch, model, args, epoch_meters, val_records, logger)
+        write_metrics(epoch_ndx, model, args, epoch_meters, val_records, logger)
 
-        if epoch <= stop_epoch:
+        if epoch_ndx <= stop_epoch:
             scheduler.step()
 
-        if epoch % 10 == 0:
+        if epoch_ndx % 10 == 0:
             print("Current lr:", scheduler.get_lr())
 
         if epoch % args.save_step == 0:
-            torch.save(model, os.path.join(args.log_dir, "%d_model.pth" % epoch))
+            torch.save(model, os.path.join(args.log_dir, "%d_model.pth" % epoch_ndx))
 
-        if epoch >= 100 and epoch_meters["val_acc"].avg < 3:
+        if epoch_ndx >= 100 and epoch_meters["val_acc"].avg < 3:
             print("Early stopping because of low accuracy")
             break
-        if epoch - val_records["epoch"] >= 100:
+        if epoch_ndx - val_records["epoch"] >= 100:
             print("Early stopping because acc hasn't improved for a long time")
             break
 
     # Switch to shuffling models and freezing
-    if args.shuffle_post_models and epoch == args.shuffle_post_models:
+    if args.shuffle_post_models:
         if not args.freeze_encoder:
             pre_params = list(
                 filter(lambda p: p.requires_grad, model.pre_models.parameters())
