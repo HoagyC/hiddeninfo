@@ -375,53 +375,20 @@ def train(model, args, split_models=False):
         attr_sparsity=args.attr_sparsity,
     )
 
-    best_val_epoch = -1
-    best_val_loss = float("inf")
-    best_val_acc = 0
+    val_records = {"epoch": -1, "loss": float("inf"), "acc": 0}
 
     for epoch in range(0, args.epochs):
-        epoch_meters = run_epoch()
-
-        if best_val_acc < epoch_meters["val_acc"].avg:
-            best_val_epoch = epoch
-            best_val_acc = epoch_meters["val_acc"].avg
-            logger.write("New model best model at epoch %d\n" % epoch)
-            torch.save(
-                model, os.path.join(args.log_dir, "best_model_%d.pth" % args.seed)
-            )
-            # if best_val_acc >= 100: #in the case of retraining, stop when the model reaches 100% accuracy on both train + val sets
-            #    break
-
-        train_loss_avg = epoch_meters["train_loss"].avg
-        val_loss_avg = epoch_meters["val_loss"].avg
-
-        metrics_dict = {
-            "epoch": epoch,
-            "train_loss": train_loss_avg,
-            "train_acc": epoch_meters["train_acc"].avg,
-            "val_loss": val_loss_avg,
-            "val_acc": epoch_meters["val_acc"].avg,
-            "best_val_epoch": best_val_epoch,
-            "concept_train_acc": epoch_meters["train_conc_acc"].avg,
-            "concept_val_acc": epoch_meters["val_conc_acc"].avg,
-        }
-
-        wandb.log(metrics_dict)
-        logger.write(
-            "Epoch [%d]:\tTrain loss: %.4f\tTrain accuracy: %.4f\t"
-            "Val loss: %.4f\tVal acc: %.4f\t"
-            "Best val epoch: %d\n"
-            % (
-                epoch,
-                train_loss_avg,
-                epoch_meters["train_acc"].avg,
-                val_loss_avg,
-                epoch_meters["val_acc"].avg,
-                best_val_epoch,
-            )
+        epoch_meters = run_epoch(
+            model,
+            args,
+            optimizer,
+            criterion,
+            attr_criterion,
+            train_loader,
+            val_loader,
         )
 
-        logger.flush()
+        write_metrics(epoch, model, args, epoch_meters, val_records, logger)
 
         if epoch <= stop_epoch:
             scheduler.step()
@@ -435,7 +402,7 @@ def train(model, args, split_models=False):
         if epoch >= 100 and epoch_meters["val_acc"].avg < 3:
             print("Early stopping because of low accuracy")
             break
-        if epoch - best_val_epoch >= 100:
+        if epoch - val_records["epoch"] >= 100:
             print("Early stopping because acc hasn't improved for a long time")
             break
 
@@ -453,6 +420,54 @@ def train(model, args, split_models=False):
             )
         else:
             post_params = []
+
+
+def write_metrics(
+    epoch: int,
+    model: torch.nn.Module,
+    args: Experiment,
+    meters: Dict[str, AverageMeter],
+    val_records: Dict,
+    logger: Logger,
+) -> None:
+    if val_records["acc"] < meters["val_acc"].avg:
+        val_records["epoch"] = epoch
+        val_records["acc"] = meters["val_acc"].avg
+        logger.write("New model best model at epoch %d\n" % epoch)
+        torch.save(model, os.path.join(args.log_dir, "best_model_%d.pth" % args.seed))
+        # if best_val_acc >= 100: #in the case of retraining, stop when the model reaches 100% accuracy on both train + val sets
+        #    break
+
+    train_loss_avg = meters["train_loss"].avg
+    val_loss_avg = meters["val_loss"].avg
+
+    metrics_dict = {
+        "epoch": epoch,
+        "train_loss": train_loss_avg,
+        "train_acc": meters["train_acc"].avg,
+        "val_loss": val_loss_avg,
+        "val_acc": meters["val_acc"].avg,
+        "best_val_epoch": val_records["epoch"],
+        "concept_train_acc": meters["train_conc_acc"].avg,
+        "concept_val_acc": meters["val_conc_acc"].avg,
+    }
+
+    wandb.log(metrics_dict)
+    logger.write(
+        "Epoch [%d]:\tTrain loss: %.4f\tTrain accuracy: %.4f\t"
+        "Val loss: %.4f\tVal acc: %.4f\t"
+        "Best val epoch: %d\n"
+        % (
+            epoch,
+            train_loss_avg,
+            meters["train_acc"].avg,
+            val_loss_avg,
+            meters["val_acc"].avg,
+            val_records["epoch"],
+        )
+    )
+
+    logger.flush()
 
 
 def run_epoch(
