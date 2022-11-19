@@ -1,6 +1,8 @@
 """
 Taken from yewsiang/ConceptBottlenecks
 """
+from typing import Optional
+
 from torch import nn
 
 from CUB.template_model import MLP, inception_v3, End2EndModel
@@ -9,27 +11,38 @@ from CUB.template_model import MLP, inception_v3, End2EndModel
 class Multimodel(nn.Module):
     def __init__(self, args):
         super().__init__()
+        self.args = args
+        self.reset_pre_models()
+        self.reset_post_models()
+
+    def reset_pre_models(self, pretrained: Optional[bool] = None) -> None:
+        if pretrained is None:
+            use_pretrained = self.args.pretrained
+        else:
+            use_pretrained = pretrained
+
         pre_models_list = [
             ModelXtoC(
-                pretrained=args.pretrained,
-                freeze=args.freeze,
-                num_classes=args.num_classes,
-                n_attributes=args.n_attributes,
-                expand_dim=args.expand_dim,
-                three_class=args.three_class,
+                pretrained=use_pretrained,
+                freeze=self.args.freeze,
+                num_classes=self.args.num_classes,
+                n_attributes=self.args.n_attributes,
+                expand_dim=self.args.expand_dim,
+                three_class=self.args.three_class,
             )
-            for _ in range(args.n_models)
+            for _ in range(self.args.n_models)
         ]
         self.pre_models = nn.ModuleList(pre_models_list)
 
+    def reset_post_models(self) -> None:
         post_models_list = [
             ModelOracleCtoY(
-                n_class_attr=args.n_class_attr,
-                n_attributes=args.n_attributes,
-                num_classes=args.num_classes,
-                expand_dim=args.expand_dim,
+                n_class_attr=self.args.n_class_attr,
+                n_attributes=self.args.n_attributes,
+                num_classes=self.args.num_classes,
+                expand_dim=self.args.expand_dim,
             )
-            for _ in range(args.n_models)
+            for _ in range(self.args.n_models)
         ]
 
         self.post_models = nn.ModuleList(post_models_list)
@@ -43,7 +56,7 @@ def ModelXtoC(
     n_attributes: int,
     expand_dim: int,
     three_class: bool,
-):
+) -> nn.Module:
     return inception_v3(
         pretrained=pretrained,
         freeze=freeze,
@@ -56,7 +69,9 @@ def ModelXtoC(
 
 
 # Independent Model
-def ModelOracleCtoY(n_class_attr, n_attributes, num_classes, expand_dim):
+def ModelOracleCtoY(
+    n_class_attr: int, n_attributes: int, num_classes: int, expand_dim: int
+) -> nn.Module:
     # X -> C part is separate, this is only the C -> Y part
     if n_class_attr == 3:
         model = MLP(

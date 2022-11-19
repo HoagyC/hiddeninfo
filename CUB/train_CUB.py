@@ -48,9 +48,9 @@ class RunRecord:
 
 @dataclasses.dataclass
 class Meters:
-    loss: AverageMeter = AverageMeter()
-    label_acc: AverageMeter = AverageMeter()
-    concept_acc: AverageMeter = AverageMeter()
+    loss: AverageMeter = dataclasses.field(default_factory=AverageMeter)
+    label_acc: AverageMeter = dataclasses.field(default_factory=AverageMeter)
+    concept_acc: AverageMeter = dataclasses.field(default_factory=AverageMeter)
 
 
 @dataclasses.dataclass
@@ -97,9 +97,9 @@ class Experiment:
     uncertain_labels: bool = True
 
     # Shuffling
-    shuffle_post_models: Optional[int] = 0
-    freeze_decoder: bool = True
-    freeze_encoder: bool = False
+    shuffle_post_models: bool = False
+    freeze_post_model: bool = False
+    freeze_pre_model: bool = False
     n_models: int = 1
 
     # Can predict whethe trait is visible as a third class, n_class_attr=3
@@ -299,7 +299,7 @@ def run_multimodel_epoch(
         label_acc = accuracy(
             output_labels, labels, topk=(1,)
         )  # only care about class prediction accuracy
-        meter.acc.update(label_acc[0], inputs.size(0))
+        meters.label_acc.update(label_acc[0], inputs.size(0))
 
         total_loss = sum(losses)
         meters.loss.update(total_loss.item(), inputs.size(0))
@@ -307,10 +307,17 @@ def run_multimodel_epoch(
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
-    return loss_meter, concept_acc_meter, label_acc_meter
+    return meters
 
 
-def train(model, args, split_models=False, init_epoch=0):
+def train(
+    model: torch.nn.Module,
+    args: Experiment,
+    split_models: bool = False,
+    init_epoch: int = 0,
+    logger: Optional[Logger] = None,
+):
+    wandb.init(project="distill_CUB", config=args.__dict__)
     # Determine imbalance
     imbalance = None
     if args.use_attr and not args.no_img and args.weighted_loss:
@@ -326,12 +333,14 @@ def train(model, args, split_models=False, init_epoch=0):
     else:
         os.makedirs(args.log_dir)
 
-    logger = Logger(os.path.join(args.log_dir, "log.txt"))
+    if not logger:
+        logger = Logger(os.path.join(args.log_dir, "log.txt"))
     logger.write(str(args) + "\n")
     logger.write(str(imbalance) + "\n")
     logger.flush()
 
     model = model.cuda()
+    attr_criterion: List[torch.nn.Module]
     criterion = torch.nn.CrossEntropyLoss()
     if args.use_attr and not args.no_img:
         attr_criterion = []  # separate criterion (loss function) for each attribute
@@ -345,15 +354,15 @@ def train(model, args, split_models=False, init_epoch=0):
             for i in range(args.n_attributes):
                 attr_criterion.append(torch.nn.CrossEntropyLoss())
     else:
-        attr_criterion = None
+        attr_criterion = []
 
     for param in model.parameters():
         param.requires_grad = True
 
-    if args.freeze_encoder:
+    if args.freeze_pre_model:
         for param in model.pre_models.parameters():
             param.requires_grad = False
-    if args.freeze_decoder:
+    if args.freeze_post_model:
         for param in model.post_models.parameters():
             param.requires_grad = False
 
@@ -406,7 +415,9 @@ def train(model, args, split_models=False, init_epoch=0):
             val_loader,
         )
 
-        write_metrics(epoch_ndx, model, args, epoch_meters, val_records, logger)
+        write_metrics(
+            epoch_ndx, model, args, train_meters, val_meters, val_records, logger
+        )
 
         if epoch_ndx <= stop_epoch:
             scheduler.step()
@@ -414,15 +425,17 @@ def train(model, args, split_models=False, init_epoch=0):
         if epoch_ndx % 10 == 0:
             print("Current lr:", scheduler.get_lr())
 
-        if epoch % args.save_step == 0:
+        if epoch_ndx % args.save_step == 0:
             torch.save(model, os.path.join(args.log_dir, "%d_model.pth" % epoch_ndx))
 
-        if epoch_ndx >= 100 and val_meters.acc.avg < 3:
+        if epoch_ndx >= 100 and val_meters.label_acc.avg < 3:
             print("Early stopping because of low accuracy")
             break
         if epoch_ndx - val_records.epoch >= 100:
             print("Early stopping because acc hasn't improved for a long time")
             break
+
+    return logger
 
 
 def write_metrics(
@@ -554,6 +567,7 @@ def run_epoch(
                 args,
                 is_training=False,
             )
+
     return train_meters, val_meters
 
 
@@ -585,11 +599,19 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
     return optimizer
 
 
-def train_multimodel(args):
-    model = Multimodel(args)
+def train_multimodel():
     default_args = Experiment()
-    train_together = dataclasses.replace(default_args, n_models=2, epochs=2)
-    train(model, args)
+    multiple_cfg = dataclasses.replace(default_args, n_models=2, epochs=2)
+    retrain_dec_cfg = dataclasses.replace(
+        multiple_cfg, shuffle_post_models=True, freeze_post_model=True
+    )
+    retrain_enc_cfg = dataclasses.replace(
+        multiple_cfg, shuffle_post_models=True, freeze_pre_model=True
+    )
+    model = Multimodel(multiple_cfg)
+    logger = train(model, multiple_cfg)
+    model.reset_post_models
+    train(model, retrain_dec_cfg, logger=logger, init_epoch=multiple_cfg.epoch)
 
 
 def train_X_to_C(args):
@@ -670,10 +692,7 @@ def _save_CUB_result(train_result):
 
 
 if __name__ == "__main__":
-    args = Experiment()
-
-    wandb.init(project="distill_CUB", config=args.__dict__)
-    train_multimodel(args)
+    train_multimodel()
 
     # args = parse_arguments(None)[0]
     # print(args)
