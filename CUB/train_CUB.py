@@ -8,7 +8,7 @@ import os
 import random
 import sys
 
-from typing import Dict, Optional, Iterable, List
+from typing import Dict, Iterable, List, Optional, Tuple
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -40,6 +40,20 @@ LR_DECAY_SIZE = 0.1
 
 
 @dataclasses.dataclass
+class RunRecord:
+    epoch: int = -1
+    loss: float = float("inf")
+    acc: float = 0.0
+
+
+@dataclasses.dataclass
+class Meters:
+    loss: AverageMeter = AverageMeter()
+    label_acc: AverageMeter = AverageMeter()
+    concept_acc: AverageMeter = AverageMeter()
+
+
+@dataclasses.dataclass
 class Experiment:
     tag: str = "basic"
     exp: str = "multimodel"
@@ -61,13 +75,13 @@ class Experiment:
     pretrained: bool = True
 
     # Training
+    epochs: int = 100
     end2end: bool = True
     optimizer: str = "SGD"
     scheduler_step: int = 1000
     attr_loss_weight: float = 1.0
     lr: float = 1e-03
     weight_decay: float = 5e-5
-    epochs: int = 100
     attr_sparsity: int = 1
 
     # Legacy
@@ -93,9 +107,7 @@ class Experiment:
     three_class: bool = n_class_attr == 3
 
 
-def run_epoch_simple(
-    model, optimizer, loader, loss_meter, acc_meter, criterion, args, is_training
-):
+def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_training):
     """
     A -> Y: Predicting class labels using only attributes with MLP
     """
@@ -117,22 +129,21 @@ def run_epoch_simple(
         outputs = model(inputs_var)
         loss = criterion(outputs, labels_var)
         acc = accuracy(outputs, labels, topk=(1,))
-        loss_meter.update(loss.item(), inputs.size(0))
-        acc_meter.update(acc[0], inputs.size(0))
+        meters.loss.update(loss.item(), inputs.size(0))
+        meters.acc.update(acc[0], inputs.size(0))
 
         if is_training:
             optimizer.zero_grad()  # zero the parameter gradients
             loss.backward()
             optimizer.step()  # optimizer step to update parameters
-    return loss_meter, acc_meter
+    return meters
 
 
 def run_twopart_epoch(
     model,
     optimizer,
     loader,
-    loss_meter,
-    acc_meter,
+    meters,
     criterion,
     attr_criterion,
     args,
@@ -186,12 +197,12 @@ def run_twopart_epoch(
         if args.bottleneck:  # attribute accuracy
             sigmoid_outputs = torch.nn.Sigmoid()(torch.cat(outputs, dim=1))
             acc = binary_accuracy(sigmoid_outputs, attr_labels)
-            acc_meter.update(acc.data.cpu().numpy(), inputs.size(0))
+            meters.acc.update(acc.data.cpu().numpy(), inputs.size(0))
         else:
             acc = accuracy(
                 outputs[0], labels, topk=(1,)
             )  # only care about class prediction accuracy
-            acc_meter.update(acc[0], inputs.size(0))
+            meters.acc.update(acc[0], inputs.size(0))
 
         if attr_criterion is not None:
             if args.bottleneck:
@@ -203,21 +214,19 @@ def run_twopart_epoch(
                 )
         else:  # finetune
             total_loss = sum(losses)
-        loss_meter.update(total_loss.item(), inputs.size(0))
+        meters.loss.update(total_loss.item(), inputs.size(0))
         if is_training:
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
-    return loss_meter, acc_meter
+    return meters
 
 
 def run_multimodel_epoch(
     model,
     optimizer,
     loader,
-    loss_meter,
-    concept_acc_meter,
-    label_acc_meter,
+    meters,
     criterion,
     attr_criterion,
     args,
@@ -285,15 +294,15 @@ def run_multimodel_epoch(
         # Calculating attribute accuracy
         sigmoid_outputs = torch.nn.Sigmoid()(concepts_t)
         concept_acc = binary_accuracy(sigmoid_outputs, attr_labels)
-        concept_acc_meter.update(concept_acc.data.cpu().numpy(), inputs.size(0))
+        meters.concept_acc.update(concept_acc.data.cpu().numpy(), inputs.size(0))
 
         label_acc = accuracy(
             output_labels, labels, topk=(1,)
         )  # only care about class prediction accuracy
-        label_acc_meter.update(label_acc[0], inputs.size(0))
+        meter.acc.update(label_acc[0], inputs.size(0))
 
         total_loss = sum(losses)
-        loss_meter.update(total_loss.item(), inputs.size(0))
+        meters.loss.update(total_loss.item(), inputs.size(0))
         if is_training:
             optimizer.zero_grad()
             total_loss.backward()
@@ -301,7 +310,7 @@ def run_multimodel_epoch(
     return loss_meter, concept_acc_meter, label_acc_meter
 
 
-def train(model, args, split_models=False):
+def train(model, args, split_models=False, init_epoch=0):
     # Determine imbalance
     imbalance = None
     if args.use_attr and not args.no_img and args.weighted_loss:
@@ -338,9 +347,18 @@ def train(model, args, split_models=False):
     else:
         attr_criterion = None
 
+    for param in model.parameters():
+        param.requires_grad = True
+
+    if args.freeze_encoder:
+        for param in model.pre_models.parameters():
+            param.requires_grad = False
+    if args.freeze_decoder:
+        for param in model.post_models.parameters():
+            param.requires_grad = False
+
     params = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = make_optimizer(params, args)
-    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=5, threshold=0.00001, min_lr=0.00001, eps=1e-08)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=args.scheduler_step, gamma=0.1
     )
@@ -375,10 +393,10 @@ def train(model, args, split_models=False):
         attr_sparsity=args.attr_sparsity,
     )
 
-    val_records = {"epoch": -1, "loss": float("inf"), "acc": 0}
+    val_records = RunRecord()
 
-    for epoch_ndx in range(0, args.epochs):
-        epoch_meters = run_epoch(
+    for epoch_ndx in range(init_epoch, args.epochs + init_epoch):
+        train_meters, val_meters = run_epoch(
             model,
             args,
             optimizer,
@@ -399,57 +417,43 @@ def train(model, args, split_models=False):
         if epoch % args.save_step == 0:
             torch.save(model, os.path.join(args.log_dir, "%d_model.pth" % epoch_ndx))
 
-        if epoch_ndx >= 100 and epoch_meters["val_acc"].avg < 3:
+        if epoch_ndx >= 100 and val_meters.acc.avg < 3:
             print("Early stopping because of low accuracy")
             break
-        if epoch_ndx - val_records["epoch"] >= 100:
+        if epoch_ndx - val_records.epoch >= 100:
             print("Early stopping because acc hasn't improved for a long time")
             break
-
-    # Switch to shuffling models and freezing
-    if args.shuffle_post_models:
-        if not args.freeze_encoder:
-            pre_params = list(
-                filter(lambda p: p.requires_grad, model.pre_models.parameters())
-            )
-        else:
-            pre_params = []
-        if not args.freeze_decoder:
-            post_params = list(
-                filter(lambda p: p.requires_grad, model.post_models.parameters())
-            )
-        else:
-            post_params = []
 
 
 def write_metrics(
     epoch: int,
     model: torch.nn.Module,
     args: Experiment,
-    meters: Dict[str, AverageMeter],
-    val_records: Dict,
+    train_meters: Meters,
+    val_meters: Meters,
+    val_records: RunRecord,
     logger: Logger,
 ) -> None:
-    if val_records["acc"] < meters["val_acc"].avg:
-        val_records["epoch"] = epoch
-        val_records["acc"] = meters["val_acc"].avg
+    if val_records.acc < val_meters.label_acc.avg:
+        val_records.epoch = epoch
+        val_records.acc = val_meters.label_acc.avg
         logger.write("New model best model at epoch %d\n" % epoch)
         torch.save(model, os.path.join(args.log_dir, "best_model_%d.pth" % args.seed))
         # if best_val_acc >= 100: #in the case of retraining, stop when the model reaches 100% accuracy on both train + val sets
         #    break
 
-    train_loss_avg = meters["train_loss"].avg
-    val_loss_avg = meters["val_loss"].avg
+    train_loss_avg = train_meters.loss.avg
+    val_loss_avg = val_meters.loss.avg
 
     metrics_dict = {
         "epoch": epoch,
         "train_loss": train_loss_avg,
-        "train_acc": meters["train_acc"].avg,
+        "train_acc": train_meters.label_acc.avg,
         "val_loss": val_loss_avg,
-        "val_acc": meters["val_acc"].avg,
-        "best_val_epoch": val_records["epoch"],
-        "concept_train_acc": meters["train_conc_acc"].avg,
-        "concept_val_acc": meters["val_conc_acc"].avg,
+        "val_acc": val_meters.label_acc.avg,
+        "best_val_epoch": val_records.epoch,
+        "concept_train_acc": train_meters.concept_acc.avg,
+        "concept_val_acc": val_meters.concept_acc.avg,
     }
 
     wandb.log(metrics_dict)
@@ -460,10 +464,10 @@ def write_metrics(
         % (
             epoch,
             train_loss_avg,
-            meters["train_acc"].avg,
+            train_meters.label_acc.avg,
             val_loss_avg,
-            meters["val_acc"].avg,
-            val_records["epoch"],
+            val_meters.label_acc.avg,
+            val_records.epoch,
         )
     )
 
@@ -478,24 +482,17 @@ def run_epoch(
     attr_criterion: List[torch.nn.Module],
     train_loader: DataLoader,
     val_loader: DataLoader,
-) -> Dict[str, AverageMeter]:
-    meters = {
-        "train_loss": AverageMeter(),
-        "train_conc_acc": AverageMeter(),
-        "train_acc": AverageMeter(),
-        "val_loss": AverageMeter(),
-        "val_acc": AverageMeter(),
-        "val_conc_acc": AverageMeter(),
-    }
+) -> Tuple[Meters, Meters]:
+
+    train_meters = Meters()
+    val_meters = Meters()
 
     if args.multimodel:
         run_multimodel_epoch(
             model,
             optimizer,
             train_loader,
-            meters["train_loss"],
-            meters["train_conc_acc"],
-            meters["train_acc"],
+            train_meters,
             criterion,
             attr_criterion,
             args,
@@ -507,8 +504,7 @@ def run_epoch(
             model,
             optimizer,
             train_loader,
-            meters["train_loss"],
-            meters["train_acc"],
+            train_meters,
             criterion,
             args,
             is_training=True,
@@ -518,8 +514,7 @@ def run_epoch(
             model,
             optimizer,
             train_loader,
-            meters["train_loss"],
-            meters["train_acc"],
+            train_meters,
             criterion,
             attr_criterion,
             args,
@@ -532,9 +527,7 @@ def run_epoch(
                 model,
                 optimizer,
                 val_loader,
-                meters["val_loss"],
-                meters["val_conc_acc"],
-                meters["val_acc"],
+                val_meters,
                 criterion,
                 attr_criterion,
                 args,
@@ -545,8 +538,7 @@ def run_epoch(
                 model,
                 optimizer,
                 val_loader,
-                meters["val_loss"],
-                meters["val_acc"],
+                val_meters,
                 criterion,
                 args,
                 is_training=False,
@@ -556,14 +548,13 @@ def run_epoch(
                 model,
                 optimizer,
                 val_loader,
-                meters["val_loss"],
-                meters["val_acc"],
+                val_meters,
                 criterion,
                 attr_criterion,
                 args,
                 is_training=False,
             )
-    return meters
+    return train_meters, val_meters
 
 
 def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
@@ -595,8 +586,9 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 
 
 def train_multimodel(args):
-
     model = Multimodel(args)
+    default_args = Experiment()
+    train_together = dataclasses.replace(default_args, n_models=2, epochs=2)
     train(model, args)
 
 
