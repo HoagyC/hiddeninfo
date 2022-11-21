@@ -30,81 +30,11 @@ from CUB.models import (
     ModelXtoCtoY,
     Multimodel,
 )
+from CUB.classes import AverageMeter, Experiment, Meters, RunRecord
 
-
-N_ATTRIBUTES = 312
-N_CLASSES = 200
 MIN_LR = 1e-04
 BASE_DIR = "/root/hiddeninfo"
 LR_DECAY_SIZE = 0.1
-
-
-@dataclasses.dataclass
-class RunRecord:
-    epoch: int = -1
-    loss: float = float("inf")
-    acc: float = 0.0
-
-
-@dataclasses.dataclass
-class Meters:
-    loss: AverageMeter = dataclasses.field(default_factory=AverageMeter)
-    label_acc: AverageMeter = dataclasses.field(default_factory=AverageMeter)
-    concept_acc: AverageMeter = dataclasses.field(default_factory=AverageMeter)
-
-
-@dataclasses.dataclass
-class Experiment:
-    tag: str = "basic"
-    exp: str = "multimodel"
-    seed: int = 0
-
-    # Data
-    log_dir: str = "out"
-    data_dir: str = "CUB_processed"
-    image_dir: str = "images"
-    save_step: int = 10
-
-    # Model
-    multimodel: bool = True
-    n_attributes: int = N_ATTRIBUTES
-    num_classes: int = N_CLASSES
-    expand_dim: int = 500
-    use_relu: bool = True
-    use_sigmoid: bool = False
-    pretrained: bool = True
-
-    # Training
-    epochs: int = 100
-    end2end: bool = True
-    optimizer: str = "SGD"
-    scheduler_step: int = 1000
-    attr_loss_weight: float = 1.0
-    lr: float = 1e-03
-    weight_decay: float = 5e-5
-    attr_sparsity: int = 1
-
-    # Legacy
-    connect_CY: bool = False
-    resampling: bool = False
-    batch_size: int = 32
-
-    freeze: bool = False
-    use_attr: bool = True
-    no_img: bool = False
-    bottleneck: bool = True
-    weighted_loss: bool = False
-    uncertain_labels: bool = True
-
-    # Shuffling
-    shuffle_post_models: bool = False
-    freeze_post_model: bool = False
-    freeze_pre_model: bool = False
-    n_models: int = 1
-
-    # Can predict whethe trait is visible as a third class, n_class_attr=3
-    n_class_attr: int = 2
-    three_class: bool = n_class_attr == 3
 
 
 def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_training):
@@ -318,14 +248,6 @@ def train(
     logger: Optional[Logger] = None,
 ):
     wandb.init(project="distill_CUB", config=args.__dict__)
-    # Determine imbalance
-    imbalance = None
-    if args.use_attr and not args.no_img and args.weighted_loss:
-        train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
-        if args.weighted_loss == "multiple":
-            imbalance = find_class_imbalance(train_data_path, True)
-        else:
-            imbalance = find_class_imbalance(train_data_path, False)
 
     if os.path.exists(args.log_dir):  # job restarted by cluster
         for f in os.listdir(args.log_dir):
@@ -336,25 +258,11 @@ def train(
     if not logger:
         logger = Logger(os.path.join(args.log_dir, "log.txt"))
     logger.write(str(args) + "\n")
-    logger.write(str(imbalance) + "\n")
     logger.flush()
 
     model = model.cuda()
-    attr_criterion: List[torch.nn.Module]
-    criterion = torch.nn.CrossEntropyLoss()
-    if args.use_attr and not args.no_img:
-        attr_criterion = []  # separate criterion (loss function) for each attribute
-        if args.weighted_loss:
-            assert imbalance is not None
-            for ratio in imbalance:
-                attr_criterion.append(
-                    torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
-                )
-        else:
-            for i in range(args.n_attributes):
-                attr_criterion.append(torch.nn.CrossEntropyLoss())
-    else:
-        attr_criterion = []
+
+    criterion, attr_criterion = make_criteria(args)
 
     for param in model.parameters():
         param.requires_grad = True
@@ -381,26 +289,8 @@ def train(
     val_data_path = train_data_path.replace("train.pkl", "val.pkl")
     logger.write("train data path: %s\n" % train_data_path)
 
-    train_loader = load_data(
-        [train_data_path],
-        args.use_attr,
-        args.no_img,
-        args.batch_size,
-        args.uncertain_labels,
-        image_dir=args.image_dir,
-        n_class_attr=args.n_class_attr,
-        resampling=args.resampling,
-        attr_sparsity=args.attr_sparsity,
-    )
-    val_loader = load_data(
-        [val_data_path],
-        args.use_attr,
-        args.no_img,
-        args.batch_size,
-        image_dir=args.image_dir,
-        n_class_attr=args.n_class_attr,
-        attr_sparsity=args.attr_sparsity,
-    )
+    train_loader = load_data([train_data_path], args, resampling=args.resampling)
+    val_loader = load_data([val_data_path], args)
 
     val_records = RunRecord()
 
@@ -436,6 +326,35 @@ def train(
             break
 
     return logger
+
+
+def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Module]]:
+    # Determine imbalance
+    imbalance = None
+    if args.use_attr and not args.no_img and args.weighted_loss:
+        train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
+        if args.weighted_loss == "multiple":
+            imbalance = find_class_imbalance(train_data_path, True)
+        else:
+            imbalance = find_class_imbalance(train_data_path, False)
+
+    attr_criterion: List[torch.nn.Module]
+    criterion = torch.nn.CrossEntropyLoss()
+    if args.use_attr and not args.no_img:
+        attr_criterion = []  # separate criterion (loss function) for each attribute
+        if args.weighted_loss:
+            assert imbalance is not None
+            for ratio in imbalance:
+                attr_criterion.append(
+                    torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
+                )
+        else:
+            for i in range(args.n_attributes):
+                attr_criterion.append(torch.nn.CrossEntropyLoss())
+    else:
+        attr_criterion = []
+
+    return criterion, attr_criterion
 
 
 def write_metrics(
@@ -599,7 +518,7 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
     return optimizer
 
 
-def train_multimodel():
+def train_multimodel() -> None:
     default_args = Experiment()
     multiple_cfg = dataclasses.replace(default_args, n_models=2, epochs=2)
     retrain_dec_cfg = dataclasses.replace(
@@ -611,14 +530,14 @@ def train_multimodel():
     model = Multimodel(multiple_cfg)
     logger = train(model, multiple_cfg)
     model.reset_post_models
-    train(model, retrain_dec_cfg, logger=logger, init_epoch=multiple_cfg.epoch)
+    train(model, retrain_dec_cfg, logger=logger, init_epoch=multiple_cfg.epochs)
 
 
 def train_X_to_C(args):
     model = ModelXtoC(
         pretrained=args.pretrained,
         freeze=args.freeze,
-        num_classes=N_CLASSES,
+        num_classes=args.num_classes,
         n_attributes=args.n_attributes,
         expand_dim=args.expand_dim,
         three_class=args.three_class,
@@ -630,7 +549,7 @@ def train_oracle_C_to_y_and_test_on_Chat(args):
     model = ModelOracleCtoY(
         n_class_attr=args.n_class_attr,
         n_attributes=args.n_attributes,
-        num_classes=N_CLASSES,
+        num_classes=args.num_classes,
         expand_dim=args.expand_dim,
     )
     train(model, args)
@@ -640,7 +559,7 @@ def train_Chat_to_y_and_test_on_Chat(args):
     model = ModelXtoChat_ChatToY(
         n_class_attr=args.n_class_attr,
         n_attributes=args.n_attributes,
-        num_classes=N_CLASSES,
+        num_classes=args.num_classes,
         expand_dim=args.expand_dim,
     )
     train(model, args)
@@ -651,7 +570,7 @@ def train_X_to_C_to_y(args):
         n_class_attr=args.n_class_attr,
         pretrained=args.pretrained,
         freeze=args.freeze,
-        num_classes=N_CLASSES,
+        num_classes=args.num_classes,
         n_attributes=args.n_attributes,
         expand_dim=args.expand_dim,
         use_relu=args.use_relu,
@@ -664,7 +583,7 @@ def train_X_to_y(args):
     model = ModelXtoY(
         pretrained=args.pretrained,
         freeze=args.freeze,
-        num_classes=N_CLASSES,
+        num_classes=args.num_classes,
     )
     train(model, args)
 
@@ -673,7 +592,7 @@ def train_X_to_Cy(args):
     model = ModelXtoCY(
         pretrained=args.pretrained,
         freeze=args.freeze,
-        num_classes=N_CLASSES,
+        num_classes=args.num_classes,
         n_attributes=args.n_attributes,
         three_class=args.three_class,
         connect_CY=args.connect_CY,

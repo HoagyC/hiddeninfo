@@ -12,6 +12,8 @@ class Multimodel(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
+        self.pre_models: List[torch.nn.Module]
+        self.post_models: List[torch.nn.Module]
         self.reset_pre_models()
         self.reset_post_models()
 

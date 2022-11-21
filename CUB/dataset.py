@@ -14,6 +14,8 @@ import torchvision.transforms as transforms
 
 from torch.utils.data import Dataset, DataLoader, BatchSampler
 
+from CUB.classes import Experiment
+
 
 class CUBDataset(Dataset):
     """
@@ -146,21 +148,17 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
 def load_data(
     pkl_paths: List[str],
-    use_attr: bool,
-    no_img,
-    batch_size: int,
-    uncertain_label: bool = False,
-    n_class_attr: int = 2,
-    image_dir: str = "images",
-    resampling: bool = False,
+    args: Experiment,
     resol: int = 299,
-    attr_sparsity: int = 1,
+    resampling: bool = False,
+    uncertain_label: bool = False,
 ) -> DataLoader:
     """
     Note: Inception needs (299,299,3) images with inputs scaled between -1 and 1
     Loads data with transformations applied, and upsample the minority class if there is class imbalance and weighted loss is not used
     NOTE: resampling is customized for first attribute only, so change sampler.py if necessary
     """
+
     resized_resol = int(resol * 256 / 224)
     is_training = any(["train.pkl" in f for f in pkl_paths])
     if is_training:
@@ -189,13 +187,13 @@ def load_data(
 
     dataset = CUBDataset(
         pkl_paths,
-        use_attr,
-        no_img,
+        args.use_attr,
+        args.no_img,
         uncertain_label,
-        image_dir,
-        n_class_attr,
+        args.image_dir,
+        args.n_class_attr,
         transform,
-        attr_sparsity,
+        args.attr_sparsity,
     )
     if is_training:
         drop_last = True
@@ -206,13 +204,13 @@ def load_data(
     if resampling:
         sampler = BatchSampler(
             ImbalancedDatasetSampler(dataset),
-            batch_size=batch_size,
+            batch_size=args.batch_size,
             drop_last=drop_last,
         )
         loader = DataLoader(dataset, batch_sampler=sampler)
     else:
         loader = DataLoader(
-            dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last
+            dataset, batch_size=args.batch_size, shuffle=shuffle, drop_last=drop_last
         )
     return loader
 
@@ -250,10 +248,3 @@ def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
     if not multiple_attr:  # e.g. [9.0] --> [9.0] * 312
         imbalance_ratio *= n_attr
     return
-
-
-if __name__ == "__main__":
-    train_data_path = "CUB_processed/train.pkl"
-    data = load_data(
-        pkl_paths=[train_data_path], use_attr=False, no_img=False, batch_size=100
-    )
