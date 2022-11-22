@@ -1,6 +1,9 @@
 import argparse
 
+from CUB.classes import Experiment
 
+# Argument parser from github.com/yewsiang/ConceptBottleneck
+# Used to check hyperparameter defaults for replicating experiments
 def parse_arguments(experiment):
     # Get argparse configs from user
     parser = argparse.ArgumentParser(description="CUB Training")
@@ -155,3 +158,41 @@ def parse_arguments(experiment):
     args = parser.parse_args()
     args.three_class = args.n_class_attr == 3
     return (args,)
+
+
+"""
+Experiment for independent models
+
+
+Training an XtoC Model
+
+python3 src/experiments.py cub Concept_XtoC --seed 1 -ckpt 1 -log_dir ConceptModel__Seed1/outputs/ -e 1000 \
+ -optimizer sgd -pretrained -use_aux -use_attr -weighted_loss multiple -data_dir CUB_processed/class_attr_data_10 \
+-n_attributes 112 -normalize_loss -b 64 -weight_decay 0.00004 -lr 0.01 -scheduler_step 1000 -bottleneck
+
+Getting predicted C logits
+
+python3 src/CUB/generate_new_data.py ExtractConcepts --model_path ConceptModel__Seed1/outputs/best_model_1.pth \
+--data_dir CUB_processed/class_attr_data_10 --out_dir ConceptModel1__PredConcepts
+
+Training C to Y
+
+python3 src/experiments.py cub Independent_CtoY --seed 1 -log_dir IndependentModel_WithVal___Seed1/outputs/ -e 500 \
+-optimizer sgd -use_attr -data_dir CUB_processed/class_attr_data_10 -n_attributes 112 -no_img -b 64 \
+-weight_decay 0.00005 -lr 0.001 -scheduler_step 1000 
+"""
+
+XtoC_cfg = Experiment(
+    tag="XtoC",
+    seed=1,
+    exp="Concept_XtoC",
+    epochs=1000,
+    optimizer="sgd",
+    use_attr=True,
+    n_attributes=112,
+    batch_size=64,
+    weight_decay=4e-5,
+    lr=0.01,
+    scheduler_step=1000,
+    use_aux=True,
+)

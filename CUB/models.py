@@ -27,6 +27,7 @@ class Multimodel(nn.Module):
             ModelXtoC(
                 pretrained=use_pretrained,
                 freeze=self.args.freeze,
+                use_aux=self.args.use_aux,
                 num_classes=self.args.num_classes,
                 n_attributes=self.args.n_attributes,
                 expand_dim=self.args.expand_dim,
@@ -54,6 +55,7 @@ class Multimodel(nn.Module):
 def ModelXtoC(
     pretrained: bool,
     freeze: bool,
+    use_aux: bool,
     num_classes: int,
     n_attributes: int,
     expand_dim: int,
@@ -62,6 +64,7 @@ def ModelXtoC(
     return inception_v3(
         pretrained=pretrained,
         freeze=freeze,
+        aux_logits=use_aux,
         num_classes=num_classes,
         n_attributes=n_attributes,
         bottleneck=True,
@@ -99,6 +102,7 @@ def ModelXtoCtoY(
     n_class_attr,
     pretrained,
     freeze,
+    use_aux,
     num_classes,
     n_attributes,
     expand_dim,
@@ -110,6 +114,7 @@ def ModelXtoCtoY(
         freeze=freeze,
         num_classes=num_classes,
         n_attributes=n_attributes,
+        aux_logits=use_aux,
         bottleneck=True,
         expand_dim=expand_dim,
         three_class=(n_class_attr == 3),
@@ -128,18 +133,22 @@ def ModelXtoCtoY(
 
 
 # Standard Model
-def ModelXtoY(pretrained, freeze, num_classes):
+def ModelXtoY(pretrained, freeze, num_classes, use_aux):
     return inception_v3(
         pretrained=pretrained,
         freeze=freeze,
         num_classes=num_classes,
+        aux_logits=use_aux,
     )
 
 
 # Multitask Model
-def ModelXtoCY(pretrained, freeze, num_classes, n_attributes, three_class, connect_CY):
+def ModelXtoCY(
+    pretrained, use_aux, freeze, num_classes, n_attributes, three_class, connect_CY
+):
     return inception_v3(
         pretrained=pretrained,
+        aux_logits=use_aux,
         freeze=freeze,
         num_classes=num_classes,
         n_attributes=n_attributes,

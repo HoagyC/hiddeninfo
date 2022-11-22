@@ -35,6 +35,7 @@ from CUB.classes import AverageMeter, Experiment, Meters, RunRecord
 MIN_LR = 1e-04
 BASE_DIR = "/root/hiddeninfo"
 LR_DECAY_SIZE = 0.1
+AUX_LOSS_RATIO = 0.4
 
 
 def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_training):
@@ -170,7 +171,7 @@ def run_multimodel_epoch(
 
     for _, data in enumerate(loader):
         pre_model_ndx = random.randint(0, len(model.pre_models) - 1)
-        if args.shuffle_post_models:
+        if args.shuffle_models:
             post_model_ndx = random.randint(0, len(model.pre_models) - 1)
         else:
             post_model_ndx = pre_model_ndx
@@ -202,8 +203,16 @@ def run_multimodel_epoch(
             attr_mask_bin.cuda() if torch.cuda.is_available() else attr_mask_bin
         )
 
-        concepts = pre_model(inputs)
-        concepts_t = torch.cat(concepts, dim=1)
+        # args.use_aux adds an additional concept prediction layer to the pre_model, predicting
+        # concepts from non-final layers to pass concept info to lower layers.
+        if args.use_aux and is_training:
+            concepts, aux_concepts = pre_model(inputs)
+            concepts_t = torch.cat(concepts, dim=1)
+
+        else:
+            concepts = pre_model(inputs)
+            concepts_t = torch.cat(concepts, dim=1)
+
         output_labels = post_model(concepts_t)
 
         losses = []
@@ -217,8 +226,17 @@ def run_multimodel_epoch(
                 concepts[i].type(torch.cuda.FloatTensor).squeeze(), attr_mask_bin
             )
             target = torch.masked_select(attr_labels[:, i], attr_mask_bin)
-
             attr_loss = attr_criterion[i](value, target)
+
+            if args.use_aux and is_training:
+                aux_value = torch.masked_select(
+                    aux_concepts[i].type(torch.cuda.FloatTensor).squeeze(),
+                    attr_mask_bin,
+                )
+                aux_attr_loss = AUX_LOSS_RATIO * attr_criterion[i](aux_value, target)
+
+                attr_loss += aux_attr_loss
+
             losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
 
         # Calculating attribute accuracy
@@ -260,6 +278,12 @@ def train(
     logger.write(str(args) + "\n")
     logger.flush()
 
+    if args.multimodel:
+        if args.reset_pre_models:
+            model.reset_pre_models()
+        if args.reset_post_models:
+            model.reset_post_models()
+
     model = model.cuda()
 
     criterion, attr_criterion = make_criteria(args)
@@ -267,10 +291,10 @@ def train(
     for param in model.parameters():
         param.requires_grad = True
 
-    if args.freeze_pre_model:
+    if args.freeze_pre_models:
         for param in model.pre_models.parameters():
             param.requires_grad = False
-    if args.freeze_post_model:
+    if args.freeze_post_models:
         for param in model.post_models.parameters():
             param.requires_grad = False
 
@@ -520,16 +544,21 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 
 def train_multimodel() -> None:
     default_args = Experiment()
-    multiple_cfg = dataclasses.replace(default_args, n_models=2, epochs=2)
+    multiple_cfg = dataclasses.replace(default_args, n_models=1, epochs=50)
     retrain_dec_cfg = dataclasses.replace(
-        multiple_cfg, shuffle_post_models=True, freeze_post_model=True
+        multiple_cfg,
+        shuffle_models=True,
+        freeze_post_models=True,
+        reset_post_models=True,
     )
     retrain_enc_cfg = dataclasses.replace(
-        multiple_cfg, shuffle_post_models=True, freeze_pre_model=True
+        multiple_cfg,
+        shuffle_models=True,
+        freeze_pre_models=True,
+        reset_pre_models=True,
     )
     model = Multimodel(multiple_cfg)
     logger = train(model, multiple_cfg)
-    model.reset_post_models
     train(model, retrain_dec_cfg, logger=logger, init_epoch=multiple_cfg.epochs)
 
 
@@ -537,6 +566,7 @@ def train_X_to_C(args):
     model = ModelXtoC(
         pretrained=args.pretrained,
         freeze=args.freeze,
+        use_aux=args.use_aux,
         num_classes=args.num_classes,
         n_attributes=args.n_attributes,
         expand_dim=args.expand_dim,
@@ -569,6 +599,7 @@ def train_X_to_C_to_y(args):
     model = ModelXtoCtoY(
         n_class_attr=args.n_class_attr,
         pretrained=args.pretrained,
+        use_aux=args.use_aux,
         freeze=args.freeze,
         num_classes=args.num_classes,
         n_attributes=args.n_attributes,
@@ -583,6 +614,7 @@ def train_X_to_y(args):
     model = ModelXtoY(
         pretrained=args.pretrained,
         freeze=args.freeze,
+        use_aux=args.use_aux,
         num_classes=args.num_classes,
     )
     train(model, args)
@@ -593,6 +625,7 @@ def train_X_to_Cy(args):
         pretrained=args.pretrained,
         freeze=args.freeze,
         num_classes=args.num_classes,
+        use_aux=args.use_aux,
         n_attributes=args.n_attributes,
         three_class=args.three_class,
         connect_CY=args.connect_CY,

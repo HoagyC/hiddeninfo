@@ -105,6 +105,7 @@ class Inception3(nn.Module):
     def __init__(
         self,
         num_classes,
+        aux_logits=True,
         transform_input=False,
         n_attributes=0,
         bottleneck=False,
@@ -124,6 +125,7 @@ class Inception3(nn.Module):
         super(Inception3, self).__init__()
         self.transform_input = transform_input
         self.n_attributes = n_attributes
+        self.aux_logits = aux_logits
         self.bottleneck = bottleneck
         self.Conv2d_1a_3x3 = BasicConv2d(3, 32, kernel_size=3, stride=2)
         self.Conv2d_2a_3x3 = BasicConv2d(32, 32, kernel_size=3)
@@ -138,6 +140,16 @@ class Inception3(nn.Module):
         self.Mixed_6c = InceptionC(768, channels_7x7=160)
         self.Mixed_6d = InceptionC(768, channels_7x7=160)
         self.Mixed_6e = InceptionC(768, channels_7x7=192)
+        if aux_logits:
+            self.AuxLogits = InceptionAux(
+                768,
+                num_classes,
+                n_attributes=self.n_attributes,
+                bottleneck=bottleneck,
+                expand_dim=expand_dim,
+                three_class=three_class,
+                connect_CY=connect_CY,
+            )
         self.Mixed_7a = InceptionD(768)
         self.Mixed_7b = InceptionE(1280)
         self.Mixed_7c = InceptionE(2048)
@@ -210,6 +222,9 @@ class Inception3(nn.Module):
         # N x 768 x 17 x 17
         x = self.Mixed_6e(x)
         # N x 768 x 17 x 17
+        if self.training and self.aux_logits:
+            out_aux = self.AuxLogits(x)
+        # N x 768 x 17 x 17
         x = self.Mixed_7a(x)
         # N x 1280 x 8 x 8
         x = self.Mixed_7b(x)
@@ -229,7 +244,10 @@ class Inception3(nn.Module):
         if self.n_attributes > 0 and not self.bottleneck and self.cy_fc is not None:
             attr_preds = torch.cat(out[1:], dim=1)
             out[0] += self.cy_fc(attr_preds)
-        return out
+        if self.training and self.aux_logits:
+            return out, out_aux
+        else:
+            return out
 
     def load_partial_state_dict(self, state_dict):
         """

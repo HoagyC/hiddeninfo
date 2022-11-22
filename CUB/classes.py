@@ -25,7 +25,6 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-
 @dataclasses.dataclass
 class RunRecord:
     epoch: int = -1
@@ -60,6 +59,7 @@ class Experiment:
     use_relu: bool = True
     use_sigmoid: bool = False
     pretrained: bool = True
+    use_aux: bool = True
 
     # Training
     epochs: int = 100
@@ -84,9 +84,11 @@ class Experiment:
     uncertain_labels: bool = True
 
     # Shuffling
-    shuffle_post_models: bool = False
-    freeze_post_model: bool = False
-    freeze_pre_model: bool = False
+    shuffle_models: bool = False
+    freeze_post_models: bool = False
+    freeze_pre_models: bool = False
+    reset_pre_models: bool = False
+    reset_post_models: bool = False
     n_models: int = 1
 
     # Can predict whethe trait is visible as a third class, n_class_attr=3
