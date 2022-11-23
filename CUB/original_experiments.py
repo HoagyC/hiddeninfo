@@ -192,7 +192,7 @@ ind_XtoC_cfg = Experiment(
     seed=1,
     exp="Concept_XtoC",
     epochs=1000,
-    optimizer="sgd",
+    optimizer="SGD",
     pretrained=True,
     use_attr=True,
     n_attributes=112,
@@ -207,7 +207,7 @@ ind_YtoC_cfg = Experiment(
     tag="ind_CtoY",
     seed=1,
     epochs=500,
-    optimizer="sgd",
+    optimizer="SGD",
     use_attr=True,
     n_attributes=112,
     no_img=True,
@@ -216,7 +216,6 @@ ind_YtoC_cfg = Experiment(
     lr=0.001,
     scheduler_step=1000,
 )
-
 
 
 """
@@ -231,10 +230,10 @@ python3 src/experiments.py cub Sequential_CtoY --seed 1 -log_dir SequentialModel
 
 seq_CtoY_cfg = Experiment(
     tag="seq_CtoY",
-    exp="Sequential_CtoY"
+    exp="Sequential_CtoY",
     seed=1,
     epochs=1000,
-    optimizer="sgd",
+    optimizer="SGD",
     pretrained=True,
     use_aux=True,
     use_attr=True,
@@ -261,7 +260,7 @@ joint_cfg = Experiment(
     exp="Joint",
     seed=1,
     epochs=1000,
-    optimizer="sgd",
+    optimizer="SGD",
     pretrained=True,
     use_aux=True,
     use_attr=True,
@@ -291,13 +290,13 @@ standard_orig_cfg = Experiment(
     exp="Joint",
     seed=1,
     epochs=1000,
-    optimizer="sgd",
+    optimizer="SGD",
     pretrained=True,
     use_aux=True,
     use_attr=True,
     weighted_loss="multiple",
     n_attributes=112,
-    attr_loss_weight=0.,
+    attr_loss_weight=0.0,
     normalize_loss=True,
     batch_size=64,
     weight_decay=4e-4,
@@ -320,7 +319,7 @@ standard_nobottle_cfg = Experiment(
     exp="Standard",
     seed=1,
     epochs=1000,
-    optimizer="sgd",
+    optimizer="SGD",
     pretrained=True,
     use_aux=True,
     batch_size=64,
@@ -353,36 +352,38 @@ multitask_cfg = Experiment(
     attr_loss_weight=0.01,
     normalize_loss=True,
     batch_size=64,
-    weighted_decay=4e-5,
+    weight_decay=4e-5,
     lr=0.01,
-    scheduler_step=20
+    scheduler_step=20,
 )
 
+
 def orig_run_fn(args: Experiment) -> None:
-    experiment = args[0].exp
-    if experiment == 'Concept_XtoC':
+    experiment = args.exp
+    if experiment == "Concept_XtoC":
         train_X_to_C(args)
 
-    elif experiment == 'Independent_CtoY':
+    elif experiment == "Independent_CtoY":
         train_oracle_C_to_y_and_test_on_Chat(args)
 
-    elif experiment == 'Sequential_CtoY':
+    elif experiment == "Sequential_CtoY":
         train_Chat_to_y_and_test_on_Chat(args)
 
-    elif experiment == 'Joint':
+    elif experiment == "Joint":
         train_X_to_C_to_y(args)
 
-    elif experiment == 'Standard':
+    elif experiment == "Standard":
         train_X_to_y(args)
 
-    elif experiment == 'StandardWithAuxC':
+    elif experiment == "StandardWithAuxC":
         train_X_to_y_with_aux_C(args)
 
-    elif experiment == 'Multitask':
+    elif experiment == "Multitask":
         train_X_to_Cy(args)
 
-if __name__=="__main__":
-    from CUB.train import (
+
+if __name__ == "__main__":
+    from CUB.train_CUB import (
         train_X_to_C,
         train_oracle_C_to_y_and_test_on_Chat,
         train_Chat_to_y_and_test_on_Chat,
@@ -394,7 +395,7 @@ if __name__=="__main__":
     original_cfgs = [
         ind_XtoC_cfg,
         ind_YtoC_cfg,
-        seq_CtoY,
+        seq_CtoY_cfg,
         joint_cfg,
         standard_orig_cfg,
         standard_nobottle_cfg,
@@ -402,9 +403,6 @@ if __name__=="__main__":
     ]
 
     for cfg in original_cfgs:
-        run_cfg = dataclasses.replace(
-            cfg,
-            epochs=1
-        )
+        run_cfg = dataclasses.replace(cfg, epochs=1)
 
         orig_run_fn(run_cfg)

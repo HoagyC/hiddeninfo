@@ -93,7 +93,8 @@ def run_twopart_epoch(
             inputs, labels = data
             attr_labels = None
         else:
-            inputs, labels, attr_labels = data
+            dat_tup = data
+            inputs, labels, attr_labels, attr_mask = data
             if args.n_attributes > 1:
                 attr_labels = [i.long() for i in attr_labels]
                 attr_labels = torch.stack(attr_labels).t()  # .float() #N x 312
@@ -109,11 +110,11 @@ def run_twopart_epoch(
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
 
-        outputs = model(inputs_var)
+        outputs = model(inputs)
         losses = []
         out_start = 0
         if not args.bottleneck:
-            loss_main = criterion(outputs[0], labels_var)
+            loss_main = criterion(outputs[0], labels)
             losses.append(loss_main)
             out_start = 1
         if (
@@ -121,7 +122,7 @@ def run_twopart_epoch(
         ):  # X -> A, cotraining, end2end
             for i in range(len(attr_criterion)):
                 value = outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
-                target = attr_labels_var[:, i]
+                target = attr_labels[:, i]
                 attr_loss = attr_criterion[i](value, target)
                 losses.append(args.attr_loss_weight * attr_loss)
 
@@ -140,9 +141,10 @@ def run_twopart_epoch(
                 total_loss = sum(losses) / args.n_attributes
             else:  # cotraining, loss by class prediction and loss by attribute prediction have the same weight
                 total_loss = losses[0] + sum(losses[1:])
-                total_loss = total_loss / (
-                    1 + args.attr_loss_weight * args.n_attributes
-                )
+                if args.normalize_loss:
+                    total_loss = total_loss / (
+                        1 + args.attr_loss_weight * args.n_attributes
+                    )
         else:  # finetune
             total_loss = sum(losses)
         meters.loss.update(total_loss.item(), inputs.size(0))
@@ -181,7 +183,7 @@ def run_multimodel_epoch(
 
         if attr_criterion is None:
             inputs, labels = data
-            attr_labels, attr_labels_var = None, None
+            attr_labels = None
         else:
             inputs, labels, attr_labels, attr_mask_bin = data
             if args.n_attributes > 1:
@@ -544,7 +546,16 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 
 def train_multimodel() -> None:
     default_args = Experiment()
-    multiple_cfg = dataclasses.replace(default_args, n_models=1, epochs=50)
+    multiple_cfg = dataclasses.replace(
+        default_args,
+        multimodel=True,
+        n_models=1,
+        epochs=50,
+        use_aux=True,
+        use_attr=True,
+        bottleneck=True,
+        normalize_loss=True,
+    )
     retrain_dec_cfg = dataclasses.replace(
         multiple_cfg,
         shuffle_models=True,

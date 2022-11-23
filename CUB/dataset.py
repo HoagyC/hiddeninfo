@@ -92,9 +92,9 @@ class CUBDataset(Dataset):
                 if self.n_class_attr == 3:
                     one_hot_attr_label = np.zeros((N_ATTRIBUTES, self.n_class_attr))
                     one_hot_attr_label[np.arange(N_ATTRIBUTES), attr_label] = 1
-                    return one_hot_attr_label, class_label
+                    return one_hot_attr_label, class_label, attr_mask_bin
                 else:
-                    return attr_label, class_label
+                    return attr_label, class_label, attr_mask_bin
             else:
                 return img, class_label, attr_label, attr_mask_bin
         else:

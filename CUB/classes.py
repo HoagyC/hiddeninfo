@@ -52,14 +52,14 @@ class Experiment:
     save_step: int = 10
 
     # Model
-    multimodel: bool = True
+    multimodel: bool = False
     n_attributes: int = N_ATTRIBUTES
     num_classes: int = N_CLASSES
     expand_dim: int = 500
     use_relu: bool = True
     use_sigmoid: bool = False
-    pretrained: bool = True
-    use_aux: bool = True
+    pretrained: bool = False
+    use_aux: bool = False
 
     # Training
     epochs: int = 100
@@ -77,11 +77,12 @@ class Experiment:
     batch_size: int = 32
 
     freeze: bool = False
-    use_attr: bool = True
+    use_attr: bool = False
     no_img: bool = False
-    bottleneck: bool = True
+    bottleneck: bool = False
     weighted_loss: str = ""
-    uncertain_labels: bool = True
+    uncertain_labels: bool = False
+    normalize_loss: bool = False
 
     # Shuffling
     shuffle_models: bool = False
