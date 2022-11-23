@@ -80,7 +80,7 @@ class Experiment:
     use_attr: bool = True
     no_img: bool = False
     bottleneck: bool = True
-    weighted_loss: bool = False
+    weighted_loss: str = ""
     uncertain_labels: bool = True
 
     # Shuffling

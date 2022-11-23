@@ -1,4 +1,9 @@
 import argparse
+import dataclasses
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from CUB.classes import Experiment
 
@@ -182,12 +187,13 @@ python3 src/experiments.py cub Independent_CtoY --seed 1 -log_dir IndependentMod
 -weight_decay 0.00005 -lr 0.001 -scheduler_step 1000 
 """
 
-XtoC_cfg = Experiment(
-    tag="XtoC",
+ind_XtoC_cfg = Experiment(
+    tag="ind_XtoC",
     seed=1,
     exp="Concept_XtoC",
     epochs=1000,
     optimizer="sgd",
+    pretrained=True,
     use_attr=True,
     n_attributes=112,
     batch_size=64,
@@ -196,3 +202,209 @@ XtoC_cfg = Experiment(
     scheduler_step=1000,
     use_aux=True,
 )
+
+ind_YtoC_cfg = Experiment(
+    tag="ind_CtoY",
+    seed=1,
+    epochs=500,
+    optimizer="sgd",
+    use_attr=True,
+    n_attributes=112,
+    no_img=True,
+    batch_size=64,
+    weight_decay=5e-5,
+    lr=0.001,
+    scheduler_step=1000,
+)
+
+
+
+"""
+Sequential models
+
+python3 src/experiments.py cub Sequential_CtoY --seed 1 -log_dir SequentialModel_WithVal__Seed1/outputs/ \
+-e 1000 -optimizer sgd -pretrained -use_aux -use_attr -data_dir ConceptModel1__PredConcepts -n_attributes 112 \
+-no_img -b 64 -weight_decay 0.00004 -lr 0.001 -scheduler_step 1000 
+
+
+"""
+
+seq_CtoY_cfg = Experiment(
+    tag="seq_CtoY",
+    exp="Sequential_CtoY"
+    seed=1,
+    epochs=1000,
+    optimizer="sgd",
+    pretrained=True,
+    use_aux=True,
+    use_attr=True,
+    n_attributes=True,
+    no_img=True,
+    batch_size=64,
+    weight_decay=4e-5,
+    lr=0.001,
+    scheduler_step=1000,
+)
+
+"""
+Joint training
+
+python3 src/experiments.py cub Joint --seed 1 -ckpt 1 -log_dir Joint0.01Model__Seed1/outputs/ \
+-e 1000 -optimizer sgd -pretrained -use_aux -use_attr -weighted_loss multiple \
+-data_dir CUB_processed/class_attr_data_10 -n_attributes 112 -attr_loss_weight 0.01 \
+-normalize_loss -b 64 -weight_decay 0.0004 -lr 0.001 -scheduler_step 1000 -end2end
+
+"""
+
+joint_cfg = Experiment(
+    tag="joint",
+    exp="Joint",
+    seed=1,
+    epochs=1000,
+    optimizer="sgd",
+    pretrained=True,
+    use_aux=True,
+    use_attr=True,
+    weighted_loss="multiple",
+    n_attributes=112,
+    attr_loss_weight=0.01,
+    normalize_loss=True,
+    batch_size=64,
+    weight_decay=4e-4,
+    lr=0.001,
+    scheduler_step=1000,
+    end2end=True,
+)
+
+"""
+'Standard' experiment
+
+python3 src/experiments.py cub Joint --seed 1 -ckpt 1 -log_dir Joint0Model_Seed1/outputs/ \
+-e 1000 -optimizer sgd -pretrained -use_aux -use_attr -weighted_loss multiple \
+-data_dir CUB_processed/class_attr_data_10 -n_attributes 112 -attr_loss_weight 0 \
+-normalize_loss -b 64 -weight_decay 0.00004 -lr 0.01 -scheduler_step 20 -end2end
+
+"""
+
+standard_orig_cfg = Experiment(
+    tag="standard_orig",
+    exp="Joint",
+    seed=1,
+    epochs=1000,
+    optimizer="sgd",
+    pretrained=True,
+    use_aux=True,
+    use_attr=True,
+    weighted_loss="multiple",
+    n_attributes=112,
+    attr_loss_weight=0.,
+    normalize_loss=True,
+    batch_size=64,
+    weight_decay=4e-4,
+    lr=0.01,
+    scheduler_step=20,
+)
+
+
+"""
+Standard no bottleneck
+
+python3 src/experiments.py cub Standard --seed 1 -ckpt 1 -log_dir StandardNoBNModel_Seed1/outputs/ \
+-e 1000 -optimizer sgd -pretrained -use_aux -data_dir CUB_processed/class_attr_data_10 -b 64 \
+-weight_decay 0.0004 -lr 0.01 -scheduler_step 20
+
+"""
+
+standard_nobottle_cfg = Experiment(
+    tag="standard_nobottle",
+    exp="Standard",
+    seed=1,
+    epochs=1000,
+    optimizer="sgd",
+    pretrained=True,
+    use_aux=True,
+    batch_size=64,
+    weight_decay=4e-4,
+    lr=0.01,
+    scheduler_step=20,
+)
+
+
+"""
+Multitask
+
+python3 src/experiments.py cub Multitask --seed 1 -ckpt 1 -log_dir MultitaskModel_Seed1/outputs/ \
+-e 1000 -optimizer sgd -pretrained -use_aux -use_attr -weighted_loss multiple \
+-data_dir CUB_processed/class_attr_data_10 -n_attributes 112 -attr_loss_weight 0.01 \
+-normalize_loss -b 64 -weight_decay 0.00004 -lr 0.01 -scheduler_step 20
+
+"""
+
+multitask_cfg = Experiment(
+    tag="multitask",
+    exp="Multitask",
+    seed=1,
+    epochs=1000,
+    pretrained=True,
+    use_aux=True,
+    use_attr=True,
+    weighted_loss="multiple",
+    n_attributes=112,
+    attr_loss_weight=0.01,
+    normalize_loss=True,
+    batch_size=64,
+    weighted_decay=4e-5,
+    lr=0.01,
+    scheduler_step=20
+)
+
+def orig_run_fn(args: Experiment) -> None:
+    experiment = args[0].exp
+    if experiment == 'Concept_XtoC':
+        train_X_to_C(args)
+
+    elif experiment == 'Independent_CtoY':
+        train_oracle_C_to_y_and_test_on_Chat(args)
+
+    elif experiment == 'Sequential_CtoY':
+        train_Chat_to_y_and_test_on_Chat(args)
+
+    elif experiment == 'Joint':
+        train_X_to_C_to_y(args)
+
+    elif experiment == 'Standard':
+        train_X_to_y(args)
+
+    elif experiment == 'StandardWithAuxC':
+        train_X_to_y_with_aux_C(args)
+
+    elif experiment == 'Multitask':
+        train_X_to_Cy(args)
+
+if __name__=="__main__":
+    from CUB.train import (
+        train_X_to_C,
+        train_oracle_C_to_y_and_test_on_Chat,
+        train_Chat_to_y_and_test_on_Chat,
+        train_X_to_C_to_y,
+        train_X_to_y,
+        train_X_to_Cy,
+    )
+
+    original_cfgs = [
+        ind_XtoC_cfg,
+        ind_YtoC_cfg,
+        seq_CtoY,
+        joint_cfg,
+        standard_orig_cfg,
+        standard_nobottle_cfg,
+        multitask_cfg,
+    ]
+
+    for cfg in original_cfgs:
+        run_cfg = dataclasses.replace(
+            cfg,
+            epochs=1
+        )
+
+        orig_run_fn(run_cfg)
