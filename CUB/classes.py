@@ -1,7 +1,6 @@
 import dataclasses
 
-N_ATTRIBUTES = 312
-N_CLASSES = 200
+from CUB.config import N_ATTRIBUTES, N_CLASSES
 
 
 class AverageMeter(object):
@@ -47,7 +46,7 @@ class Experiment:
 
     # Data
     log_dir: str = "out"
-    data_dir: str = "CUB_processed"
+    data_dir: str = "CUB_masked_class"
     image_dir: str = "images"
     save_step: int = 10
 

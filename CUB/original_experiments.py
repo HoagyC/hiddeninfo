@@ -195,12 +195,13 @@ ind_XtoC_cfg = Experiment(
     optimizer="SGD",
     pretrained=True,
     use_attr=True,
-    n_attributes=112,
+    n_attributes=109,
     batch_size=64,
     weight_decay=4e-5,
     lr=0.01,
     scheduler_step=1000,
     use_aux=True,
+    bottleneck=True,
 )
 
 ind_YtoC_cfg = Experiment(

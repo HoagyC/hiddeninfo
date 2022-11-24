@@ -3,7 +3,6 @@ Train InceptionV3 Network using the CUB-200-2011 dataset
 """
 import argparse
 import dataclasses
-import pdb
 import os
 import random
 import sys
@@ -52,13 +51,11 @@ def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_train
             # inputs = [i.long() for i in inputs]
             inputs = torch.stack(inputs).t().float()
         inputs = torch.flatten(inputs, start_dim=1).float()
-        inputs_var = torch.autograd.Variable(inputs).cuda()
-        inputs_var = inputs_var.cuda() if torch.cuda.is_available() else inputs_var
-        labels_var = torch.autograd.Variable(labels).cuda()
-        labels_var = labels_var.cuda() if torch.cuda.is_available() else labels_var
+        inputs = inputs.cuda() if torch.cuda.is_available() else inputs
+        labels = labels.cuda() if torch.cuda.is_available() else labels
 
-        outputs = model(inputs_var)
-        loss = criterion(outputs, labels_var)
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
         acc = accuracy(outputs, labels, topk=(1,))
         meters.loss.update(loss.item(), inputs.size(0))
         meters.acc.update(acc[0], inputs.size(0))
@@ -110,31 +107,67 @@ def run_twopart_epoch(
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
 
-        outputs = model(inputs)
         losses = []
         out_start = 0
-        if not args.bottleneck:
-            loss_main = criterion(outputs[0], labels)
-            losses.append(loss_main)
-            out_start = 1
-        if (
-            attr_criterion is not None and args.attr_loss_weight > 0
-        ):  # X -> A, cotraining, end2end
-            for i in range(len(attr_criterion)):
-                value = outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
-                target = attr_labels[:, i]
-                attr_loss = attr_criterion[i](value, target)
-                losses.append(args.attr_loss_weight * attr_loss)
+
+        if is_training and args.use_aux:
+            outputs, aux_outputs = model(inputs)
+
+            if not args.bottleneck:
+                # loss main is for the main task label (always the first output)
+                loss_main = criterion(outputs[0], labels) + AUX_LOSS_RATIO * criterion(
+                    aux_outputs[0], labels
+                )
+                losses.append(loss_main)
+                out_start = 1
+            if (
+                attr_criterion is not None and args.attr_loss_weight > 0
+            ):  # X -> A, cotraining, end2end
+                for i in range(len(attr_criterion)):
+                    output = (
+                        outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
+                    )
+                    aux_output = (
+                        aux_outputs[i + out_start]
+                        .squeeze()
+                        .type(torch.cuda.FloatTensor)
+                    )
+
+                    target = attr_labels[:, i]
+                    main_loss = attr_criterion[i](output, target)
+
+                    aux_loss = attr_criterion[i](aux_output, target)
+                    losses.append(
+                        args.attr_loss_weight * (main_loss + AUX_LOSS_RATIO * aux_loss)
+                    )
+
+        else:
+            outputs = model(inputs)
+
+            if not args.bottleneck:
+                loss_main = criterion(outputs[0], labels)
+                losses.append(loss_main)
+                out_start = 1
+            if (
+                attr_criterion is not None and args.attr_loss_weight > 0
+            ):  # X -> A, cotraining, end2end
+                for i in range(len(attr_criterion)):
+                    value = (
+                        outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
+                    )
+                    target = attr_labels[:, i]
+                    attr_loss = attr_criterion[i](value, target)
+                    losses.append(args.attr_loss_weight * attr_loss)
 
         if args.bottleneck:  # attribute accuracy
             sigmoid_outputs = torch.nn.Sigmoid()(torch.cat(outputs, dim=1))
             acc = binary_accuracy(sigmoid_outputs, attr_labels)
-            meters.acc.update(acc.data.cpu().numpy(), inputs.size(0))
+            meters.concept_acc.update(acc.data.cpu().numpy(), inputs.size(0))
         else:
             acc = accuracy(
                 outputs[0], labels, topk=(1,)
             )  # only care about class prediction accuracy
-            meters.acc.update(acc[0], inputs.size(0))
+            meters.label_acc.update(acc[0], inputs.size(0))
 
         if attr_criterion is not None:
             if args.bottleneck:
