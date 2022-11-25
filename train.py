@@ -70,8 +70,8 @@ def train(experiment: Experiment) -> TrainResult:
     return _run_models(experiment, models)
 
 
-def _combine_results(results=List[TrainResult]) -> TrainResult:
-    models = [r.models for r in results]
+def _combine_results(results: List[TrainResult]) -> TrainResult:
+    models = [model for r in results for model in r.models]
     tag = results[0].tag
     step_results = []
     for ndx, r in enumerate(results):
