@@ -1,21 +1,11 @@
 import copy
 import dataclasses
-import pickle
-from pathlib import Path
-from typing import List
 
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
 import streamlit as st
 
+import display_experiments
 import experiments as exps
-import train
 from classes import Experiment
-from classes import TrainResult
-from utils import get_train_result_path
-from utils import load_train_result
-from utils import save_train_result
 
 # With binary data and zero info, ideal prediction is always 0.5
 ZERO_INFO_LOSS = 0.5**2
@@ -230,10 +220,10 @@ def main():
     multiproc_comp = dataclasses.replace(
         multiproc_test, tag="multicomp", use_multiprocess=False
     )
-    _display_experiments(multiproc_test, multiproc_comp)
+    display_experiments.display_experiments(multiproc_test, multiproc_comp)
 
     st.header("Binary sum quads")
-    _display_experiments(
+    display_experiments.display_experiments(
         bin_sum_quads_5,
         bin_sum_quads_5_enc,
         bin_sum_quads_7,
@@ -245,56 +235,66 @@ def main():
     )
 
     st.header("Baseline")
-    _display_experiments(base)
+    display_experiments.display_experiments(base)
 
     st.header("Regularisation strategies")
-    _display_experiments(l1, l2)
+    display_experiments.display_experiments(l1, l2)
 
     st.header("Sequential")
-    _display_experiments(sequential_encoder, sequential_decoder, sequential_test)
+    display_experiments.display_experiments(
+        sequential_encoder, sequential_decoder, sequential_test
+    )
 
     st.header("Sequential sparse")
-    _display_experiments(seq_sparse_encoder, seq_sparse_decoder, seq_sparse_test)
+    display_experiments.display_experiments(
+        seq_sparse_encoder, seq_sparse_decoder, seq_sparse_test
+    )
 
     st.header("E2E sparse")
-    _display_experiments(sparse_general, sparse_general_enc, sparse_general_dec)
+    display_experiments.display_experiments(
+        sparse_general, sparse_general_enc, sparse_general_dec
+    )
 
     st.header("seq and e2e sparse")
-    _display_experiments(
+    display_experiments.display_experiments(
         seq_sparse_test, seq_sparse_decoder, seq_sparse_encoder, sparse_general_dec
     )
 
     st.header("Dropout strategy")
     st.write("TODO: Get results outside of eval mode.")
-    _display_experiments(dropout)
+    display_experiments.display_experiments(dropout)
 
     st.header("Noise strategy")
-    _display_experiments(noisy)
+    display_experiments.display_experiments(noisy)
 
     st.header("Testing alternate target latents")
-    _display_experiments(diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec)
-    _display_experiments(rand_lin_base, rand_lin_retrain_enc)
+    display_experiments.display_experiments(
+        diagonal_base, diagonal_retrain_enc, diagonal_retrain_dec
+    )
+    display_experiments.display_experiments(rand_lin_base, rand_lin_retrain_enc)
 
     st.header("Increasing sparsity")
     sparsity_exps = exps.make_sparse_exps()
-    _display_experiments(*sparsity_exps)
+    display_experiments.display_experiments(*sparsity_exps)
 
     st.header("Random permutations")
-    _display_experiments(perms)
+    display_experiments.display_experiments(perms)
 
     st.header("Retrain decoders + random permutations")
-    _display_experiments(base, retrain_dec)
+    display_experiments.display_experiments(base, retrain_dec)
 
     st.header("Just retrain encoders")
-    _display_experiments(retrain_enc_with_repr)
+    display_experiments.display_experiments(retrain_enc_with_repr)
 
     st.header("Retrain encoders + random permutations + sparsity")
-    _display_experiments(
+    display_experiments.display_experiments(
         base, retrain_enc_with_repr, retrain_dec, sparse_general_dec, sparse_general_enc
     )
 
     st.header("All strategies")
-    _display_experiments(base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc)
+    display_experiments.display_experiments(
+        base, l1, l2, dropout, noisy, perms, retrain_dec, retrain_enc
+    )
 
     st.header("Experimenting with different numbers of models")
     for n_models in [2, 4, 8, 16]:
@@ -308,18 +308,18 @@ def main():
                 exp.load_decoders_from_tag += suffix
             if exp.load_encoders_from_tag is not None:
                 exp.load_encoders_from_tag += suffix
-        _display_experiments(*experiments)
+        display_experiments.display_experiments(*experiments)
 
     st.header("Test setting seed")
-    _display_experiments(seed_test1, seed_test2)
+    display_experiments.display_experiments(seed_test1, seed_test2)
 
     st.header("Tuning number of models")
     n_models_options = [2, 4, 8]
     tuning_n_models_base = dataclasses.replace(
         base, tag="tuning_n_models_base", n_models=max(n_models_options)
     )
-    _display_experiments(tuning_n_models_base)
-    _display_experiments(
+    display_experiments.display_experiments(tuning_n_models_base)
+    display_experiments.display_experiments(
         *(
             dataclasses.replace(
                 tuning_n_models_base,
@@ -332,75 +332,6 @@ def main():
             for n_models in n_models_options
         )
     )
-
-
-def _display_experiments(*experiments_iterable: Experiment) -> None:
-    train_results = _run_experiments(*experiments_iterable)
-    if not train_results:
-        return
-
-    _plot_results(train_results)
-
-
-def _plot_results(train_results: List[TrainResult]) -> None:
-    df = pd.DataFrame(
-        dataclasses.asdict(result)
-        for train_result in train_results
-        for result in train_result.step_results
-    )
-
-    losses = [
-        "representation_loss",
-        "reconstruction_loss_p1",
-        "reconstruction_loss_p2",
-    ]
-    fig, axs = plt.subplots(1, len(losses), figsize=(5 * len(losses), 5))
-    for loss_name, ax in zip(losses, axs):
-        sns.lineplot(data=df, x="step", y=loss_name, hue="tag", ax=ax)
-        if "reconstruction" in loss_name:
-            sns.lineplot(
-                x=[0, max(df.step)],
-                y=[ZERO_INFO_LOSS, ZERO_INFO_LOSS],
-                label="zero info loss",
-                linestyle="dashed",
-                ax=ax,
-            )
-        ax.set_title(loss_name)
-        ax.set_yscale("linear")
-        ax.set_ylim(([0, 0.4]))
-    fig.tight_layout()
-    st.pyplot(fig)
-
-
-def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
-    experiments: List[Experiment] = list(experiments_iterable)
-    tags = [experiment.tag for experiment in experiments]
-    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
-    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
-        return []
-    force_retrain_models = st.checkbox(
-        "Force retrain models?", value=False, key=str((tags, "retrain"))
-    )
-    st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
-
-    bar = st.progress(0.0)
-    train_results: List[TrainResult] = []
-    for i, experiment in enumerate(experiments):
-        if force_retrain_models or get_train_result_path(experiment.tag) is None:
-            train_result = train.train(experiment=experiment)
-            save_train_result(train_result)
-        else:
-            train_result = load_train_result(experiment.tag)
-        train_results.append(train_result)
-        bar.progress((i + 1) / len(experiments))
-    return train_results
-
-
-def load_results(pkl_path: Path):
-    with open(pkl_path, "rb") as f:
-        results = pickle.load(f)
-
-    _plot_results(results)
 
 
 if __name__ == "__main__":

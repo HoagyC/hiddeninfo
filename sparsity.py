@@ -10,7 +10,6 @@ from matplotlib import pyplot as plt
 
 from classes import Experiment
 from classes import TrainResult
-from main import _run_experiments
 
 base = Experiment(
     tag="base",
