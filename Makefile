@@ -6,7 +6,7 @@ REQUIREMENTS=requirements.txt
 STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
 MYPY=$(ENV)/bin/mypy
-PYTHON_FILES=main.py experiments.py pages/adversarial.py
+PYTHON_FILES=$(shell find -type f -name '*.py' -not -path './.env/*')
 # codalab address for downloading the main CUB dataset
 CODAENV=.codaenv
 CODA_PIP=$(CODAENV)/bin/pip
