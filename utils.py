@@ -19,7 +19,6 @@ def save_train_result(train_result: TrainResult):
     if not train_result_path.parent.is_dir():
         train_result_path.parent.mkdir(parents=True)
     with train_result_path.open("wb") as f:
-        print(train_result)
         pickle.dump(train_result, f)
 
 
