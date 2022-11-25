@@ -7,9 +7,6 @@ import numpy as np
 import streamlit as st
 from matplotlib import pyplot as plt
 
-from classes import Loss
-from classes import Model
-from classes import StepResult
 from classes import TrainResult
 from experiments import Experiment
 from main import _run_experiments
