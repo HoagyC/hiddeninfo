@@ -52,42 +52,43 @@ def _get_output_vals(train_result: TrainResult) -> Dict:
     return output
 
 
-def run_independent_sparse() -> None:
-    results = []
-    out_loc = Path("out/multi_seq_results.pkl")
-    for quadrant_sparsity in range(1, 6):
-        with open(out_loc, "rb") as f:
-            results = pickle.load(f)
-        st.header(f"running sparsity {quadrant_sparsity}")
-        ind_sparse_decoder = dataclasses.replace(
-            base,
-            tag="seq_sparse_dec" + str(quadrant_sparsity),
-            loss_quadrants="bin_sum",
-            quadrant_threshold=quadrant_sparsity,
-            give_full_info=True,
-            num_batches=10000,
-        )
+# TODO(hoagyc): This function uses undefined variables & has some unused variables.
+# def run_independent_sparse() -> None:
+#     results = []
+#     out_loc = Path("out/multi_seq_results.pkl")
+#     for quadrant_sparsity in range(1, 6):
+#         with open(out_loc, "rb") as f:
+#             results = pickle.load(f)
+#         st.header(f"running sparsity {quadrant_sparsity}")
+#         ind_sparse_decoder = dataclasses.replace(
+#             base,
+#             tag="seq_sparse_dec" + str(quadrant_sparsity),
+#             loss_quadrants="bin_sum",
+#             quadrant_threshold=quadrant_sparsity,
+#             give_full_info=True,
+#             num_batches=10000,
+#         )
 
-        ind_sparse_encoder = dataclasses.replace(
-            base,
-            tag="seq_sparse_enc" + str(quadrant_sparsity),
-            loss_quadrants="bin_sum",
-            quadrant_threshold=quadrant_sparsity,
-            reconstruction_loss_scale=0,
-            num_batches=10000,
-        )
-        ind_sparse_test = dataclasses.replace(
-            base,
-            tag="sequential_test" + str(quadrant_sparsity),
-            load_decoders_from_tag=seq_sparse_decoder.tag,
-            load_encoders_from_tag=seq_sparse_encoder.tag,
-            num_batches=2000,
-        )
-        results += _run_experiments(
-            seq_sparse_decoder, seq_sparse_encoder, seq_sparse_test
-        )
-        with open(out_loc, "wb") as f:
-            pickle.dump(results, f)
+#         ind_sparse_encoder = dataclasses.replace(
+#             base,
+#             tag="seq_sparse_enc" + str(quadrant_sparsity),
+#             loss_quadrants="bin_sum",
+#             quadrant_threshold=quadrant_sparsity,
+#             reconstruction_loss_scale=0,
+#             num_batches=10000,
+#         )
+#         ind_sparse_test = dataclasses.replace(
+#             base,
+#             tag="sequential_test" + str(quadrant_sparsity),
+#             load_decoders_from_tag=seq_sparse_decoder.tag,
+#             load_encoders_from_tag=seq_sparse_encoder.tag,
+#             num_batches=2000,
+#         )
+#         results += _run_experiments(
+#             seq_sparse_decoder, seq_sparse_encoder, seq_sparse_test
+#         )
+#         with open(out_loc, "wb") as f:
+#             pickle.dump(results, f)
 
 
 def run_distill_sparse() -> None:
