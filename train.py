@@ -54,23 +54,20 @@ def train(experiment: Experiment) -> TrainResult:
         )
 
     models = [
-        Model(
-            encoder=enc_fn(ndx),
-            decoder=dec_fn(ndx),
-        )
+        Model(encoder=enc_fn(ndx), decoder=dec_fn(ndx))
         for ndx in range(experiment.n_models)
     ]
 
-    if (
-        experiment.n_models > 1
-        and not experiment.shuffle_decoders
-        and experiment.use_multiprocess
-    ):
-        result = _run_separate_models(experiment, models)
-    else:
-        result = _run_models(experiment, models)
+    if experiment.use_multiprocess:
+        assert (
+            experiment.n_models > 1
+        ), "Can't use multiprocessing when there is only 1 model"
+        assert (
+            experiment.shuffle_decoders
+        ), "Can't use multiprocessing when shuffling decoders"
+        return _run_separate_models(experiment, models)
 
-    return result
+    return _run_models(experiment, models)
 
 
 def _combine_results(results=List[TrainResult]) -> TrainResult:
