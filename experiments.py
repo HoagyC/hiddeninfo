@@ -1,5 +1,5 @@
-from typing import List, Optional
 import dataclasses
+from typing import List
 
 from classes import Experiment
 

@@ -1,4 +1,4 @@
-import os 
+import os
 import pickle
 from pathlib import Path
 import torch
@@ -29,13 +29,12 @@ for ndx in tqdm(range(len(folders))):
         bird_folder_path = IMAGE_PATH / bird_folder
 
         for image_name in os.listdir(bird_folder_path):
-            image_path = bird_folder_path / image_name 
+            image_path = bird_folder_path / image_name
             image = Image.open(image_path)
             processed_image = processor(images=image, return_tensors="pt").to("cuda")
             output = model.get_image_features(**processed_image)
 
             embeddings[image_path] = output
-
 
 
 with open(OUTPUT_PATH, "wb") as f:

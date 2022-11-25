@@ -2,15 +2,21 @@ import dataclasses
 import itertools
 import math
 import multiprocessing as mp
-import numpy as np
 import random
+from typing import Callable
+from typing import Dict
+from typing import List
+from typing import Optional
+
+import numpy as np
 import streamlit as st
 import torch
-from typing import List, Optional, Callable, Dict
 
-from classes import TrainResult, StepResult, Model, Loss
+from classes import Model
+from classes import StepResult
+from classes import TrainResult
 from experiments import Experiment
-from utils import _load_train_result, _save_train_result
+from utils import _load_train_result
 
 BINARY_COEFS_10 = [math.comb(10, x) for x in range(11)]
 NUM_PROCESSES = 4

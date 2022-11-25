@@ -1,29 +1,22 @@
-from datetime import datetime
-from pathlib import Path
-import random
-from typing import List, Optional, Callable
 import copy
 import dataclasses
-import itertools
-import math
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import pickle
+from pathlib import Path
+from typing import List
+
+import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 import streamlit as st
 
 import experiments as exps
-from experiments import Experiment, base
-
-from classes import Model, TrainResult, StepResult, Loss
-from utils import (
-    _get_train_result_path,
-    _load_train_result,
-    _save_train_result,
-    _get_average_loss,
-)
+from classes import TrainResult
+from experiments import Experiment
+from experiments import base
 from train import _train
+from utils import _get_train_result_path
+from utils import _load_train_result
+from utils import _save_train_result
 
 # With binary data and zero info, ideal prediction is always 0.5
 ZERO_INFO_LOSS = 0.5**2
@@ -362,33 +355,7 @@ def _plot_results(train_results: List[TrainResult]) -> None:
         ax.set_title(loss_name)
         ax.set_yscale("linear")
         ax.set_ylim(([0, 0.4]))
-        # ax.set_yscale("log")
     fig.tight_layout()
-    st.pyplot(fig)
-
-
-def _hyperparameter_search(*experiments_iterable: Experiment) -> None:
-    train_results = _run_experiments(*experiments_iterable)
-    if not train_results:
-        return
-
-    # Compare results using the average p2 reconstruction loss of the last 10% of steps.
-    df = []
-    for train_result in train_results:
-        last_step = max(step_result.step for step_result in train_result.step_results)
-        reconstruction_loss_p2 = np.mean(
-            [
-                step_result.reconstruction_loss_p2
-                for step_result in train_result.step_results
-                if step_result.step >= last_step * 0.9
-            ]
-        )
-        df.append(
-            dict(tag=train_result.tag, reconstruction_loss_p2=reconstruction_loss_p2)
-        )
-    df = pd.DataFrame(df)
-    fig, ax = plt.subplots()
-    sns.barplot(data=df, x="tag", y="reconstruction_loss_p2", ax=ax)
     st.pyplot(fig)
 
 
@@ -425,7 +392,3 @@ def load_results(pkl_path: Path):
 
 if __name__ == "__main__":
     main()
-
-    # st.header("Showing big batch of sparase results")
-    # results_path = Path("out/multiresult.pkl")
-    # load_results(results_path)
