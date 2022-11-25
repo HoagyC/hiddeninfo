@@ -2,6 +2,7 @@ import dataclasses
 import pickle
 from pathlib import Path
 from typing import Dict
+from typing import List
 
 import numpy as np
 import streamlit as st
@@ -92,7 +93,7 @@ def _get_output_vals(train_result: TrainResult) -> Dict:
 
 
 def run_distill_sparse() -> None:
-    results = []
+    results: List[TrainResult] = []
     out_loc = Path("out/multi_distill_results.pkl")
     for quadrant_sparsity in range(1, 6):
         sparse_general = dataclasses.replace(
