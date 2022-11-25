@@ -1,5 +1,6 @@
 import dataclasses
 from typing import List
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -17,12 +18,21 @@ from utils import save_train_result
 ZERO_INFO_LOSS = 0.5**2
 
 
-def display_experiments(*experiments_iterable: Experiment) -> None:
-    train_results = _run_experiments(*experiments_iterable)
-    if not train_results:
-        return
+def display_experiments(
+    *experiments_iterable: Experiment,
+) -> Optional[List[TrainResult]]:
+    experiments: List[Experiment] = list(experiments_iterable)
+    tags = [experiment.tag for experiment in experiments]
+    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
+    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
+        return None
+    force_retrain_models = st.checkbox(
+        "Force retrain models?", value=False, key=str((tags, "retrain"))
+    )
 
+    train_results = _run_experiments(experiments, force_retrain_models)
     _plot_results(train_results)
+    return train_results
 
 
 def _plot_results(train_results: List[TrainResult]) -> None:
@@ -55,17 +65,10 @@ def _plot_results(train_results: List[TrainResult]) -> None:
     st.pyplot(fig)
 
 
-def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
-    experiments: List[Experiment] = list(experiments_iterable)
-    tags = [experiment.tag for experiment in experiments]
-    assert len(tags) == len(set(tags)), f"Found duplicate tags: {tags}"
-    if not st.checkbox(f"Run?", value=False, key=str((tags, "run"))):
-        return []
-    force_retrain_models = st.checkbox(
-        "Force retrain models?", value=False, key=str((tags, "retrain"))
-    )
+def _run_experiments(
+    experiments: List[Experiment], force_retrain_models: bool
+) -> List[TrainResult]:
     st.write(pd.DataFrame(dataclasses.asdict(experiment) for experiment in experiments))
-
     bar = st.progress(0.0)
     train_results: List[TrainResult] = []
     for i, experiment in enumerate(experiments):
