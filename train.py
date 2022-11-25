@@ -99,20 +99,14 @@ def _run_models_helper(args: Dict) -> TrainResult:
 
 
 def _run_models(experiment: Experiment, models: List[Model]) -> TrainResult:
+    all_params: List[torch.Tensor] = []
+    for model in models:
+        if experiment.load_encoders_from_tag is None:
+            all_params.extend(model.encoder.parameters())
+        if experiment.load_decoders_from_tag is None:
+            all_params.extend(model.decoder.parameters())
 
-    if experiment.load_decoders_from_tag is not None:
-        all_params = [[*model.encoder.parameters()] for model in models]
-    elif experiment.load_encoders_from_tag is not None:
-        all_params = [[*model.decoder.parameters()] for model in models]
-    else:
-        all_params = [
-            [*model.encoder.parameters(), *model.decoder.parameters()]
-            for model in models
-        ]
-
-    optimizer = torch.optim.Adam(
-        list(itertools.chain.from_iterable(all_params)), lr=experiment.learning_rate
-    )
+    optimizer = torch.optim.Adam(all_params, lr=experiment.learning_rate)
 
     reconstruction_loss_fn: Callable  # I thought this was PYTHON
     representation_loss_fn: Callable
