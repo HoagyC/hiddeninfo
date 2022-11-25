@@ -11,9 +11,8 @@ import streamlit as st
 
 import experiments as exps
 import train
+from classes import Experiment
 from classes import TrainResult
-from experiments import Experiment
-from experiments import base
 from utils import get_train_result_path
 from utils import load_train_result
 from utils import save_train_result
@@ -25,6 +24,20 @@ ZERO_INFO_LOSS = 0.5**2
 def main():
     st.title("Hidden info")
 
+    base = Experiment(
+        tag="base",
+        n_models=8,
+        activation_fn="sigmoid",
+        use_class=False,
+        num_batches=2_000,
+        latent_size=10,
+        hidden_size=80,
+        n_hidden_layers=1,
+        # Ideally, we want the representation loss to be as high as possible, conditioned on the
+        # autoencoders still exhibiting the "hidden info" behaviour.
+        # TODO: Experiment with making this number larger.
+        representation_loss=1,
+    )
     l1 = dataclasses.replace(base, tag="l1", l1_loss=1e-5, n_models=1)
     l2 = dataclasses.replace(base, tag="l2", l2_loss=1e-2, n_models=1)
     dropout = dataclasses.replace(base, tag="dropout", dropout_prob=0.5, n_models=1)
