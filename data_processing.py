@@ -4,15 +4,17 @@ Taken from github.com/yewsiang/ConceptBottleneck
 Make train, val, test datasets based on train_test_split.txt, and by sampling val_ratio of the official train data to make a validation set 
 Each dataset is a list of metadata, each includes official image id, full image path, class label, attribute labels, attribute certainty scores, and attribute labels calibrated for uncertainty
 """
-import os
-import random
-import pickle
 import argparse
-
-from os import listdir, mkdir
-from os.path import isfile, isdir, join
-from pathlib import Path
+import os
+import pickle
+import random
 from collections import defaultdict as ddict
+from os import listdir
+from os import mkdir
+from os.path import isdir
+from os.path import isfile
+from os.path import join
+from pathlib import Path
 
 
 def extract_data(data_dir):

@@ -1,15 +1,18 @@
 import dataclasses
-from matplotlib import pyplot as plt
-import numpy as np
-from pathlib import Path
 import pickle
-import streamlit as st
+from pathlib import Path
 from typing import Dict
 
-from classes import TrainResult, StepResult, Model, Loss
-from main import _run_experiments
-from experiments import Experiment
+import numpy as np
+import streamlit as st
+from matplotlib import pyplot as plt
 
+from classes import Loss
+from classes import Model
+from classes import StepResult
+from classes import TrainResult
+from experiments import Experiment
+from main import _run_experiments
 
 base = Experiment(
     tag="base",

@@ -1,20 +1,22 @@
-from pathlib import Path
-from typing import List
 import copy
 import dataclasses
+import pickle
+from pathlib import Path
+from typing import List
+
 import matplotlib.pyplot as plt
 import pandas as pd
-import pickle
 import seaborn as sns
 import streamlit as st
 
-from classes import TrainResult
-from experiments import Experiment, base
-from train import _train
-from utils import _load_train_result
-from utils import _get_train_result_path
-from utils import _save_train_result
 import experiments as exps
+from classes import TrainResult
+from experiments import Experiment
+from experiments import base
+from train import _train
+from utils import _get_train_result_path
+from utils import _load_train_result
+from utils import _save_train_result
 
 # With binary data and zero info, ideal prediction is always 0.5
 ZERO_INFO_LOSS = 0.5**2

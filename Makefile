@@ -5,8 +5,9 @@ SITE_PACKAGES=$(wildcard $(ENV)/lib/python*/site-packages)
 REQUIREMENTS=requirements.txt
 STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
+ISORT=$(ENV)/bin/isort
 MYPY=$(ENV)/bin/mypy
-PYTHON_FILES=$(shell find -type f -name '*.py' -not -path './.env/*')
+PYTHON_FILES=$(shell find -type f -name '*.py' -not -path './.env/*' -not -path './CUB/*')
 # codalab address for downloading the main CUB dataset
 CODAENV=.codaenv
 CODA_PIP=$(CODAENV)/bin/pip
@@ -20,6 +21,7 @@ run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
 .PHONY: format
 format: $(BLACK)
 	$(BLACK) $(PYTHON_FILES)
+	$(ISORT) -sl $(PYTHON_FILES)
 
 .PHONY: check
 check: $(MYPY)

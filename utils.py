@@ -1,12 +1,13 @@
-from datetime import datetime
 import pickle
-
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import List
+from typing import Optional
 
 import numpy as np
 
-from classes import TrainResult, Loss
+from classes import Loss
+from classes import TrainResult
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
 RESULTS_DIR = Path("out/results")
