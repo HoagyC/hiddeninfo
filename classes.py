@@ -18,7 +18,6 @@ class Experiment:
     n_hidden_layers: int = 0
     hidden_size: int = 30
     batch_size: int = 32
-    vector_p2_scale: int = 1
     representation_loss: Optional[float] = 5
     reconstruction_loss_scale: float = 1
     dropout_prob: Optional[float] = None

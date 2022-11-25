@@ -181,8 +181,6 @@ def _run_models(experiment: Experiment, models: List[Model]) -> TrainResult:
             vector = _generate_vector_batch(
                 batch_size=experiment.batch_size,
                 vector_size=experiment.vector_size,
-                preferred_rep_size=experiment.preferred_rep_size,
-                vector_p2_scale=experiment.vector_p2_scale,
             )
             if experiment.has_missing_knowledge:
                 vector_input = torch.concat(
@@ -191,8 +189,6 @@ def _run_models(experiment: Experiment, models: List[Model]) -> TrainResult:
                         _generate_vector_batch(
                             batch_size=experiment.batch_size,
                             vector_size=experiment.vector_size,
-                            preferred_rep_size=experiment.preferred_rep_size,
-                            vector_p2_scale=experiment.vector_p2_scale,
                         )[:, experiment.preferred_rep_size :],
                     ],
                     dim=1,
@@ -419,16 +415,6 @@ def _get_activation_fn(name: str) -> torch.nn.Module:
         raise AssertionError(name)
 
 
-def _generate_vector_batch(
-    batch_size: int, vector_size: int, preferred_rep_size: int, vector_p2_scale: int
-) -> torch.Tensor:
+def _generate_vector_batch(batch_size: int, vector_size: int) -> torch.Tensor:
     # High is exclusive, so add one.
-    p1_high = 1 + 1
-    p2_high = vector_p2_scale + 1
-    p1 = torch.randint(
-        low=0, high=p1_high, size=(batch_size, preferred_rep_size)
-    ).float()
-    p2 = torch.randint(
-        low=0, high=p2_high, size=(batch_size, vector_size - preferred_rep_size)
-    ).float()
-    return torch.concat([p1, p2], dim=1)
+    return torch.randint(low=0, high=2, size=(batch_size, vector_size)).float()
