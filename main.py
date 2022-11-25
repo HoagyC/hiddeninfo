@@ -362,7 +362,6 @@ def _plot_results(train_results: List[TrainResult]) -> None:
         ax.set_title(loss_name)
         ax.set_yscale("linear")
         ax.set_ylim(([0, 0.4]))
-        # ax.set_yscale("log")
     fig.tight_layout()
     st.pyplot(fig)
 
@@ -400,7 +399,3 @@ def load_results(pkl_path: Path):
 
 if __name__ == "__main__":
     main()
-
-    # st.header("Showing big batch of sparase results")
-    # results_path = Path("out/multiresult.pkl")
-    # load_results(results_path)
