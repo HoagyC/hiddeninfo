@@ -5,7 +5,6 @@ from classes import Experiment
 
 repr_loss = Experiment(
     tag="representation_loss",
-    has_missing_knowledge=False,
 )
 new_decoders = [
     Experiment(

@@ -182,26 +182,13 @@ def _run_models(experiment: Experiment, models: List[Model]) -> TrainResult:
                 batch_size=experiment.batch_size,
                 vector_size=experiment.vector_size,
             )
-            if experiment.has_missing_knowledge:
-                vector_input = torch.concat(
-                    [
-                        vector[:, : experiment.preferred_rep_size],
-                        _generate_vector_batch(
-                            batch_size=experiment.batch_size,
-                            vector_size=experiment.vector_size,
-                        )[:, experiment.preferred_rep_size :],
-                    ],
-                    dim=1,
-                )
-            else:
-                vector_input = vector
 
-            latent_repr = encoder(vector_input)
+            latent_repr = encoder(vector)
 
             noise = torch.normal(
                 mean=0, std=experiment.latent_noise_std, size=latent_repr.shape
             )
-            target_latent = target_latent_fn(vector_input)
+            target_latent = target_latent_fn(vector)
             if experiment.give_full_info:
                 decoder_input = target_latent
             else:
