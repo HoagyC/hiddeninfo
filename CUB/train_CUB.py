@@ -30,11 +30,7 @@ from CUB.models import (
     Multimodel,
 )
 from CUB.classes import AverageMeter, Experiment, Meters, RunRecord
-
-MIN_LR = 1e-04
-BASE_DIR = "/root/hiddeninfo"
-LR_DECAY_SIZE = 0.1
-AUX_LOSS_RATIO = 0.4
+from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
 
 
 def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_training):
@@ -46,7 +42,7 @@ def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_train
     else:
         model.eval()
     for _, data in enumerate(loader):
-        inputs, labels = data
+        inputs, labels, attr_mask = data
         if isinstance(inputs, list):
             # inputs = [i.long() for i in inputs]
             inputs = torch.stack(inputs).t().float()
@@ -58,7 +54,7 @@ def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_train
         loss = criterion(outputs, labels)
         acc = accuracy(outputs, labels, topk=(1,))
         meters.loss.update(loss.item(), inputs.size(0))
-        meters.acc.update(acc[0], inputs.size(0))
+        meters.label_acc.update(acc[0], inputs.size(0))
 
         if is_training:
             optimizer.zero_grad()  # zero the parameter gradients
@@ -310,6 +306,7 @@ def train(
 
     if not logger:
         logger = Logger(os.path.join(args.log_dir, "log.txt"))
+
     logger.write(str(args) + "\n")
     logger.flush()
 
@@ -399,6 +396,9 @@ def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Modu
 
     attr_criterion: List[torch.nn.Module]
     criterion = torch.nn.CrossEntropyLoss()
+    import pdb
+
+    pdb.set_trace()
     if args.use_attr and not args.no_img:
         attr_criterion = []  # separate criterion (loss function) for each attribute
         if args.weighted_loss:

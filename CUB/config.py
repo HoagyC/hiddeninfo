@@ -1,2 +1,7 @@
 N_ATTRIBUTES = 312
 N_CLASSES = 200
+
+MIN_LR = 1e-04
+BASE_DIR = "/root/hiddeninfo"
+LR_DECAY_SIZE = 0.1
+AUX_LOSS_RATIO = 0.4

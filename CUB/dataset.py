@@ -15,6 +15,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader, BatchSampler
 
 from CUB.classes import Experiment
+from CUB.config import BASE_DIR
 
 
 class CUBDataset(Dataset):
@@ -247,4 +248,4 @@ def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
         imbalance_ratio.append(total[j] / n_ones[j] - 1)
     if not multiple_attr:  # e.g. [9.0] --> [9.0] * 312
         imbalance_ratio *= n_attr
-    return
+    return imbalance_ratio
