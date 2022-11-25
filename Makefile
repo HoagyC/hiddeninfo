@@ -21,7 +21,7 @@ run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
 .PHONY: format
 format: $(BLACK)
 	$(BLACK) $(PYTHON_FILES)
-	$(ISORT) -sl $(PYTHON_FILES)
+	$(ISORT) --force-single-line $(PYTHON_FILES)
 
 .PHONY: check
 check: $(MYPY)

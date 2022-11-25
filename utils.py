@@ -13,7 +13,7 @@ DATETIME_FMT = "%Y%m%d-%H%M%S"
 RESULTS_DIR = Path("out/results")
 
 
-def _save_train_result(train_result: TrainResult):
+def save_train_result(train_result: TrainResult):
     now_str = datetime.now().strftime(DATETIME_FMT)
     train_result_path = RESULTS_DIR / train_result.tag / now_str / "train-result.pickle"
     if not train_result_path.parent.is_dir():
@@ -23,14 +23,14 @@ def _save_train_result(train_result: TrainResult):
         pickle.dump(train_result, f)
 
 
-def _load_train_result(tag: str) -> TrainResult:
-    train_result_path = _get_train_result_path(tag)
+def load_train_result(tag: str) -> TrainResult:
+    train_result_path = get_train_result_path(tag)
     assert train_result_path is not None, f"No train results for {tag}"
     with train_result_path.open("rb") as f:
         return pickle.load(f)
 
 
-def _get_train_result_path(tag: str) -> Optional[Path]:
+def get_train_result_path(tag: str) -> Optional[Path]:
     results_dir = RESULTS_DIR / tag
     if not results_dir.is_dir():
         return None

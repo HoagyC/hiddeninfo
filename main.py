@@ -10,13 +10,13 @@ import seaborn as sns
 import streamlit as st
 
 import experiments as exps
+import train
 from classes import TrainResult
 from experiments import Experiment
 from experiments import base
-from train import _train
-from utils import _get_train_result_path
-from utils import _load_train_result
-from utils import _save_train_result
+from utils import get_train_result_path
+from utils import load_train_result
+from utils import save_train_result
 
 # With binary data and zero info, ideal prediction is always 0.5
 ZERO_INFO_LOSS = 0.5**2
@@ -373,11 +373,11 @@ def _run_experiments(*experiments_iterable: Experiment) -> List[TrainResult]:
     bar = st.progress(0.0)
     train_results: List[TrainResult] = []
     for i, experiment in enumerate(experiments):
-        if force_retrain_models or _get_train_result_path(experiment.tag) is None:
-            train_result = _train(experiment=experiment)
-            _save_train_result(train_result)
+        if force_retrain_models or get_train_result_path(experiment.tag) is None:
+            train_result = train.train(experiment=experiment)
+            save_train_result(train_result)
         else:
-            train_result = _load_train_result(experiment.tag)
+            train_result = load_train_result(experiment.tag)
         train_results.append(train_result)
         bar.progress((i + 1) / len(experiments))
     return train_results

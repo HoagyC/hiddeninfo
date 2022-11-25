@@ -16,17 +16,17 @@ from classes import Model
 from classes import StepResult
 from classes import TrainResult
 from experiments import Experiment
-from utils import _load_train_result
+from utils import load_train_result
 
 BINARY_COEFS_10 = [math.comb(10, x) for x in range(11)]
 NUM_PROCESSES = 4
 
 
-def _train(experiment: Experiment) -> TrainResult:
+def train(experiment: Experiment) -> TrainResult:
     if experiment.seed is not None:
         torch.manual_seed(experiment.seed)
     if experiment.load_decoders_from_tag is not None:
-        decoder_train_result = _load_train_result(experiment.load_decoders_from_tag)
+        decoder_train_result = load_train_result(experiment.load_decoders_from_tag)
         assert len(decoder_train_result.models) >= experiment.n_models
         dec_fn = lambda x: decoder_train_result.models[x].decoder
     else:
@@ -41,7 +41,7 @@ def _train(experiment: Experiment) -> TrainResult:
         )
 
     if experiment.load_encoders_from_tag is not None:
-        encoder_train_result = _load_train_result(experiment.load_encoders_from_tag)
+        encoder_train_result = load_train_result(experiment.load_encoders_from_tag)
         assert len(encoder_train_result.models) >= experiment.n_models
         enc_fn = lambda x: encoder_train_result.models[x].encoder
     else:
