@@ -404,7 +404,7 @@ if __name__ == "__main__":
         multitask_cfg,
     ]
 
-    for ndx, cfg in enumerate(original_cfgs[4:]):
+    for ndx, cfg in enumerate(original_cfgs[:]):
         run_cfg = dataclasses.replace(
             cfg, epochs=1, log_dir=cfg.log_dir + f"/exp_{ndx}"
         )

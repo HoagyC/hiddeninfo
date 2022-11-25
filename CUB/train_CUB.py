@@ -49,9 +49,13 @@ def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_train
         inputs = torch.flatten(inputs, start_dim=1).float()
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
+        attr_mask = attr_mask.cuda() if torch.cuda.is_available else attr_mask
 
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
+        masked_inputs = inputs[mask]
+        masked_labels = labels[mask]
+
+        outputs = model(masked_inputs)
+        loss = criterion(masked_outputs, masked_labels)
         acc = accuracy(outputs, labels, topk=(1,))
         meters.loss.update(loss.item(), inputs.size(0))
         meters.label_acc.update(acc[0], inputs.size(0))
@@ -102,18 +106,27 @@ def run_twopart_epoch(
 
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
+        attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
+
+        import pdb
+
+        pdb.set_trace()
+
+        masked_inputs = inputs[attr_mask]
+        masked_labels = labels[attr_mask]
+        masked_attr_labels = attr_labels[attr_mask]
 
         losses = []
         out_start = 0
 
         if is_training and args.use_aux:
-            outputs, aux_outputs = model(inputs)
+            masked_outputs, masked_aux_outputs = model(masked_inputs)
 
             if not args.bottleneck:
                 # loss main is for the main task label (always the first output)
-                loss_main = criterion(outputs[0], labels) + AUX_LOSS_RATIO * criterion(
-                    aux_outputs[0], labels
-                )
+                loss_main = criterion(
+                    masked_outputs[0], masked_labels
+                ) + AUX_LOSS_RATIO * criterion(masked_aux_outputs[0], masked_labels)
                 losses.append(loss_main)
                 out_start = 1
             if (
@@ -121,38 +134,42 @@ def run_twopart_epoch(
             ):  # X -> A, cotraining, end2end
                 for i in range(len(attr_criterion)):
                     output = (
-                        outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
+                        masked_outputs[i + out_start]
+                        .squeeze()
+                        .type(torch.cuda.FloatTensor)
                     )
                     aux_output = (
-                        aux_outputs[i + out_start]
+                        masked_aux_outputs[i + out_start]
                         .squeeze()
                         .type(torch.cuda.FloatTensor)
                     )
 
-                    target = attr_labels[:, i]
-                    main_loss = attr_criterion[i](output, target)
+                    masked_target = masked_attr_labels[:, i]
+                    main_loss = attr_criterion[i](masked_outputs, masked_target)
 
-                    aux_loss = attr_criterion[i](aux_output, target)
+                    aux_loss = attr_criterion[i](masked_aux_output, masked_target)
                     losses.append(
                         args.attr_loss_weight * (main_loss + AUX_LOSS_RATIO * aux_loss)
                     )
 
         else:
-            outputs = model(inputs)
+            masked_outputs = model(masked_inputs)
 
             if not args.bottleneck:
-                loss_main = criterion(outputs[0], labels)
+                loss_main = criterion(masked_outputs[0], masked_labels)
                 losses.append(loss_main)
                 out_start = 1
             if (
                 attr_criterion is not None and args.attr_loss_weight > 0
             ):  # X -> A, cotraining, end2end
                 for i in range(len(attr_criterion)):
-                    value = (
-                        outputs[i + out_start].squeeze().type(torch.cuda.FloatTensor)
+                    masked_value = (
+                        masked_outputs[i + out_start]
+                        .squeeze()
+                        .type(torch.cuda.FloatTensor)
                     )
-                    target = attr_labels[:, i]
-                    attr_loss = attr_criterion[i](value, target)
+                    masked_target = masked_attr_labels[:, i]
+                    attr_loss = attr_criterion[i](masked_value, masked_target)
                     losses.append(args.attr_loss_weight * attr_loss)
 
         if args.bottleneck:  # attribute accuracy
@@ -396,9 +413,7 @@ def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Modu
 
     attr_criterion: List[torch.nn.Module]
     criterion = torch.nn.CrossEntropyLoss()
-    import pdb
 
-    pdb.set_trace()
     if args.use_attr and not args.no_img:
         attr_criterion = []  # separate criterion (loss function) for each attribute
         if args.weighted_loss:
