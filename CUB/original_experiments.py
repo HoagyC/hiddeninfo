@@ -204,7 +204,7 @@ ind_XtoC_cfg = Experiment(
     bottleneck=True,
 )
 
-ind_YtoC_cfg = Experiment(
+ind_CtoY_cfg = Experiment(
     tag="ind_CtoY",
     exp="Independent_CtoY",
     seed=1,
@@ -377,9 +377,6 @@ def orig_run_fn(args: Experiment) -> None:
     elif experiment == "Standard":
         train_X_to_y(args)
 
-    elif experiment == "StandardWithAuxC":
-        train_X_to_y_with_aux_C(args)
-
     elif experiment == "Multitask":
         train_X_to_Cy(args)
 
@@ -396,7 +393,7 @@ if __name__ == "__main__":
 
     original_cfgs = [
         ind_XtoC_cfg,
-        ind_YtoC_cfg,
+        ind_CtoY_cfg,
         seq_CtoY_cfg,
         joint_cfg,
         standard_orig_cfg,
