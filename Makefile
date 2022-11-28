@@ -33,6 +33,11 @@ check: $(MYPY)
 clean:
 	rm -r $(ENV)
 
+.PHONY: hoagy
+hoagy:
+	git config --global user.email "hoagycunningham@gmail.com"
+	git config --global user.name "hoagyc"
+
 # TODO: Replace this with proper make dependencies.
 .PHONY: install
 install:

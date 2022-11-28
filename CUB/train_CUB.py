@@ -32,6 +32,7 @@ from CUB.models import (
 )
 from CUB.classes import AverageMeter, Experiment, Meters, RunRecord
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
+from CUB.utils import upload_to_aws
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
 
@@ -403,17 +404,15 @@ def train(
             print("Early stopping because acc hasn't improved for a long time")
             break
 
+    final_save(run_save_path, model, args)
     return logger
 
-def final_save(model: torch.nn.Module, args: Experiment):
-    now_str = datetime.now().strftime(DATETIME_FMT)
-    model_save_path = Path(arg.log_dir) / args.tag / now_str / "final_model.pth"
+def final_save(model: torch.nn.Module, run_path: Path):
+    model_save_path = run_path / "final_model.pth"
     if not model_save_path.parent.is_dir():
         train_result_path.parent.mkdir(parents=True)
     torch.save(model, model_save_path)
-
-
-
+    upload_to_aws("run_path")
 
 def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Module]]:
     # Determine imbalance
