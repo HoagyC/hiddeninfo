@@ -14,8 +14,6 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_DESTINATION=root@ssh5.vast.ai
-SSH_PORT=11820
 SSH_DIRECTORY=$(USER)-hiddeninfo-sync
 
 .PHONY: run
@@ -58,17 +56,18 @@ cub:
 	$(PYTHON) CUB/generate_new_data.py
 
 # Sync local files with a remote location.
+# Run with ssh-sync PORT=.
 .PHONY: ssh-sync
 ssh-sync:
 	rsync -rv \
 		--filter ':- .gitignore' \
 		--exclude ".git" \
-		-e 'ssh -p $(SSH_PORT)' \
-		. $(SSH_DESTINATION):$(SSH_DIRECTORY)
+		-e 'ssh -p $$(SSH_PORT)' \
+		. $$(SSH_DESTINATION):$(SSH_DIRECTORY)
 
 # Run a make command on a remote location.
 # E.g.: make COMMAND="run" ssh-run
 .PHONY: ssh-run
 ssh-run:
-	ssh -p $(SSH_PORT) $(SSH_DESTINATION) \
+	ssh -p $$(SSH_PORT) $$(SSH_DESTINATION) \
 		"cd $(SSH_DIRECTORY) && make $(COMMAND)"

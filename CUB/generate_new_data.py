@@ -6,6 +6,7 @@ import sys
 import copy
 import torch
 import random
+from pathlib import Path
 import pickle
 import argparse
 import numpy as np
@@ -68,7 +69,7 @@ def get_fraction_data(fraction, out_dir, data_file="train.pkl"):
 
 
 def get_class_attributes_data(
-    min_class_count, out_dir, modify_data_dir="", keep_instance_data=False
+    min_class_count, out_dir, data_dir: Path, modify_data_dir="", keep_instance_data=False
 ):
     """
     Use train.pkl to aggregate attributes on class level and only keep those that are predominantly 1 for at least min_class_count classes
@@ -80,7 +81,7 @@ def get_class_attributes_data(
     183, 187, 188, 193, 194, 196, 198, 202, 203, 208, 209, 211, 212, 213, 218, 220, 221, 225, 235, 236, 238, 239, 240, 242, 243, 244, 249, 253, \
     254, 259, 260, 262, 268, 274, 277, 283, 289, 292, 293, 294, 298, 299, 304, 305, 308, 309, 310, 311]
     """
-    data = pickle.load(open("train.pkl", "rb"))
+    data = pickle.load(open(data_dir / "train.pkl", "rb"))
     class_attr_count = np.zeros((N_CLASSES, N_ATTRIBUTES, 2))
     for d in data:
         class_label = d["class_label"]
@@ -98,9 +99,7 @@ def get_class_attributes_data(
     class_attr_max_label[equal_count] = 1
 
     attr_class_count = np.sum(class_attr_max_label, axis=0)
-    import pdb
 
-    pdb.set_trace()
     mask = np.where(attr_class_count >= min_class_count)[
         0
     ]  # select attributes that are present (on a class level) in at least [min_class_count] classes
@@ -476,5 +475,5 @@ def orig_main_fn():
 
 if __name__ == "__main__":
     get_class_attributes_data(
-        min_class_count=10, out_dir="CUB_masked_class", modify_data_dir="CUB_processed"
+        min_class_count=10, out_dir="CUB_masked_class", data_dir=Path("CUB_processed"), modify_data_dir="CUB_processed"
     )
