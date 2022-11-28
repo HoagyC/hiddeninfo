@@ -12,11 +12,11 @@ def upload_to_aws(local_file_name, s3_file_name: str="") -> bool:
         access_key = os.environ["ACCESS_KEY"]
     else:
         print("No AWS access key in environ")
-        access_key = input("Enter AWS access key:")
+        access_key = input("Enter AWS access key: ")
 
     if "SECRET_KEY" in os.environ:
         secret_key = os.environ["SECRET_KEY"]
-        secret_key = input("Enter AWS secret key:")
+        secret_key = input("Enter AWS secret key: ")
 
     else:
         print("No AWS secret key in environ")
@@ -33,7 +33,7 @@ def upload_to_aws(local_file_name, s3_file_name: str="") -> bool:
         if local_file_path.is_dir():
             _upload_directory(local_file_name, s3)
         else:
-            s3.upload_file(local_file_name, BUCKET_NAME)
+            s3.upload_file(local_file_name, BUCKET_NAME, s3_file_name)
         print("Upload Successful")
         return True
     except FileNotFoundError:

@@ -5,6 +5,7 @@ import argparse
 import dataclasses
 from datetime import datetime
 import os
+from pathlib import Path
 import random
 import sys
 
@@ -111,10 +112,6 @@ def run_twopart_epoch(
         labels = labels.cuda() if torch.cuda.is_available() else labels
         attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
 
-        import pdb
-
-        pdb.set_trace()
-
         masked_inputs = inputs[attr_mask]
         masked_labels = labels[attr_mask]
         masked_attr_labels = attr_labels[attr_mask]
@@ -136,21 +133,21 @@ def run_twopart_epoch(
                 attr_criterion is not None and args.attr_loss_weight > 0
             ):  # X -> A, cotraining, end2end
                 for i in range(len(attr_criterion)):
-                    output = (
+                    masked_attr_output = (
                         masked_outputs[i + out_start]
                         .squeeze()
                         .type(torch.cuda.FloatTensor)
                     )
-                    aux_output = (
+                    masked_attr_aux_output = (
                         masked_aux_outputs[i + out_start]
                         .squeeze()
                         .type(torch.cuda.FloatTensor)
                     )
 
-                    masked_target = masked_attr_labels[:, i]
-                    main_loss = attr_criterion[i](masked_outputs, masked_target)
+                    masked_attr_target = masked_attr_labels[:, i]
+                    main_loss = attr_criterion[i](masked_attr_output, masked_attr_target)
 
-                    aux_loss = attr_criterion[i](masked_aux_output, masked_target)
+                    aux_loss = attr_criterion[i](masked_attr_aux_output, masked_attr_target)
                     losses.append(
                         args.attr_loss_weight * (main_loss + AUX_LOSS_RATIO * aux_loss)
                     )
@@ -166,22 +163,22 @@ def run_twopart_epoch(
                 attr_criterion is not None and args.attr_loss_weight > 0
             ):  # X -> A, cotraining, end2end
                 for i in range(len(attr_criterion)):
-                    masked_value = (
+                    masked_attr_value = (
                         masked_outputs[i + out_start]
                         .squeeze()
                         .type(torch.cuda.FloatTensor)
                     )
-                    masked_target = masked_attr_labels[:, i]
-                    attr_loss = attr_criterion[i](masked_value, masked_target)
+                    masked_attr_target = masked_attr_labels[:, i]
+                    attr_loss = attr_criterion[i](masked_attr_value, masked_attr_target)
                     losses.append(args.attr_loss_weight * attr_loss)
 
         if args.bottleneck:  # attribute accuracy
-            sigmoid_outputs = torch.nn.Sigmoid()(torch.cat(outputs, dim=1))
+            sigmoid_outputs = torch.nn.Sigmoid()(torch.cat(masked_outputs, dim=1))
             acc = binary_accuracy(sigmoid_outputs, attr_labels)
             meters.concept_acc.update(acc.data.cpu().numpy(), inputs.size(0))
         else:
             acc = accuracy(
-                outputs[0], labels, topk=(1,)
+                masked_outputs[0], labels, topk=(1,)
             )  # only care about class prediction accuracy
             meters.label_acc.update(acc[0], inputs.size(0))
 
@@ -318,13 +315,9 @@ def train(
 ):
     now_str = datetime.now().strftime(DATETIME_FMT)
     run_save_path = Path(args.log_dir) / args.tag / now_str
+    if not run_save_path.is_dir():
+        run_save_path.mkdir(parents=True)
     wandb.init(project="distill_CUB", config=args.__dict__)
-
-    if os.path.exists(args.log_dir):  # job restarted by cluster
-        for f in os.listdir(args.log_dir):
-            os.remove(os.path.join(args.log_dir, f))
-    else:
-        os.makedirs(args.log_dir)
 
     if not logger:
         logger = Logger(run_save_path / "log.txt")
@@ -384,7 +377,7 @@ def train(
         )
 
         write_metrics(
-            epoch_ndx, model, args, train_meters, val_meters, val_records, logger
+            epoch_ndx, model, args, train_meters, val_meters, val_records, logger, run_save_path
         )
 
         if epoch_ndx <= stop_epoch:
@@ -395,7 +388,7 @@ def train(
 
         if epoch_ndx % args.save_step == 0:
             now_str = datetime.now().strftime(DATETIME_FMT)
-            torch.save(model, os.path.join(args.log_dir, args.tag, now_str, f"{epoch_ndx}_model.pth"))
+            torch.save(model, run_save_path / f"{epoch_ndx}_model.pth")
 
         if epoch_ndx >= 100 and val_meters.label_acc.avg < 3:
             print("Early stopping because of low accuracy")
@@ -404,13 +397,11 @@ def train(
             print("Early stopping because acc hasn't improved for a long time")
             break
 
-    final_save(run_save_path, model, args)
+    final_save(model, run_save_path)
     return logger
 
 def final_save(model: torch.nn.Module, run_path: Path):
     model_save_path = run_path / "final_model.pth"
-    if not model_save_path.parent.is_dir():
-        train_result_path.parent.mkdir(parents=True)
     torch.save(model, model_save_path)
     upload_to_aws("run_path")
 
@@ -452,12 +443,13 @@ def write_metrics(
     val_meters: Meters,
     val_records: RunRecord,
     logger: Logger,
+    save_path: Path
 ) -> None:
     if val_records.acc < val_meters.label_acc.avg:
         val_records.epoch = epoch
         val_records.acc = val_meters.label_acc.avg
         logger.write("New model best model at epoch %d\n" % epoch)
-        torch.save(model, os.path.join(args.log_dir, "best_model_%d.pth" % args.seed))
+        torch.save(model, save_path / f"best_model_{args.seed}.pth")
         # if best_val_acc >= 100: #in the case of retraining, stop when the model reaches 100% accuracy on both train + val sets
         #    break
 
