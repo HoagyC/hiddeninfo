@@ -89,6 +89,7 @@ class CUBDataset(Dataset):
                 attr_label = img_data["uncertain_attribute_label"]
             else:
                 attr_label = img_data["attribute_label"]
+            
             if self.no_img:
                 if self.n_class_attr == 3:
                     one_hot_attr_label = np.zeros((N_ATTRIBUTES, self.n_class_attr))

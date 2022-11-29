@@ -403,7 +403,8 @@ def train(
 def final_save(model: torch.nn.Module, run_path: Path):
     model_save_path = run_path / "final_model.pth"
     torch.save(model, model_save_path)
-    upload_to_aws("run_path")
+    upload_to_aws(model_save_path)
+    upload_to_aws(run_path / "log.txt")
 
 def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Module]]:
     # Determine imbalance
@@ -603,7 +604,7 @@ def train_multimodel() -> None:
         default_args,
         multimodel=True,
         n_models=1,
-        epochs=50,
+        epochs=1,
         use_aux=True,
         use_attr=True,
         bottleneck=True,
