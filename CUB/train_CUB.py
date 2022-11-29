@@ -4,8 +4,10 @@ Train InceptionV3 Network using the CUB-200-2011 dataset
 import argparse
 import dataclasses
 from datetime import datetime
+import logging
 import os
 from pathlib import Path
+import pickle
 import random
 import sys
 
@@ -20,7 +22,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import wandb
 
-from CUB.analysis import Logger, AverageMeter, accuracy, binary_accuracy
+from CUB.analysis import AverageMeter, accuracy, binary_accuracy
 from CUB.dataset import load_data, find_class_imbalance
 from CUB.models import (
     ModelXtoCY,
@@ -36,6 +38,7 @@ from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
 from CUB.utils import upload_to_aws
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
+
 
 def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_training):
     """
@@ -55,19 +58,22 @@ def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_train
         labels = labels.cuda() if torch.cuda.is_available() else labels
         attr_mask = attr_mask.cuda() if torch.cuda.is_available else attr_mask
 
-        masked_inputs = inputs[mask]
-        masked_labels = labels[mask]
+        masked_inputs = inputs[attr_mask]
+        masked_labels = labels[attr_mask]
 
-        outputs = model(masked_inputs)
+        masked_outputs = model(masked_inputs)
         loss = criterion(masked_outputs, masked_labels)
-        acc = accuracy(outputs, labels, topk=(1,))
-        meters.loss.update(loss.item(), inputs.size(0))
-        meters.label_acc.update(acc[0], inputs.size(0))
+        acc = accuracy(masked_outputs, labels, topk=(1,))
+        meters.loss.update(loss.item(), masked_inputs.size(0))
+        meters.label_acc.update(acc[0], masked_inputs.size(0))
 
         if is_training:
             optimizer.zero_grad()  # zero the parameter gradients
             loss.backward()
             optimizer.step()  # optimizer step to update parameters
+
+        if args.quick:
+            break
     return meters
 
 
@@ -93,6 +99,7 @@ def run_twopart_epoch(
         if attr_criterion is None:
             inputs, labels = data
             attr_labels = None
+            attr_mask = torch.ones(inputs.shape[0]).to(torch.bool)
         else:
             dat_tup = data
             inputs, labels, attr_labels, attr_mask = data
@@ -110,11 +117,12 @@ def run_twopart_epoch(
 
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         labels = labels.cuda() if torch.cuda.is_available() else labels
-        attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
+        if attr_labels is not None:
+            attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
+            masked_attr_labels = attr_labels[attr_mask]
 
         masked_inputs = inputs[attr_mask]
         masked_labels = labels[attr_mask]
-        masked_attr_labels = attr_labels[attr_mask]
 
         losses = []
         out_start = 0
@@ -145,9 +153,13 @@ def run_twopart_epoch(
                     )
 
                     masked_attr_target = masked_attr_labels[:, i]
-                    main_loss = attr_criterion[i](masked_attr_output, masked_attr_target)
+                    main_loss = attr_criterion[i](
+                        masked_attr_output, masked_attr_target
+                    )
 
-                    aux_loss = attr_criterion[i](masked_attr_aux_output, masked_attr_target)
+                    aux_loss = attr_criterion[i](
+                        masked_attr_aux_output, masked_attr_target
+                    )
                     losses.append(
                         args.attr_loss_weight * (main_loss + AUX_LOSS_RATIO * aux_loss)
                     )
@@ -198,6 +210,9 @@ def run_twopart_epoch(
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
+
+        if args.quick:
+            break
     return meters
 
 
@@ -303,6 +318,9 @@ def run_multimodel_epoch(
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
+
+        if args.quick:
+            break
     return meters
 
 
@@ -311,19 +329,18 @@ def train(
     args: Experiment,
     split_models: bool = False,
     init_epoch: int = 0,
-    logger: Optional[Logger] = None,
 ):
+    print(f"Running {args.tag}")
+    if args.quick:
+        print("Speed running!")
     now_str = datetime.now().strftime(DATETIME_FMT)
     run_save_path = Path(args.log_dir) / args.tag / now_str
     if not run_save_path.is_dir():
         run_save_path.mkdir(parents=True)
     wandb.init(project="distill_CUB", config=args.__dict__)
 
-    if not logger:
-        logger = Logger(run_save_path / "log.txt")
-
-    logger.write(str(args) + "\n")
-    logger.flush()
+    logging.basicConfig(filename=run_save_path / "log.txt", level=logging.INFO)
+    logging.info(str(args) + "\n")
 
     if args.multimodel:
         if args.reset_pre_models:
@@ -358,7 +375,7 @@ def train(
 
     train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
     val_data_path = train_data_path.replace("train.pkl", "val.pkl")
-    logger.write("train data path: %s\n" % train_data_path)
+    logging.info("train data path: %s\n" % train_data_path)
 
     train_loader = load_data([train_data_path], args, resampling=args.resampling)
     val_loader = load_data([val_data_path], args)
@@ -377,7 +394,13 @@ def train(
         )
 
         write_metrics(
-            epoch_ndx, model, args, train_meters, val_meters, val_records, logger, run_save_path
+            epoch_ndx,
+            model,
+            args,
+            train_meters,
+            val_meters,
+            val_records,
+            run_save_path,
         )
 
         if epoch_ndx <= stop_epoch:
@@ -397,14 +420,18 @@ def train(
             print("Early stopping because acc hasn't improved for a long time")
             break
 
-    final_save(model, run_save_path)
-    return logger
+    final_save(model, run_save_path, args)
 
-def final_save(model: torch.nn.Module, run_path: Path):
+
+def final_save(model: torch.nn.Module, run_path: Path, args: Experiment):
     model_save_path = run_path / "final_model.pth"
+    with open(run_path / "config.pkl", "wb") as f:
+        pickle.dump(args, f)
     torch.save(model, model_save_path)
-    upload_to_aws(model_save_path)
-    upload_to_aws(run_path / "log.txt")
+    upload_files = ["final_model.pth", "config.pkl", "log.txt"]
+    for filename in upload_files:
+        upload_to_aws(run_path / filename)
+
 
 def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Module]]:
     # Determine imbalance
@@ -416,7 +443,7 @@ def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Modu
         else:
             imbalance = find_class_imbalance(train_data_path, False)
 
-    attr_criterion: List[torch.nn.Module]
+    attr_criterion: Optional[List[torch.nn.Module]]
     criterion = torch.nn.CrossEntropyLoss()
 
     if args.use_attr and not args.no_img:
@@ -431,7 +458,7 @@ def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Modu
             for i in range(args.n_attributes):
                 attr_criterion.append(torch.nn.CrossEntropyLoss())
     else:
-        attr_criterion = []
+        attr_criterion = None
 
     return criterion, attr_criterion
 
@@ -443,13 +470,12 @@ def write_metrics(
     train_meters: Meters,
     val_meters: Meters,
     val_records: RunRecord,
-    logger: Logger,
-    save_path: Path
+    save_path: Path,
 ) -> None:
     if val_records.acc < val_meters.label_acc.avg:
         val_records.epoch = epoch
         val_records.acc = val_meters.label_acc.avg
-        logger.write("New model best model at epoch %d\n" % epoch)
+        logging.info("New model best model at epoch %d\n" % epoch)
         torch.save(model, save_path / f"best_model_{args.seed}.pth")
         # if best_val_acc >= 100: #in the case of retraining, stop when the model reaches 100% accuracy on both train + val sets
         #    break
@@ -469,7 +495,7 @@ def write_metrics(
     }
 
     wandb.log(metrics_dict)
-    logger.write(
+    logging.info(
         "Epoch [%d]:\tTrain loss: %.4f\tTrain accuracy: %.4f\t"
         "Val loss: %.4f\tVal acc: %.4f\t"
         "Best val epoch: %d\n"
@@ -482,8 +508,6 @@ def write_metrics(
             val_records.epoch,
         )
     )
-
-    logger.flush()
 
 
 def run_epoch(
@@ -623,8 +647,8 @@ def train_multimodel() -> None:
         reset_pre_models=True,
     )
     model = Multimodel(multiple_cfg)
-    logger = train(model, multiple_cfg)
-    train(model, retrain_dec_cfg, logger=logger, init_epoch=multiple_cfg.epochs)
+    train(model, multiple_cfg)
+    train(model, retrain_dec_cfg, init_epoch=multiple_cfg.epochs)
 
 
 def train_X_to_C(args):

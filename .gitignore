@@ -13,3 +13,4 @@ wandb/
 CUB_processed/
 CUB_200_2011/
 CUB_masked_class
+CUB_dataset.zip

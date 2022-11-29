@@ -195,7 +195,7 @@ ind_XtoC_cfg = Experiment(
     optimizer="SGD",
     pretrained=True,
     use_attr=True,
-    n_attributes=109,
+    n_attributes=108,
     batch_size=64,
     weight_decay=4e-5,
     lr=0.01,
@@ -211,7 +211,7 @@ ind_CtoY_cfg = Experiment(
     epochs=500,
     optimizer="SGD",
     use_attr=True,
-    n_attributes=109,
+    n_attributes=108,
     no_img=True,
     batch_size=64,
     weight_decay=5e-5,
@@ -239,7 +239,7 @@ seq_CtoY_cfg = Experiment(
     pretrained=True,
     use_aux=True,
     use_attr=True,
-    n_attributes=109,
+    n_attributes=108,
     no_img=True,
     batch_size=64,
     weight_decay=4e-5,
@@ -267,7 +267,7 @@ joint_cfg = Experiment(
     use_aux=True,
     use_attr=True,
     weighted_loss="multiple",
-    n_attributes=109,
+    n_attributes=108,
     attr_loss_weight=0.01,
     normalize_loss=True,
     batch_size=64,
@@ -297,7 +297,7 @@ standard_orig_cfg = Experiment(
     use_aux=True,
     use_attr=True,
     weighted_loss="multiple",
-    n_attributes=109,
+    n_attributes=108,
     attr_loss_weight=0.0,
     normalize_loss=True,
     batch_size=64,
@@ -350,7 +350,7 @@ multitask_cfg = Experiment(
     use_aux=True,
     use_attr=True,
     weighted_loss="multiple",
-    n_attributes=109,
+    n_attributes=108,
     attr_loss_weight=0.01,
     normalize_loss=True,
     batch_size=64,
@@ -401,9 +401,7 @@ if __name__ == "__main__":
         multitask_cfg,
     ]
 
-    for cfg in original_cfgs:
-        run_cfg = dataclasses.replace(
-            cfg, epochs=1
-        )
+    for cfg in original_cfgs[5:]:
+        run_cfg = dataclasses.replace(cfg, epochs=1, quick=True)
 
         orig_run_fn(run_cfg)

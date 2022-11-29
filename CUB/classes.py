@@ -94,3 +94,4 @@ class Experiment:
     # Can predict whethe trait is visible as a third class, n_class_attr=3
     n_class_attr: int = 2
     three_class: bool = n_class_attr == 3
+    quick: bool = False
