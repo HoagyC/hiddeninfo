@@ -7,6 +7,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from CUB.classes import Experiment
 
+from CUB.train_CUB import (
+    train_X_to_C,
+    train_oracle_C_to_y_and_test_on_Chat,
+    train_Chat_to_y_and_test_on_Chat,
+    train_X_to_C_to_y,
+    train_X_to_y,
+    train_X_to_Cy,
+)
+
 # Argument parser from github.com/yewsiang/ConceptBottleneck
 # Used to check hyperparameter defaults for replicating experiments
 def parse_arguments(experiment):
@@ -382,14 +391,6 @@ def orig_run_fn(args: Experiment) -> None:
 
 
 if __name__ == "__main__":
-    from CUB.train_CUB import (
-        train_X_to_C,
-        train_oracle_C_to_y_and_test_on_Chat,
-        train_Chat_to_y_and_test_on_Chat,
-        train_X_to_C_to_y,
-        train_X_to_y,
-        train_X_to_Cy,
-    )
 
     original_cfgs = [
         ind_XtoC_cfg,

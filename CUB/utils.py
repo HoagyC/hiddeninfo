@@ -1,5 +1,7 @@
+import json
 import os
 from pathlib import Path
+from typing import List, Dict
 
 import boto3
 from botocore.exceptions import NoCredentialsError
@@ -7,21 +9,21 @@ from botocore.exceptions import NoCredentialsError
 BUCKET_NAME = "distilledrepr"
 
 
-def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
-    if "ACCESS_KEY" in os.environ:
-        access_key = os.environ["ACCESS_KEY"]
-    else:
-        print("No AWS access key in environ")
-        access_key = input("Enter AWS access key: ")
+def get_secrets() -> Dict:
+    assert "secrets.json" in os.listdir()
+    with open("secrets.json", "r") as f:
+        secrets = json.load(f)
 
-    if "SECRET_KEY" in os.environ:
-        secret_key = os.environ["SECRET_KEY"]
-    else:
-        print("No AWS secret key in environ")
-        secret_key = input("Enter AWS secret key: ")
+    return secrets
+
+
+def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
+    secrets = get_secrets()
 
     s3 = boto3.client(
-        "s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key
+        "s3",
+        aws_access_key_id=secrets["access_key"],
+        aws_secret_access_key=secrets["secret_key"],
     )
 
     if not s3_file_name:
@@ -41,6 +43,19 @@ def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
     except NoCredentialsError:
         print("Credentials not available")
         return False
+
+
+def download_from_aws(files: List[str]) -> None:
+    secrets = get_secrets()
+
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=secrets["access_key"],
+        aws_secret_access_key=secrets["secret_key"],
+    )
+    for filename in files:
+        with open(filename, "wb") as f:
+            s3.download_fileobj(BUCKET_NAME, filename, f)
 
 
 def _upload_directory(path, s3_client):
