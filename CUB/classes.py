@@ -52,7 +52,7 @@ class Experiment:
 
     # Model
     multimodel: bool = False
-    n_attributes: int = 108
+    n_attributes: int = 109
     num_classes: int = N_CLASSES
     expand_dim: int = 500
     use_relu: bool = True

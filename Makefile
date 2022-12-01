@@ -73,6 +73,8 @@ ssh-sync:
 		-e 'ssh -p $(SSH_PORT)' \
 		. $(SSH_DESTINATION):$(SSH_DIRECTORY)
 	
+.PHONY: secret
+secret:
 	scp -P $(SSH_PORT) secrets.json $(SSH_DESTINATION):$(SSH_DIRECTORY)
 
 # Run a make command on a remote location.
