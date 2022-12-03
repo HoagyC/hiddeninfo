@@ -1,4 +1,5 @@
 import dataclasses
+from typing import Optional, List
 
 from CUB.config import N_ATTRIBUTES, N_CLASSES
 
@@ -39,7 +40,17 @@ class Meters:
 
 
 @dataclasses.dataclass
-class Experiment:
+class BaseConf:
+    use_attr: bool
+    no_img: bool
+    image_dir: str
+    n_class_attr: int
+    attr_sparsity: int
+    batch_size: int
+
+
+@dataclasses.dataclass
+class Experiment(BaseConf):
     tag: str = "basic"
     exp: str = "multimodel"
     seed: int = 0
@@ -95,3 +106,48 @@ class Experiment:
     n_class_attr: int = 2
     three_class: bool = n_class_attr == 3
     quick: bool = False
+
+
+@dataclasses.dataclass
+class TTI_Config(BaseConf):
+    log_dir: str = "."  # where results are stored
+    # where the trained model is saved
+    model_dirs: List[str] = dataclasses.field(default_factory=lambda: [])
+    # where another trained model is saved (for bottleneck only)
+    model_dirs2: List[str] = dataclasses.field(default_factory=lambda: [])
+
+    model_dir: str = ""
+    model_dir2: Optional[str] = ""
+
+    eval_data: str = "test"  # whether to use test or val data
+    batch_size: int = 16
+
+    # How relevant for tti?? - because they're used to load up the dataset
+    use_attr: bool = (
+        False  # whether to use attributes (FOR COTRAINING ARCHITECTURE ONLY)
+    )
+    no_img: bool = False  # if included, only use attributes (and not raw imgs) for class prediction
+    bottleneck: bool = False
+    no_background: bool = False
+    n_class_attr: int = 2
+    use_relu: bool = False
+    use_sigmoid: bool = False
+    connect_CY: bool = False
+    attr_sparsity: int = 1
+
+    data_dir: str = ""  # directory to the data used for evaluation
+    data_dir2: str = "class_attr_data_10"  # directory to the raw data
+    n_attributes: int = 109
+    image_dir: str = "images"  # test image folder to run inference on
+    # file listing the (trained) model directory for each attribute group
+    attribute_group: Optional[str] = None
+    # whether to print out performance of individual atttributes
+    feature_group_results: bool = False
+    # Whether to correct with class- (if set) or instance- (if not set) level values
+    class_level: bool = False
+    use_invisible: bool = False
+
+    # Which mode to use for correction. Choose from wrong_idx, entropy, uncertainty, random
+    mode: str = "entropy"
+    n_trials: int = 1  # Number of trials to run, when mode is random
+    n_groups: int = 28

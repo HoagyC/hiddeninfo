@@ -14,7 +14,7 @@ import torchvision.transforms as transforms
 
 from torch.utils.data import Dataset, DataLoader, BatchSampler
 
-from CUB.classes import Experiment
+from CUB.classes import Experiment, BaseConf
 from CUB.config import BASE_DIR
 
 
@@ -89,7 +89,7 @@ class CUBDataset(Dataset):
                 attr_label = img_data["uncertain_attribute_label"]
             else:
                 attr_label = img_data["attribute_label"]
-            
+
             if self.no_img:
                 if self.n_class_attr == 3:
                     one_hot_attr_label = np.zeros((N_ATTRIBUTES, self.n_class_attr))
@@ -150,7 +150,7 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
 def load_data(
     pkl_paths: List[str],
-    args: Experiment,
+    args: BaseConf,
     resol: int = 299,
     resampling: bool = False,
     uncertain_label: bool = False,

@@ -83,14 +83,7 @@ def eval(args):
         class_acc_meter.append(AverageMeter())
 
     data_dir = os.path.join(BASE_DIR, args.data_dir, args.eval_data + ".pkl")
-    loader = load_data(
-        [data_dir],
-        args.use_attr,
-        args.no_img,
-        args.batch_size,
-        image_dir=args.image_dir,
-        n_class_attr=args.n_class_attr,
-    )
+    loader = load_data([data_dir], args)
     all_outputs, all_targets = [], []
     all_attr_labels, all_attr_outputs, all_attr_outputs_sigmoid, all_attr_outputs2 = (
         [],
@@ -110,7 +103,7 @@ def eval(args):
                 inputs = inputs.float()
                 # inputs = torch.flatten(inputs, start_dim=1).float()
             else:
-                inputs, labels, attr_labels = data
+                inputs, labels, attr_labels, attr_mask = data
                 attr_labels = torch.stack(attr_labels).t()  # N x 312
         else:  # simple finetune
             inputs, labels = data
