@@ -10,6 +10,7 @@ import random
 from typing import List, Optional
 
 import numpy as np
+
 from scipy.stats import entropy
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -20,9 +21,10 @@ from CUB.utils import get_class_attribute_names
 from CUB.classes import TTI_Config
 
 
-def get_stage2_pred(a_hat):
+# Take intermediate representation and predict class outputs, to see how they change when intervening
+def get_stage2_pred(a_hat, model):
     stage2_inputs = torch.from_numpy(np.array(a_hat)).cuda().float()
-    class_outputs = model2(stage2_inputs)
+    class_outputs = model(stage2_inputs)
     class_outputs = torch.nn.Softmax()(class_outputs)
     return class_outputs.data.cpu().numpy()
 
@@ -40,9 +42,8 @@ def simulate_group_intervention(
     b_class_logits,
     b_attr_outputs,
     b_attr_outputs_sigmoid,
-    b_attr_outputs2,
-    b_attr_labels,
-    instance_attr_labels,
+    b_attr_labels,  # 2D list of true test attr_labels
+    instance_attr_labels,  # 2D list of true test attr labels
     uncertainty_attr_labels,
     use_not_visible,
     min_uncertainty,
@@ -52,6 +53,7 @@ def simulate_group_intervention(
     n_trials=1,
     connect_CY=False,
 ):
+    # Check that number of attributes matches
     assert len(instance_attr_labels) == len(
         b_attr_labels
     ), "len(instance_attr_labels): %d, len(b_attr_labels): %d" % (
@@ -66,7 +68,6 @@ def simulate_group_intervention(
     )
 
     all_class_acc = []
-
     for _ in range(n_trials):
         b_attr_new = np.array(b_attr_outputs[:])
 
@@ -92,53 +93,63 @@ def simulate_group_intervention(
                 replace_cached,
             )
 
-            def attr_entropy_diff(attr_idx, attr_preds, attr_preds_sigmoid):
-                init_entropy = entropy(
-                    get_stage2_pred(attr_preds)
-                )  # constant -> doesn't matter
-                attr_logit = attr_preds_sigmoid[attr_idx]
-                if int(attr_logit):
+            def attr_entropy_diff(
+                attr_idx: int, attr_preds, attr_preds_sigmoid
+            ) -> float:
+                # Returns the expected difference in entropy of class labels between the initial setting of the attr logits
+                # and a model where you set some to 5th and 95th percentile based on some particular logit??
+                init_entropy = entropy(get_stage2_pred(attr_preds, model2))
+                attr_logit = attr_preds_sigmoid[
+                    attr_idx
+                ]  # What's special about this first logit?
+                if int(attr_logit):  # ?? surely this is true only when logit is (-1, 1)
                     p1 = attr_logit
                     p0 = 1 - p1
                 else:
                     p0 = attr_logit
                     p1 = 1 - p0
+
+                # Setting the attribute value to its 5/95th percentile values
                 a_hat_0 = attr_preds[:]
                 a_hat_0[attr_idx] = ptl_5[attr_idx]
                 a_hat_1 = attr_preds[:]
                 a_hat_1[attr_idx] = ptl_95[attr_idx]
+
                 expected_entropy = p0 * entropy(
-                    get_stage2_pred(a_hat_0)
-                ) + p1 * entropy(get_stage2_pred(a_hat_1))
+                    get_stage2_pred(a_hat_0, model2)
+                ) + p1 * entropy(get_stage2_pred(a_hat_1, model2))
                 return init_entropy - expected_entropy
 
-            def group_entropy_diff(group_attr_idx, attr_preds, attr_preds_sigmoid):
-                total_diff = 0
-                for attr_idx in group_attr_dict[group_attr_idx]:
+            def group_entropy_diff(
+                group_attr_idx, attr_preds, attr_preds_sigmoid
+            ) -> float:
+                # Returns average entropy difference across attributes
+                total_diff = 0.0
+                for attr_idx in attr_group_dict[group_attr_idx]:
                     total_diff += attr_entropy_diff(
                         attr_idx, attr_preds, attr_preds_sigmoid
                     )
-                return total_diff / len(group_attr_dict[group_attr_idx])
+                return total_diff / len(attr_group_dict[group_attr_idx])
 
             def replace_entropy_non_adaptive(
                 attr_preds, attr_preds_sigmoid, chosen=[], n=1
-            ):
-                # print("n replace:", n_replace, "replace cached:", chosen)
+            ) -> int:
+
                 all_entropy_change = []
                 for group_attr_idx in range(args.n_groups):
                     all_entropy_change.append(
-                        group_attr_entropy_diff(
+                        group_entropy_diff(
                             group_attr_idx, attr_preds, attr_preds_sigmoid
                         )
                     )
                 group_replace_idx = np.argsort(all_entropy_change)[::-1]
                 if n == 1:
                     i = 0
-                    while replace_idx[i] in chosen:
+                    while group_replace_idx[i] in chosen:
                         i += 1
-                    return replace_idx[i]
+                    return group_replace_idx[i]
                 else:
-                    return replace_idx[:n]
+                    return group_replace_idx[:n]
 
             def replace_entropy_adaptive(
                 attr_preds,
@@ -147,7 +158,7 @@ def simulate_group_intervention(
                 img_id,
                 n_replace,
                 replace_cached,
-            ):
+            ) -> List[int]:
                 attr_preds_new = attr_preds[:]
                 if n_replace == 1:
                     group_replace_idx = []
@@ -174,15 +185,14 @@ def simulate_group_intervention(
             replace_cached = []
 
         for img_id in range(len(b_class_labels)):
+            # Get just the attr outputs for the current img
             attr_preds = b_attr_outputs[
                 img_id * args.n_attributes : (img_id + 1) * args.n_attributes
             ]
             attr_preds_sigmoid = b_attr_outputs_sigmoid[
                 img_id * args.n_attributes : (img_id + 1) * args.n_attributes
             ]
-            attr_preds2 = b_attr_outputs2[
-                img_id * args.n_attributes : (img_id + 1) * args.n_attributes
-            ]
+            # Get a list of all attrs (in the flattened list) that we will intervene on
             if mode == "entropy":
                 attr_labels = b_attr_labels[
                     img_id * args.n_attributes : (img_id + 1) * args.n_attributes
@@ -200,21 +210,22 @@ def simulate_group_intervention(
             all_attr_ids.extend(replace_idx)
             attr_replace_idx.extend(np.array(replace_idx) + img_id * args.n_attributes)
 
-        # print(n_replace, len(all_attr_ids)/len(b_class_labels))
         replace_cached = all_attr_ids
         pred_vals = b_attr_binary_outputs[attr_replace_idx]
         true_vals = np.array(b_attr_labels)[attr_replace_idx]
         # print("acc among the replaced values:", (pred_vals == true_vals).mean())
 
-        if replace_val == "class_level":
+        if replace_val == "class_level":  # uses a 1D array to index into
             b_attr_new[attr_replace_idx] = np.array(b_attr_labels)[attr_replace_idx]
-        else:
+        else:  # using a 2D array - but why are the ndxs the same in both cases?
             b_attr_new[attr_replace_idx] = np.array(instance_attr_labels)[
                 attr_replace_idx
             ]
 
         if use_not_visible:
-            not_visible_idx = np.where(np.array(uncertainty_attr_labels) == 1)[0]
+            not_visible_idx = np.where(np.array(uncertainty_attr_labels) == 1)[
+                0
+            ]  # why the 0??
             for idx in attr_replace_idx:
                 if idx in not_visible_idx:
                     b_attr_new[idx] = 0
@@ -365,6 +376,8 @@ def run(args):
     class_to_folder, attr_id_to_name = get_class_attribute_names()
 
     data = pickle.load(open(os.path.join(args.data_dir2, "train.pkl"), "rb"))
+
+    # Count the number of times each attribute is known to be true or false for each class
     class_attr_count = np.zeros((N_CLASSES, N_ATTRIBUTES, 2))
     for d in data:
         class_label = d["class_label"]
@@ -374,37 +387,32 @@ def run(args):
                 continue
             class_attr_count[class_label][attr_idx][a] += 1
 
+    # Get those class/attribute pairs where more common to be true/false, treating equal as true
     class_attr_min_label = np.argmin(class_attr_count, axis=2)
     class_attr_max_label = np.argmax(class_attr_count, axis=2)
-    equal_count = np.where(
-        class_attr_min_label == class_attr_max_label
-    )  # check where 0 count = 1 count, set the corresponding class attribute label to be 1
+    equal_count = np.where(class_attr_min_label == class_attr_max_label)
     class_attr_max_label[equal_count] = 1
 
+    # Get number of classes where the attribute is more common than not, select for at least min_class_count
     attr_class_count = np.sum(class_attr_max_label, axis=0)
-    print(class_attr_max_label, attr_class_count)
-    mask = np.where(attr_class_count >= 10)[
-        0
-    ]  # select attributes that are present (on a class level) in at least [min_class_count] classes
+    mask = np.where(attr_class_count >= 10)[0]
 
+    # Build 2D lists of attributes and certainties
     instance_attr_labels, uncertainty_attr_labels = [], []
     test_data = pickle.load(open(os.path.join(args.data_dir2, "test.pkl"), "rb"))
-    # print(mask)
     for d in test_data:
-        print(d["attribute_label"])
-        # print(d["attribute_certainty"])
-        # if 'class_attr_data' in args.data_dir or 'end2end' in args.model_dir:
         instance_attr_labels.extend(list(np.array(d["attribute_label"])[mask]))
         uncertainty_attr_labels.extend(list(np.array(d["attribute_certainty"])[mask]))
-        # else:
-        #    instance_attr_labels.extend(list(np.array(d['attribute_label'])))
-        #    uncertainty_attr_labels.extend(list(np.array(d['attribute_certainty'])))
 
+    # Build new dict from attr_id to attr_name to reflect mask
     class_attr_id_to_name = dict()
     for k, v in attr_id_to_name.items():
         if k in mask:
             class_attr_id_to_name[list(mask).index(k)] = v
 
+    # Generate a dict which contains the groups of attributes and the attr_ids which they contain
+    # attributes.txt has a attribute label on each line eg "198 has_belly_color::blue"
+    # eg has_bill_shape has 9 sub attributes, and attr_group_dict[0] = list(range(1, 10))
     attr_group_dict = dict()
     curr_group_idx = 0
     with open("CUB_200_2011/attributes/attributes.txt", "r") as f:
@@ -421,6 +429,7 @@ def run(args):
             else:
                 attr_group_dict[curr_group_idx].append(i + 1)
 
+    # Removing attrs that are screened off by the mask
     for group_id, attr_ids in attr_group_dict.items():
         new_attr_ids = []
         for attr_id in attr_ids:
@@ -428,32 +437,35 @@ def run(args):
                 new_attr_ids.append(attr_id)
         attr_group_dict[group_id] = new_attr_ids
 
+    # Switching to using ids only amongst attributes that are actually used (not masked)
     total_so_far = 0
     for group_id, attr_ids in attr_group_dict.items():
         class_attr_ids = list(range(total_so_far, total_so_far + len(attr_ids)))
         total_so_far += len(attr_ids)
         attr_group_dict[group_id] = class_attr_ids
 
+    # Creating id_to_name dict
     class_attr_id = 0
     for i in range(len(mask)):
         class_attr_id_to_name[i] = attr_id_to_name[mask[i]]
 
-    # stage 1
+    # Run one epoch, get lots of detail about performance
+    # Why b_??
     (
         _,
         _,
         b_class_labels,
         b_topk_class_outputs,
         b_class_logits,
-        b_attr_labels,
-        b_attr_outputs,
-        b_attr_outputs_sigmoid,
+        b_attr_labels,  # N_ATTR x N_TEST true labels
+        b_attr_outputs,  # N_ATTR x N_TEST predicted output (logits)
+        b_attr_outputs_sigmoid,  # N_ATTR x N_TEST predicted output (post sigmoid)
         b_wrong_idx,
-        b_attr_outputs2,
     ) = eval(args)
     b_class_outputs = b_topk_class_outputs[:, 0]
-    b_attr_binary_outputs = np.rint(b_attr_outputs_sigmoid).astype(int)
+    b_attr_binary_outputs = np.rint(b_attr_outputs_sigmoid).astype(int)  # RoundINT
 
+    # Get percentile ranges for how much each attribute was predicted to be true [0,1]
     preds_by_attr, ptl_5, ptl_95 = dict(), dict(), dict()
     for i, val in enumerate(b_attr_outputs):
         attr_idx = i % args.n_attributes
@@ -504,7 +516,6 @@ def run(args):
             b_class_logits,
             b_attr_outputs,
             b_attr_outputs_sigmoid,
-            b_attr_outputs2,
             b_attr_labels,
             instance_attr_labels,
             uncertainty_attr_labels,
@@ -538,7 +549,9 @@ ind_ttr_args = TTI_Config(
 
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
-    args = ind_ttr_args
+
+    args = ind_ttr_args  # Set config for how to run TTI
+
     all_values = []
     for i, model_dir in enumerate(args.model_dirs):
         print("----------")
@@ -553,5 +566,7 @@ if __name__ == "__main__":
     for no_intervention_group, value in zip(no_intervention_groups, values):
         output_string += "%.4f %.4f\n" % (no_intervention_group, value)
     print(output_string)
+    if not os.path.exists(args.log_dir):
+        os.mkdir(args.log_dir)
     output = open(os.path.join(args.log_dir, "results.txt"), "w")
     output.write(output_string)

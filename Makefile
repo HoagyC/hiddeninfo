@@ -14,10 +14,10 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=39296
-VASTAI_N=5
+SSH_PORT=25972
+VASTAI_N=6
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
-SSH_DIRECTORY=$(USER)-hiddeninfo-sync
+SSH_DIRECTORY=hoagy-hiddeninfo-sync
 
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
@@ -75,17 +75,23 @@ ssh-sync:
 	
 .PHONY: secret
 secret:
-	scp -P $(SSH_PORT) secrets.json $(SSH_DESTINATION):$(SSH_DIRECTORY)
+	scp -P $(SSH_PORT) secrets.json $(SSH_DESTINATION):/root/$(SSH_DIRECTORY)
 
 # Run a make command on a remote location.
 # E.g.: make COMMAND="run" ssh-run
 .PHONY: ssh-run
 ssh-run:
 	ssh -p $(SSH_PORT) $(SSH_DESTINATION) \
-		"cd $(SSH_DIRECTORY) && make $(COMMAND)"
+		"cd $(SSH_DIRECTORY) && pwd && make $(COMMAND)"
 
 .PHONY: aws-pull
 aws-pull:
 	apt install unzip
 	$(PYTHON) CUB/aws_download.py
 	unzip CUB_dataset.zip
+
+.PHONY: setup
+setup: 
+	make ssh-run COMMAND="install"
+	make secret
+	make ssh-run COMMAND="aws-pull"

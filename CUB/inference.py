@@ -13,12 +13,13 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from CUB.dataset import load_data
 from CUB.config import BASE_DIR, N_CLASSES, N_ATTRIBUTES
+from CUB.classes import TTI_Config
 from analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
 
 K = [1, 3, 5]  # top k class accuracies to compute
 
 
-def eval(args):
+def eval(args: TTI_Config):
     """
     Run inference using model (and model2 if bottleneck)
     Returns: (for notebook analysis)
@@ -30,6 +31,8 @@ def eval(args):
     all_attr_outputs_sigmoid: flatted list of attribute logits predicted (after Sigmoid) for each attribute for each image (length = N_ATTRIBUTES * N_TEST)
     wrong_idx: image ids where the model got the wrong class prediction (to compare with other models)
     """
+
+    # Load models
     if args.model_dir:
         model = torch.load(args.model_dir)
     else:
@@ -68,6 +71,7 @@ def eval(args):
     else:
         model2 = None
 
+    # Add meters for the overall attr_acc and (optional) for each attr
     if args.use_attr:
         attr_acc_meter = [AverageMeter()]
         if (
@@ -85,8 +89,7 @@ def eval(args):
     data_dir = os.path.join(BASE_DIR, args.data_dir, args.eval_data + ".pkl")
     loader = load_data([data_dir], args)
     all_outputs, all_targets = [], []
-    all_attr_labels, all_attr_outputs, all_attr_outputs_sigmoid, all_attr_outputs2 = (
-        [],
+    all_attr_labels, all_attr_outputs, all_attr_outputs_sigmoid = (
         [],
         [],
         [],
@@ -94,6 +97,7 @@ def eval(args):
     all_class_labels, all_class_outputs, all_class_logits = [], [], []
     topk_class_labels, topk_class_outputs = [], []
 
+    # Run a normal epoch, get outputs and top K class outputs
     for data_idx, data in enumerate(loader):
         if args.use_attr:
             if args.no_img:  # A -> Y
@@ -108,17 +112,19 @@ def eval(args):
         else:  # simple finetune
             inputs, labels = data
 
-        inputs_var = torch.autograd.Variable(inputs).cuda()
-        labels_var = torch.autograd.Variable(labels).cuda()
+        inputs = inputs.cuda()
+        labels = labels.cuda()
 
+        # Option to run separate models for each attribute??
         if args.attribute_group:
             outputs = []
             f = open(args.attribute_group, "r")
             for line in f:
                 attr_model = torch.load(line.strip())
-                outputs.extend(attr_model(inputs_var))
+                outputs.extend(attr_model(inputs))
         else:
-            outputs = model(inputs_var)
+            outputs = model(inputs)
+
         if args.use_attr:
             if args.no_img:  # A -> Y
                 class_outputs = outputs
@@ -187,7 +193,7 @@ def eval(args):
         all_class_labels.extend(list(labels.data.cpu().numpy()))
         all_class_logits.extend(class_outputs.detach().cpu().numpy())
         topk_class_outputs.extend(topk_preds.detach().cpu().numpy())
-        topk_class_labels.extend(labels.view(-1, 1).expand_as(preds))
+        topk_class_labels.extend(labels.view(-1, 1).expand_as(preds).cpu().numpy())
 
         np.set_printoptions(threshold=sys.maxsize)
         class_acc = accuracy(
@@ -203,12 +209,12 @@ def eval(args):
         0
     ]
 
+    # Print top K accuracies
     for j in range(len(K)):
         print("Average top %d class accuracy: %.5f" % (K[j], class_acc_meter[j].avg))
 
-    if (
-        args.use_attr and not args.no_img
-    ):  # print some metrics for attribute prediction performance
+    # print some metrics for attribute prediction performance
+    if args.use_attr and not args.no_img:
         print("Average attribute accuracy: %.5f" % attr_acc_meter[0].avg)
         all_attr_outputs_int = np.array(all_attr_outputs_sigmoid) >= 0.5
         if args.feature_group_results:
@@ -276,7 +282,6 @@ def eval(args):
         all_attr_outputs,
         all_attr_outputs_sigmoid,
         wrong_idx,
-        all_attr_outputs2,
     )
 
 
