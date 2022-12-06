@@ -99,9 +99,6 @@ def eval(args: TTI_Config):
 
     # Run a normal epoch, get outputs and top K class outputs
     for data_idx, data in enumerate(loader):
-        import pdb
-
-        pdb.set_trace()
         if args.use_attr:
             if args.no_img:  # A -> Y
                 inputs, labels = data

@@ -44,7 +44,7 @@ def simulate_group_intervention(
     b_attr_outputs_sigmoid,  # flat list of post-sigmoid outputs of the x->c model
     b_attr_labels,  # flat list of true test attr_labels via the data_loader which is changed to be identical for outputs of the same class
     instance_attr_labels,  # flat list of true test attr labels directly from the data
-    uncertainty_attr_labels,
+    uncertainty_attr_labels,  # flat list of uncertainty labels (same len as the rest)
     use_not_visible,
     min_uncertainty,
     n_replace,
@@ -178,14 +178,13 @@ def simulate_group_intervention(
                 group_replace_idx.append(idx)
                 return group_replace_idx
 
-        import pdb
-
-        pdb.set_trace()
-
-        attr_replace_idxs = []
-        all_attr_ids = []
+        attr_replace_idxs = (
+            []
+        )  # list of attr_ids that have been changed in terms of the big 1D list
+        all_attr_ids = []  # list of where attrs have been replaced
 
         # Intervene on 1, then 2, etc, so caching which to intervene on
+        # stores the attrs that have been changed, by the attr_id, not the longID
         global replace_cached
         if n_replace == 1:
             replace_cached = []
@@ -219,7 +218,6 @@ def simulate_group_intervention(
         replace_cached = all_attr_ids
         pred_vals = b_attr_binary_outputs[attr_replace_idxs]
         true_vals = np.array(b_attr_labels)[attr_replace_idxs]
-        # print("acc among the replaced values:", (pred_vals == true_vals).mean())
 
         # instance has the original attrs whereas b_attr has attrs averaged at the class level
         if replace_val == "class_level":
@@ -232,7 +230,7 @@ def simulate_group_intervention(
         if use_not_visible:
             not_visible_idx = np.where(np.array(uncertainty_attr_labels) == 1)[
                 0
-            ]  # why the 0??
+            ]  # [0] because np.where returns a tuple with one element for each dimension in the array
             for idx in attr_replace_idxs:
                 if idx in not_visible_idx:
                     b_attr_new[idx] = 0
@@ -252,6 +250,8 @@ def simulate_group_intervention(
         b_attr_new = b_attr_new.reshape(-1, args.n_attributes)
         stage2_inputs = torch.from_numpy(np.array(b_attr_new)).cuda()
         if connect_CY:  # class_outputs is currently contributed by C --> Y
+            # this would be used if we have a structure where you calculate the output and then add to this
+            # a differential based on the attributes, but that's not ever used as far as I can tell
             new_cy_outputs = model2(stage2_inputs)
             old_stage2_inputs = torch.from_numpy(
                 np.array(b_attr_outputs).reshape(-1, args.n_attributes)
@@ -409,10 +409,6 @@ def run(args):
     for d in test_data:
         instance_attr_labels.extend(list(np.array(d["attribute_label"])[mask]))
         uncertainty_attr_labels.extend(list(np.array(d["attribute_certainty"])[mask]))
-
-    import pdb
-
-    pdb.set_trace()
 
     # Build new dict from attr_id to attr_name to reflect mask
     class_attr_id_to_name = dict()

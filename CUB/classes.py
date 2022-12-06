@@ -132,7 +132,9 @@ class TTI_Config(BaseConf):
     n_class_attr: int = 2
     use_relu: bool = False
     use_sigmoid: bool = False
-    connect_CY: bool = False
+    connect_CY: bool = (
+        False  # Add the c->y fully connected layer into the inception model??
+    )
     attr_sparsity: int = 1
 
     data_dir: str = ""  # directory to the data used for evaluation
