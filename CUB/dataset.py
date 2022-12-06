@@ -203,6 +203,7 @@ def load_data(
     else:
         drop_last = False
         shuffle = False
+    print(f"is_training: {is_training}")
     if resampling:
         sampler = BatchSampler(
             ImbalancedDatasetSampler(dataset),

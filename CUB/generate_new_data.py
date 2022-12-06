@@ -69,7 +69,11 @@ def get_fraction_data(fraction, out_dir, data_file="train.pkl"):
 
 
 def get_class_attributes_data(
-    min_class_count, out_dir, data_dir: Path, modify_data_dir="", keep_instance_data=False
+    min_class_count,
+    out_dir,
+    data_dir: Path,
+    modify_data_dir="",
+    keep_instance_data=False,
 ):
     """
     Use train.pkl to aggregate attributes on class level and only keep those that are predominantly 1 for at least min_class_count classes
@@ -105,6 +109,7 @@ def get_class_attributes_data(
     ]  # select attributes that are present (on a class level) in at least [min_class_count] classes
     print("mask size", sum(mask), mask.shape, len(attr_class_count))
     class_attr_label_masked = class_attr_max_label[:, mask]
+
     if keep_instance_data:
         collapse_fn = lambda d: list(np.array(d["attribute_label"])[mask])
     else:
@@ -378,6 +383,7 @@ def create_new_dataset(
             new_d[field_change] = new_value
             new_data.append(new_d)
         f = open(os.path.join(out_dir, dataset + ".pkl"), "wb")
+
         pickle.dump(new_data, f)
         f.close()
 
@@ -475,5 +481,8 @@ def orig_main_fn():
 
 if __name__ == "__main__":
     get_class_attributes_data(
-        min_class_count=10, out_dir="CUB_masked_class", data_dir=Path("CUB_processed"), modify_data_dir="CUB_processed"
+        min_class_count=10,
+        out_dir="CUB_masked_class2",
+        data_dir=Path("CUB_processed"),
+        modify_data_dir="CUB_processed",
     )

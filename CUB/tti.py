@@ -40,10 +40,10 @@ def simulate_group_intervention(
     b_attr_binary_outputs,
     b_class_labels,
     b_class_logits,
-    b_attr_outputs,
-    b_attr_outputs_sigmoid,
-    b_attr_labels,  # 2D list of true test attr_labels
-    instance_attr_labels,  # 2D list of true test attr labels
+    b_attr_outputs,  # flat list of pre-sigmoid outputs of x->c model
+    b_attr_outputs_sigmoid,  # flat list of post-sigmoid outputs of the x->c model
+    b_attr_labels,  # flat list of true test attr_labels via the data_loader which is changed to be identical for outputs of the same class
+    instance_attr_labels,  # flat list of true test attr labels directly from the data
     uncertainty_attr_labels,
     use_not_visible,
     min_uncertainty,
@@ -178,8 +178,14 @@ def simulate_group_intervention(
                 group_replace_idx.append(idx)
                 return group_replace_idx
 
-        attr_replace_idx = []
+        import pdb
+
+        pdb.set_trace()
+
+        attr_replace_idxs = []
         all_attr_ids = []
+
+        # Intervene on 1, then 2, etc, so caching which to intervene on
         global replace_cached
         if n_replace == 1:
             replace_cached = []
@@ -208,31 +214,32 @@ def simulate_group_intervention(
             else:
                 replace_idx = replace_fn(attr_preds)
             all_attr_ids.extend(replace_idx)
-            attr_replace_idx.extend(np.array(replace_idx) + img_id * args.n_attributes)
+            attr_replace_idxs.extend(np.array(replace_idx) + img_id * args.n_attributes)
 
         replace_cached = all_attr_ids
-        pred_vals = b_attr_binary_outputs[attr_replace_idx]
-        true_vals = np.array(b_attr_labels)[attr_replace_idx]
+        pred_vals = b_attr_binary_outputs[attr_replace_idxs]
+        true_vals = np.array(b_attr_labels)[attr_replace_idxs]
         # print("acc among the replaced values:", (pred_vals == true_vals).mean())
 
-        if replace_val == "class_level":  # uses a 1D array to index into
-            b_attr_new[attr_replace_idx] = np.array(b_attr_labels)[attr_replace_idx]
-        else:  # using a 2D array - but why are the ndxs the same in both cases?
-            b_attr_new[attr_replace_idx] = np.array(instance_attr_labels)[
-                attr_replace_idx
+        # instance has the original attrs whereas b_attr has attrs averaged at the class level
+        if replace_val == "class_level":
+            b_attr_new[attr_replace_idxs] = np.array(b_attr_labels)[attr_replace_idxs]
+        else:
+            b_attr_new[attr_replace_idxs] = np.array(instance_attr_labels)[
+                attr_replace_idxs
             ]
 
         if use_not_visible:
             not_visible_idx = np.where(np.array(uncertainty_attr_labels) == 1)[
                 0
             ]  # why the 0??
-            for idx in attr_replace_idx:
+            for idx in attr_replace_idxs:
                 if idx in not_visible_idx:
                     b_attr_new[idx] = 0
 
         if use_relu or not use_sigmoid:  # replace with percentile values
-            binary_vals = b_attr_new[attr_replace_idx]
-            for j, replace_idx in enumerate(attr_replace_idx):
+            binary_vals = b_attr_new[attr_replace_idxs]
+            for j, replace_idx in enumerate(attr_replace_idxs):
                 attr_idx = replace_idx % args.n_attributes
                 b_attr_new[replace_idx] = (1 - binary_vals[j]) * ptl_5[
                     attr_idx
@@ -396,13 +403,16 @@ def run(args):
     # Get number of classes where the attribute is more common than not, select for at least min_class_count
     attr_class_count = np.sum(class_attr_max_label, axis=0)
     mask = np.where(attr_class_count >= 10)[0]
-
     # Build 2D lists of attributes and certainties
     instance_attr_labels, uncertainty_attr_labels = [], []
     test_data = pickle.load(open(os.path.join(args.data_dir2, "test.pkl"), "rb"))
     for d in test_data:
         instance_attr_labels.extend(list(np.array(d["attribute_label"])[mask]))
         uncertainty_attr_labels.extend(list(np.array(d["attribute_certainty"])[mask]))
+
+    import pdb
+
+    pdb.set_trace()
 
     # Build new dict from attr_id to attr_name to reflect mask
     class_attr_id_to_name = dict()
@@ -452,8 +462,8 @@ def run(args):
     # Run one epoch, get lots of detail about performance
     # Why b_??
     (
-        _,
-        _,
+        _,  # class_acc_meter
+        _,  # attr_acc_meter
         b_class_labels,
         b_topk_class_outputs,
         b_class_logits,
@@ -483,9 +493,9 @@ def run(args):
     MIN_UNCERTAINTY_GAP = 0
     assert args.mode in ["wrong_idx", "entropy", "uncertainty", "random"]
     if args.class_level:
-        REPLACE_VAL = "class_level"
+        replace_val = "class_level"
     else:
-        REPLACE_VAL = "instance_level"
+        replace_val = "instance_level"
 
     # stage 2
     model = torch.load(args.model_dir)
@@ -505,7 +515,7 @@ def run(args):
             N_TRIALS = 1
         acc = simulate_group_intervention(
             args.mode,
-            REPLACE_VAL,
+            replace_val,
             preds_by_attr,
             ptl_5,
             ptl_95,
@@ -527,7 +537,7 @@ def run(args):
             n_trials=N_TRIALS,
             connect_CY=args.connect_CY,
         )
-        print(n_replace, acc)
+        print(n_replace, acc)  # These are the printouts
         results.append([n_replace, acc])
     return results
 
