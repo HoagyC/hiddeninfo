@@ -14,8 +14,8 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=12312
-VASTAI_N=4
+SSH_PORT=19480
+VASTAI_N=5
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
 
@@ -90,8 +90,8 @@ aws-pull:
 	$(PYTHON) CUB/aws_download.py
 	unzip CUB_dataset.zip
 
-.PHONY: setup
-setup:
+.PHONY: ssh-setup
+ssh-setup:
 	make ssh-sync
 	make ssh-run COMMAND="install"
 	make secret
