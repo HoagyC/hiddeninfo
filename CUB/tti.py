@@ -30,8 +30,7 @@ def get_stage2_pred(a_hat, model):
 
 
 def simulate_group_intervention(
-    mode,
-    replace_val,
+    args,
     preds_by_attr,
     ptl_5,
     ptl_95,
@@ -46,14 +45,9 @@ def simulate_group_intervention(
     instance_attr_labels,  # flat list of true test attr labels directly from the data
     uncertainty_attr_labels,  # flat list of uncertainty labels (same len as the rest)
     use_not_visible,
-    min_uncertainty,
     n_replace,
-    use_relu,
-    use_sigmoid,
-    n_trials=1,
-    connect_CY=False,
 ):
-    # Check that number of attributes matches
+    # Check that number of attributes matches between the 'raw' data and the class aggregated data
     assert len(instance_attr_labels) == len(
         b_attr_labels
     ), "len(instance_attr_labels): %d, len(b_attr_labels): %d" % (
@@ -67,120 +61,29 @@ def simulate_group_intervention(
         len(b_attr_labels),
     )
 
+    if args.class_level:
+        replace_val = "class_level"
+    else:
+        replace_val = "instance_level"
+
     all_class_acc = []
     for _ in range(n_trials):
         b_attr_new = np.array(b_attr_outputs[:])
 
-        if mode == "random":
-            replace_fn = lambda attr_preds: replace_random(attr_preds)
+        # Following paper, will only use rnadom intervention on CUB for now
+        replace_fn = lambda attr_preds: replace_random(attr_preds)
 
-            def replace_random(attr_preds):
-                replace_idx = []
-                group_replace_idx = list(
-                    random.sample(list(range(args.n_groups)), n_replace)
-                )
-                for i in group_replace_idx:
-                    replace_idx.extend(attr_group_dict[i])
-                return replace_idx
-
-        else:  # entropy
-            replace_fn = lambda attr_preds, attr_preds_sigmoid, attr_labels, img_id, n_replace, replace_cached: replace_entropy_adaptive(
-                attr_preds,
-                attr_preds_sigmoid,
-                attr_labels,
-                img_id,
-                n_replace,
-                replace_cached,
+        def replace_random(attr_preds):
+            replace_idx = []
+            group_replace_idx = list(
+                random.sample(list(range(args.n_groups)), n_replace)
             )
+            for i in group_replace_idx:
+                replace_idx.extend(attr_group_dict[i])
+            return replace_idx
 
-            def attr_entropy_diff(
-                attr_idx: int, attr_preds, attr_preds_sigmoid
-            ) -> float:
-                # Returns the expected difference in entropy of class labels between the initial setting of the attr logits
-                # and a model where you set some to 5th and 95th percentile based on some particular logit??
-                init_entropy = entropy(get_stage2_pred(attr_preds, model2))
-                attr_logit = attr_preds_sigmoid[
-                    attr_idx
-                ]  # What's special about this first logit?
-                if int(attr_logit):  # ?? surely this is true only when logit is (-1, 1)
-                    p1 = attr_logit
-                    p0 = 1 - p1
-                else:
-                    p0 = attr_logit
-                    p1 = 1 - p0
-
-                # Setting the attribute value to its 5/95th percentile values
-                a_hat_0 = attr_preds[:]
-                a_hat_0[attr_idx] = ptl_5[attr_idx]
-                a_hat_1 = attr_preds[:]
-                a_hat_1[attr_idx] = ptl_95[attr_idx]
-
-                expected_entropy = p0 * entropy(
-                    get_stage2_pred(a_hat_0, model2)
-                ) + p1 * entropy(get_stage2_pred(a_hat_1, model2))
-                return init_entropy - expected_entropy
-
-            def group_entropy_diff(
-                group_attr_idx, attr_preds, attr_preds_sigmoid
-            ) -> float:
-                # Returns average entropy difference across attributes
-                total_diff = 0.0
-                for attr_idx in attr_group_dict[group_attr_idx]:
-                    total_diff += attr_entropy_diff(
-                        attr_idx, attr_preds, attr_preds_sigmoid
-                    )
-                return total_diff / len(attr_group_dict[group_attr_idx])
-
-            def replace_entropy_non_adaptive(
-                attr_preds, attr_preds_sigmoid, chosen=[], n=1
-            ) -> int:
-
-                all_entropy_change = []
-                for group_attr_idx in range(args.n_groups):
-                    all_entropy_change.append(
-                        group_entropy_diff(
-                            group_attr_idx, attr_preds, attr_preds_sigmoid
-                        )
-                    )
-                group_replace_idx = np.argsort(all_entropy_change)[::-1]
-                if n == 1:
-                    i = 0
-                    while group_replace_idx[i] in chosen:
-                        i += 1
-                    return group_replace_idx[i]
-                else:
-                    return group_replace_idx[:n]
-
-            def replace_entropy_adaptive(
-                attr_preds,
-                attr_preds_sigmoid,
-                attr_labels,
-                img_id,
-                n_replace,
-                replace_cached,
-            ) -> List[int]:
-                attr_preds_new = attr_preds[:]
-                if n_replace == 1:
-                    group_replace_idx = []
-                else:
-                    group_replace_idx = replace_cached[
-                        img_id * (n_replace - 1) : (img_id + 1) * (n_replace - 1)
-                    ]
-                    for j in group_replace_idx:
-                        for k in attr_group_dict[j]:
-                            attr_preds_new[k] = (1 - attr_labels[k]) * ptl_5[
-                                k
-                            ] + attr_labels[k] * ptl_95[k]
-
-                idx = replace_entropy_non_adaptive(
-                    attr_preds_new, attr_preds_sigmoid, chosen=group_replace_idx, n=1
-                )
-                group_replace_idx.append(idx)
-                return group_replace_idx
-
-        attr_replace_idxs = (
-            []
-        )  # list of attr_ids that have been changed in terms of the big 1D list
+        # List of attr_ids that have been changed in terms of the big 1D list
+        attr_replace_idxs = []
         all_attr_ids = []  # list of where attrs have been replaced
 
         # Intervene on 1, then 2, etc, so caching which to intervene on
@@ -198,20 +101,7 @@ def simulate_group_intervention(
                 img_id * args.n_attributes : (img_id + 1) * args.n_attributes
             ]
             # Get a list of all attrs (in the flattened list) that we will intervene on
-            if mode == "entropy":
-                attr_labels = b_attr_labels[
-                    img_id * args.n_attributes : (img_id + 1) * args.n_attributes
-                ]
-                replace_idx = replace_fn(
-                    attr_preds,
-                    attr_preds_sigmoid,
-                    attr_labels,
-                    img_id,
-                    n_replace,
-                    replace_cached,
-                )
-            else:
-                replace_idx = replace_fn(attr_preds)
+            replace_idx = replace_fn(attr_preds)
             all_attr_ids.extend(replace_idx)
             attr_replace_idxs.extend(np.array(replace_idx) + img_id * args.n_attributes)
 
@@ -227,7 +117,7 @@ def simulate_group_intervention(
                 attr_replace_idxs
             ]
 
-        if use_not_visible:
+        if args.use_invisible:
             not_visible_idx = np.where(np.array(uncertainty_attr_labels) == 1)[
                 0
             ]  # [0] because np.where returns a tuple with one element for each dimension in the array
@@ -235,7 +125,7 @@ def simulate_group_intervention(
                 if idx in not_visible_idx:
                     b_attr_new[idx] = 0
 
-        if use_relu or not use_sigmoid:  # replace with percentile values
+        if args.use_relu or not args.use_sigmoid:  # replace with percentile values
             binary_vals = b_attr_new[attr_replace_idxs]
             for j, replace_idx in enumerate(attr_replace_idxs):
                 attr_idx = replace_idx % args.n_attributes
@@ -249,19 +139,8 @@ def simulate_group_intervention(
 
         b_attr_new = b_attr_new.reshape(-1, args.n_attributes)
         stage2_inputs = torch.from_numpy(np.array(b_attr_new)).cuda()
-        if connect_CY:  # class_outputs is currently contributed by C --> Y
-            # this would be used if we have a structure where you calculate the output and then add to this
-            # a differential based on the attributes, but that's not ever used as far as I can tell
-            new_cy_outputs = model2(stage2_inputs)
-            old_stage2_inputs = torch.from_numpy(
-                np.array(b_attr_outputs).reshape(-1, args.n_attributes)
-            ).cuda()
-            old_cy_outputs = model2(old_stage2_inputs)
-            class_outputs = torch.from_numpy(b_class_logits).cuda() + (
-                new_cy_outputs - old_cy_outputs
-            )
-        else:
-            class_outputs = model2(stage2_inputs)
+
+        class_outputs = model2(stage2_inputs)
         _, preds = class_outputs.topk(1, 1, True, True)
         b_class_outputs_new = preds.data.cpu().numpy().squeeze()
         class_acc = np.mean(np.array(b_class_outputs_new) == np.array(b_class_labels))
@@ -311,7 +190,7 @@ def parse_arguments(parser=None):
         "-n_class_attr",
         type=int,
         default=2,
-        help="whether attr prediction is a binary or triary classification",
+        help="whether attr prediction is a binary or ternary classification",
     )
     parser.add_argument(
         "-data_dir", default="", help="directory to the data used for evaluation"
@@ -403,7 +282,8 @@ def run(args):
     # Get number of classes where the attribute is more common than not, select for at least min_class_count
     attr_class_count = np.sum(class_attr_max_label, axis=0)
     mask = np.where(attr_class_count >= 10)[0]
-    # Build 2D lists of attributes and certainties
+    # Build 2D lists of attributes and certainti
+    # es
     instance_attr_labels, uncertainty_attr_labels = [], []
     test_data = pickle.load(open(os.path.join(args.data_dir2, "test.pkl"), "rb"))
     for d in test_data:
@@ -456,24 +336,13 @@ def run(args):
         class_attr_id_to_name[i] = attr_id_to_name[mask[i]]
 
     # Run one epoch, get lots of detail about performance
-    # Why b_??
-    (
-        _,  # class_acc_meter
-        _,  # attr_acc_meter
-        b_class_labels,
-        b_topk_class_outputs,
-        b_class_logits,
-        b_attr_labels,  # N_ATTR x N_TEST true labels
-        b_attr_outputs,  # N_ATTR x N_TEST predicted output (logits)
-        b_attr_outputs_sigmoid,  # N_ATTR x N_TEST predicted output (post sigmoid)
-        b_wrong_idx,
-    ) = eval(args)
-    b_class_outputs = b_topk_class_outputs[:, 0]
-    b_attr_binary_outputs = np.rint(b_attr_outputs_sigmoid).astype(int)  # RoundINT
+    meter, eval_output = eval(args)
+    class_outputs = eval_output.topk_classes[:, 0]
+    attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoid).astype(int)  # RoundINT
 
     # Get percentile ranges for how much each attribute was predicted to be true [0,1]
     preds_by_attr, ptl_5, ptl_95 = dict(), dict(), dict()
-    for i, val in enumerate(b_attr_outputs):
+    for i, val in enumerate(eval_output.all_attr_outputs):
         attr_idx = i % args.n_attributes
         if attr_idx in preds_by_attr:
             preds_by_attr[attr_idx].append(val)
@@ -485,13 +354,7 @@ def run(args):
         ptl_5[attr_idx] = np.percentile(preds, 5)
         ptl_95[attr_idx] = np.percentile(preds, 95)
 
-    N_TRIALS = args.n_trials
-    MIN_UNCERTAINTY_GAP = 0
     assert args.mode in ["wrong_idx", "entropy", "uncertainty", "random"]
-    if args.class_level:
-        replace_val = "class_level"
-    else:
-        replace_val = "instance_level"
 
     # stage 2
     model = torch.load(args.model_dir)
@@ -508,10 +371,9 @@ def run(args):
     results = []
     for n_replace in list(range(args.n_groups + 1)):
         if "random" not in args.mode:
-            N_TRIALS = 1
+            args.n_trials = 1
         acc = simulate_group_intervention(
-            args.mode,
-            replace_val,
+            args,
             preds_by_attr,
             ptl_5,
             ptl_95,
@@ -525,13 +387,7 @@ def run(args):
             b_attr_labels,
             instance_attr_labels,
             uncertainty_attr_labels,
-            args.use_invisible,
-            MIN_UNCERTAINTY_GAP,
             n_replace,
-            args.use_relu,
-            args.use_sigmoid,
-            n_trials=N_TRIALS,
-            connect_CY=args.connect_CY,
         )
         print(n_replace, acc)  # These are the printouts
         results.append([n_replace, acc])

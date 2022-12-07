@@ -1,9 +1,11 @@
 """
 Evaluate trained models on the official CUB test set
 """
+import dataclasses
 import os
 import sys
 import torch
+from typing import List, Optional, Tuple
 import joblib
 import argparse
 import numpy as np
@@ -13,19 +15,37 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from CUB.dataset import load_data
 from CUB.config import BASE_DIR, N_CLASSES, N_ATTRIBUTES
-from CUB.classes import TTI_Config
+from CUB.classes import TTI_Config, Meters
 from analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
 
 K = [1, 3, 5]  # top k class accuracies to compute
 
 
-def eval(args: TTI_Config):
+@dataclasses.dataclass
+class Eval_Meter:
+    class_accs: List[AverageMeter]
+    attr_acc_tot: Optional[AverageMeter] = None
+    attr_accs: Optional[List[AverageMeter]] = None
+
+
+@dataclasses.dataclass
+class Eval_Output:
+    class_labels: np.ndarray
+    topk_classes: np.ndarray
+    all_classes: np.ndarray
+    all_attr_labels: np.ndarray
+    all_attr_outputs: np.ndarray
+    all_attr_outputs_sigmoid: np.ndarray
+    wrong_idx: np.ndarray
+
+
+def eval(args: TTI_Config) -> Tuple[Eval_Meter, Eval_Output]:
     """
     Run inference using model (and model2 if bottleneck)
     Returns: (for notebook analysis)
-    all_class_labels: flattened list of class labels for each image
-    topk_class_outputs: array of top k class ids predicted for each image. Shape = size of test set * max(K)
-    all_class_outputs: array of all logit outputs for class prediction, shape = N_TEST * N_CLASS
+    all_class_labels: flattened list of class labels for each image.
+    topk_class_outputs: array of top k class ids predicted for each image. Shape = N_TEST * max(K)
+    all_class_outputs: array of all logit outputs for class prediction. shape = N_TEST * N_CLASS
     all_attr_labels: flattened list of labels for each attribute for each image (length = N_ATTRIBUTES * N_TEST)
     all_attr_outputs: flatted list of attribute logits (after ReLU/ Sigmoid respectively) predicted for each attribute for each image (length = N_ATTRIBUTES * N_TEST)
     all_attr_outputs_sigmoid: flatted list of attribute logits predicted (after Sigmoid) for each attribute for each image (length = N_ATTRIBUTES * N_TEST)
@@ -72,23 +92,17 @@ def eval(args: TTI_Config):
         model2 = None
 
     # Add meters for the overall attr_acc and (optional) for each attr
-    if args.use_attr:
-        attr_acc_meter = [AverageMeter()]
-        if (
-            args.feature_group_results
-        ):  # compute acc for each feature individually in addition to the overall accuracy
-            for _ in range(args.n_attributes):
-                attr_acc_meter.append(AverageMeter())
-    else:
-        attr_acc_meter = None
+    meters = Eval_Meter(class_accs=[AverageMeter() for _ in range(len(K))])
 
-    class_acc_meter = []
-    for j in range(len(K)):
-        class_acc_meter.append(AverageMeter())
+    if args.use_attr:
+        meters.attr_acc_tot = AverageMeter()
+        # Compute acc for each feature individually in addition to the overall accuracy
+        if args.feature_group_results:
+            meters.attr_accs = [AverageMeter() for _ in range(args.n_attributes)]
 
     data_dir = os.path.join(BASE_DIR, args.data_dir, args.eval_data + ".pkl")
     loader = load_data([data_dir], args)
-    all_outputs, all_targets = [], []
+
     all_attr_labels, all_attr_outputs, all_attr_outputs_sigmoid = (
         [],
         [],
@@ -169,11 +183,11 @@ def eval(args: TTI_Config):
                     )
                     acc = acc.data.cpu().numpy()
                     # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
-                    attr_acc_meter[0].update(acc, inputs.size(0))
+                    meters.attr_acc_tot.update(acc, inputs.size(0))
                     if (
                         args.feature_group_results
                     ):  # keep track of accuracy of individual attributes
-                        attr_acc_meter[i + 1].update(acc, inputs.size(0))
+                        meters.attr_accs[i].update(acc, inputs.size(0))
 
                 attr_outputs = torch.cat([o.unsqueeze(1) for o in attr_outputs], dim=1)
                 attr_outputs_sigmoid = torch.cat(
@@ -199,8 +213,8 @@ def eval(args: TTI_Config):
         class_acc = accuracy(
             class_outputs, labels, topk=K
         )  # only class prediction accuracy
-        for m in range(len(class_acc_meter)):
-            class_acc_meter[m].update(class_acc[m], inputs.size(0))
+        for m in range(len(meters.class_accs)):
+            meters.class_accs[m].update(class_acc[m], inputs.size(0))
 
     all_class_logits = np.vstack(all_class_logits)
     topk_class_outputs = np.vstack(topk_class_outputs)
@@ -211,17 +225,17 @@ def eval(args: TTI_Config):
 
     # Print top K accuracies
     for j in range(len(K)):
-        print("Average top %d class accuracy: %.5f" % (K[j], class_acc_meter[j].avg))
+        print("Average top %d class accuracy: %.5f" % (K[j], meters.class_accs[j].avg))
 
     # print some metrics for attribute prediction performance
     if args.use_attr and not args.no_img:
-        print("Average attribute accuracy: %.5f" % attr_acc_meter[0].avg)
+        print("Average attribute accuracy: %.5f" % meters.attr_acc_tot.avg)
         all_attr_outputs_int = np.array(all_attr_outputs_sigmoid) >= 0.5
         if args.feature_group_results:
             n = len(all_attr_labels)
             all_attr_acc, all_attr_f1 = [], []
             for i in range(args.n_attributes):
-                acc_meter = attr_acc_meter[1 + i]
+                acc_meter = meters.attr_accs[i]
                 attr_acc = float(acc_meter.avg)
                 attr_preds = [
                     all_attr_outputs_int[j]
@@ -272,17 +286,18 @@ def eval(args: TTI_Config):
         print("Avg attribute balanced acc: %.5f" % (balanced_acc))
         print("Avg attribute F1 score: %.5f" % f1)
         print(report + "\n")
-    return (
-        class_acc_meter,
-        attr_acc_meter,
-        all_class_labels,
-        topk_class_outputs,
-        all_class_logits,
-        all_attr_labels,
-        all_attr_outputs,
-        all_attr_outputs_sigmoid,
-        wrong_idx,
+
+    output = Eval_Output(
+        class_labels=all_class_labels,
+        topk_classes=topk_class_outputs,
+        all_classes=all_class_outputs,
+        all_attr_labels=all_attr_labels,
+        all_attr_outputs=all_attr_outputs,
+        all_attr_outputs_sigmoid=all_attr_outputs_sigmoid,
+        wrong_idx=wrong_idx,
     )
+
+    return meters, output
 
 
 if __name__ == "__main__":
