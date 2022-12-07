@@ -152,4 +152,4 @@ class TTI_Config(BaseConf):
     # Which mode to use for correction. Choose from wrong_idx, entropy, uncertainty, random
     mode: str = "entropy"
     n_trials: int = 1  # Number of trials to run, when mode is random
-    n_groups: int = 28
+    n_groups: int = 28  # n. groups of attributes (28 enums with ~1 options = 312 attrs)

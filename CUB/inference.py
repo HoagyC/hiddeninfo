@@ -32,10 +32,10 @@ class Eval_Meter:
 class Eval_Output:
     class_labels: np.ndarray
     topk_classes: np.ndarray
-    all_classes: np.ndarray
+    all_class_logits: np.ndarray
     all_attr_labels: np.ndarray
-    all_attr_outputs: np.ndarray
-    all_attr_outputs_sigmoid: np.ndarray
+    all_attr_logits: np.ndarray
+    all_attr_sigmoids: np.ndarray
     wrong_idx: np.ndarray
 
 

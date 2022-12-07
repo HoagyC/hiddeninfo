@@ -20,6 +20,7 @@ from CUB.config import N_CLASSES, N_ATTRIBUTES
 from CUB.utils import get_class_attribute_names
 from CUB.classes import TTI_Config
 
+replace_cached: List = []
 
 # Take intermediate representation and predict class outputs, to see how they change when intervening
 def get_stage2_pred(a_hat, model):
@@ -30,7 +31,7 @@ def get_stage2_pred(a_hat, model):
 
 
 def simulate_group_intervention(
-    args,
+    args: TTI_Config,
     preds_by_attr,
     ptl_5,
     ptl_95,
@@ -67,7 +68,13 @@ def simulate_group_intervention(
         replace_val = "instance_level"
 
     all_class_acc = []
-    for _ in range(n_trials):
+
+    if args.multimodel:
+        n_trials = args.n_trials * len(model2)
+    else:
+        n_trials = args.n_trials
+
+    for ndx in range(n_trials):
         b_attr_new = np.array(b_attr_outputs[:])
 
         # Following paper, will only use rnadom intervention on CUB for now
@@ -135,18 +142,24 @@ def simulate_group_intervention(
 
         # stage 2
         K = [1, 3, 5]
-        model2.eval()
+
+        if args.multimodel:
+            model_use = model2[ndx % n_trials]
+        else:
+            model_use = model2
+        model_use.eval()
 
         b_attr_new = b_attr_new.reshape(-1, args.n_attributes)
         stage2_inputs = torch.from_numpy(np.array(b_attr_new)).cuda()
 
-        class_outputs = model2(stage2_inputs)
+        class_outputs = model_use(stage2_inputs)
         _, preds = class_outputs.topk(1, 1, True, True)
         b_class_outputs_new = preds.data.cpu().numpy().squeeze()
         class_acc = np.mean(np.array(b_class_outputs_new) == np.array(b_class_labels))
         all_class_acc.append(class_acc * 100)
 
-    return max(all_class_acc)
+    # changing from max to sum - not sure why max would be appropriate
+    return sum(all_class_acc) / len(all_class_acc)
 
 
 def parse_arguments(parser=None):
@@ -236,11 +249,6 @@ def parse_arguments(parser=None):
         "-use_invisible",
         help="Whether to include attribute visibility information",
         action="store_true",
-    )
-    parser.add_argument(
-        "-mode",
-        help="Which mode to use for correction. Choose from wrong_idx, entropy, uncertainty, random",
-        default="entropy",
     )
     parser.add_argument(
         "-n_trials",
@@ -354,8 +362,6 @@ def run(args):
         ptl_5[attr_idx] = np.percentile(preds, 5)
         ptl_95[attr_idx] = np.percentile(preds, 95)
 
-    assert args.mode in ["wrong_idx", "entropy", "uncertainty", "random"]
-
     # stage 2
     model = torch.load(args.model_dir)
     if args.model_dir2:
@@ -363,6 +369,8 @@ def run(args):
             model2 = load(args.model_dir2)
         else:
             model2 = torch.load(args.model_dir2)
+    elif args.multimodel:
+        model2 = model.post_models
     else:  # end2end, split model into 2
         all_mods = list(model.modules())
         # model = ListModule(all_mods[:-1])
@@ -370,8 +378,6 @@ def run(args):
 
     results = []
     for n_replace in list(range(args.n_groups + 1)):
-        if "random" not in args.mode:
-            args.n_trials = 1
         acc = simulate_group_intervention(
             args,
             preds_by_attr,
@@ -379,12 +385,7 @@ def run(args):
             ptl_95,
             model2,
             attr_group_dict,
-            b_attr_binary_outputs,
-            b_class_labels,
-            b_class_logits,
-            b_attr_outputs,
-            b_attr_outputs_sigmoid,
-            b_attr_labels,
+            eval_output,
             instance_attr_labels,
             uncertainty_attr_labels,
             n_replace,
@@ -399,11 +400,10 @@ ind_ttr_args = TTI_Config(
     model_dirs2=["out/ind_CtoY/20221130-194327/final_model.pth"],
     use_attr=True,
     bottleneck=True,
-    mode="random",
     n_trials=5,
     use_invisible=True,
     class_level=True,
-    data_dir="CUB_masked_class",
+    data_dir="CUB_masked_class",  #
     data_dir2="CUB_processed",
     use_sigmoid=True,
     log_dir="TTI_ind",
