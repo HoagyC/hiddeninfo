@@ -5,7 +5,7 @@ import dataclasses
 import os
 import sys
 import torch
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 import joblib
 import argparse
 import numpy as np
@@ -24,8 +24,12 @@ K = [1, 3, 5]  # top k class accuracies to compute
 @dataclasses.dataclass
 class Eval_Meter:
     class_accs: List[AverageMeter]
-    attr_acc_tot: Optional[AverageMeter] = None
-    attr_accs: Optional[List[AverageMeter]] = None
+
+
+@dataclasses.dataclass
+class Eval_Meter_Acc(Eval_Meter):
+    attr_acc_tot: AverageMeter = dataclasses.field(default_factory=AverageMeter)
+    attr_accs: List[AverageMeter] = dataclasses.field(default_factory=lambda: [])
 
 
 @dataclasses.dataclass
@@ -39,7 +43,7 @@ class Eval_Output:
     wrong_idx: np.ndarray
 
 
-def eval(args: TTI_Config) -> Tuple[Eval_Meter, Eval_Output]:
+def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Output]:
     """
     Run inference using model (and model2 if bottleneck)
     Returns: (for notebook analysis)
@@ -92,9 +96,14 @@ def eval(args: TTI_Config) -> Tuple[Eval_Meter, Eval_Output]:
         model2 = None
 
     # Add meters for the overall attr_acc and (optional) for each attr
-    meters = Eval_Meter(class_accs=[AverageMeter() for _ in range(len(K))])
+    meters: Union[Eval_Meter, Eval_Meter_Acc]
+    if args.use_attr:
+        meters = Eval_Meter_Acc(class_accs=[AverageMeter() for _ in range(len(K))])
+    else:
+        meters = Eval_Meter(class_accs=[AverageMeter() for _ in range(len(K))])
 
     if args.use_attr:
+        assert type(meters) == Eval_Meter_Acc
         meters.attr_acc_tot = AverageMeter()
         # Compute acc for each feature individually in addition to the overall accuracy
         if args.feature_group_results:
@@ -139,7 +148,11 @@ def eval(args: TTI_Config) -> Tuple[Eval_Meter, Eval_Output]:
         else:
             outputs = model(inputs)
 
+        class_outputs: torch.Tensor
+        attr_outputs: torch.Tensor
+        attr_outputs_sigmoid: torch.Tensor
         if args.use_attr:
+            assert type(meters) == Eval_Meter_Acc
             if args.no_img:  # A -> Y
                 class_outputs = outputs
             else:
@@ -184,9 +197,8 @@ def eval(args: TTI_Config) -> Tuple[Eval_Meter, Eval_Output]:
                     acc = acc.data.cpu().numpy()
                     # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
                     meters.attr_acc_tot.update(acc, inputs.size(0))
-                    if (
-                        args.feature_group_results
-                    ):  # keep track of accuracy of individual attributes
+                    # keep track of accuracy of individual attributes
+                    if args.feature_group_results:
                         meters.attr_accs[i].update(acc, inputs.size(0))
 
                 attr_outputs = torch.cat([o.unsqueeze(1) for o in attr_outputs], dim=1)
@@ -229,6 +241,7 @@ def eval(args: TTI_Config) -> Tuple[Eval_Meter, Eval_Output]:
 
     # print some metrics for attribute prediction performance
     if args.use_attr and not args.no_img:
+        assert type(meters) == Eval_Meter_Acc
         print("Average attribute accuracy: %.5f" % meters.attr_acc_tot.avg)
         all_attr_outputs_int = np.array(all_attr_outputs_sigmoid) >= 0.5
         if args.feature_group_results:
@@ -290,10 +303,10 @@ def eval(args: TTI_Config) -> Tuple[Eval_Meter, Eval_Output]:
     output = Eval_Output(
         class_labels=all_class_labels,
         topk_classes=topk_class_outputs,
-        all_class_logits=all_class_outputs,
-        all_attr_labels=all_attr_labels,
-        all_attr_logits=all_attr_outputs,
-        all_attr_sigmoids=all_attr_outputs_sigmoid,
+        class_logits=all_class_outputs,
+        attr_labels=all_attr_labels,
+        attr_logits=all_attr_outputs,
+        attr_sigmoids=all_attr_outputs_sigmoid,
         wrong_idx=wrong_idx,
     )
 
@@ -380,15 +393,14 @@ if __name__ == "__main__":
     for i, model_dir in enumerate(args.model_dirs):
         args.model_dir = model_dir
         args.model_dir2 = args.model_dirs2[i] if args.model_dirs2 else None
-        result = eval(args)
-        class_acc_meter, attr_acc_meter = result[0], result[1]
-        y_results.append(1 - class_acc_meter[0].avg[0].item() / 100.0)
-        if attr_acc_meter is not None:
-            c_results.append(1 - attr_acc_meter[0].avg.item() / 100.0)
+        meters, output = eval(args)
+        y_results.append(1 - meters.class_accs[0].avg[0].item() / 100.0)
+        if type(meters) == Eval_Meter_Acc:
+            c_results.append(1 - meters.attr_accs[0].avg.item() / 100.0)
         else:
             c_results.append(-1)
     values = (
-        np.mean(y_results),
+        np.mean(y_results),  #
         np.std(y_results),
         np.mean(c_results),
         np.std(c_results),
@@ -396,5 +408,5 @@ if __name__ == "__main__":
     output_string = "%.4f %.4f %.4f %.4f" % values
     print_string = "Error of y: %.4f +- %.4f, Error of C: %.4f +- %.4f" % values
     print(print_string)
-    output = open(os.path.join(args.log_dir, "results.txt"), "w")
-    output.write(output_string)
+    with open(os.path.join(args.log_dir, "results.txt"), "w") as out_file:
+        out_file.write(output_string)
