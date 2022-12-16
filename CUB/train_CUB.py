@@ -33,7 +33,7 @@ from CUB.models import (
     ModelXtoCtoY,
     Multimodel,
 )
-from CUB.classes import AverageMeter, Experiment, Meters, RunRecord
+from CUB.cub_classes import AverageMeter, Experiment, Meters, RunRecord
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
 from CUB.utils import upload_to_aws
 
@@ -624,7 +624,7 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
     return optimizer
 
 
-def train_multimodel() -> None:
+def train_multimodel(attr_loss_weight=1.0) -> None:
     default_args = Experiment()
     multiple_cfg = dataclasses.replace(
         default_args,
@@ -635,6 +635,7 @@ def train_multimodel() -> None:
         use_attr=True,
         bottleneck=True,
         normalize_loss=True,
+        attr_loss_weight=attr_loss_weight,
     )
     retrain_dec_cfg = dataclasses.replace(
         multiple_cfg,

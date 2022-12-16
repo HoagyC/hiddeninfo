@@ -17,7 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from CUB.inference import *
 from CUB.config import N_CLASSES, N_ATTRIBUTES
-from CUB.utils import get_class_attribute_names
+from CUB.cub_utils import get_class_attribute_names
 from CUB.cub_classes import TTI_Config
 
 replace_cached: List = []
