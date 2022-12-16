@@ -61,8 +61,8 @@ def _make_data_dict() -> List:
             idx, class_label = line.strip().split()
             is_train_test[int(idx)] = int(class_label)
 
-    with open(DATA_ADDR, "rb") as f:
-        CLIP_data = pickle.load(f)
+    with open(DATA_ADDR, "rb") as fb:
+        CLIP_data = pickle.load(fb)
 
     data: List = []
     for ndx in id_to_class_dict.keys():

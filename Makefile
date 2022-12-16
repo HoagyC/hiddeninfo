@@ -7,15 +7,15 @@ STREAMLIT=$(ENV)/bin/streamlit
 BLACK=$(ENV)/bin/black
 ISORT=$(ENV)/bin/isort
 MYPY=$(ENV)/bin/mypy
-PYTHON_FILES=$(shell find -type f -name '*.py' -not -path './.env/*' -not -path './CUB/*')
+PYTHON_FILES=$(shell find -type f -name '*.py' -not -path './.env/*')
 # codalab address for downloading the main CUB dataset
 CODAENV=.codaenv
 CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=19480
-VASTAI_N=5
+SSH_PORT=35438
+VASTAI_N=6
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
 

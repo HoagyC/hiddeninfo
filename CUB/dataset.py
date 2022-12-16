@@ -14,7 +14,7 @@ import torchvision.transforms as transforms
 
 from torch.utils.data import Dataset, DataLoader, BatchSampler
 
-from CUB.classes import Experiment, BaseConf
+from CUB.cub_classes import Experiment, BaseConf
 from CUB.config import BASE_DIR
 
 

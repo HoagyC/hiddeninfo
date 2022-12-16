@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from CUB.dataset import load_data
 from CUB.config import BASE_DIR, N_CLASSES, N_ATTRIBUTES
-from CUB.classes import TTI_Config, Meters
+from CUB.cub_classes import TTI_Config, Meters
 from analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
 
 K = [1, 3, 5]  # top k class accuracies to compute
@@ -32,10 +32,10 @@ class Eval_Meter:
 class Eval_Output:
     class_labels: np.ndarray
     topk_classes: np.ndarray
-    all_class_logits: np.ndarray
-    all_attr_labels: np.ndarray
-    all_attr_logits: np.ndarray
-    all_attr_sigmoids: np.ndarray
+    class_logits: np.ndarray
+    attr_labels: np.ndarray
+    attr_logits: np.ndarray
+    attr_sigmoids: np.ndarray
     wrong_idx: np.ndarray
 
 
@@ -290,10 +290,10 @@ def eval(args: TTI_Config) -> Tuple[Eval_Meter, Eval_Output]:
     output = Eval_Output(
         class_labels=all_class_labels,
         topk_classes=topk_class_outputs,
-        all_classes=all_class_outputs,
+        all_class_logits=all_class_outputs,
         all_attr_labels=all_attr_labels,
-        all_attr_outputs=all_attr_outputs,
-        all_attr_outputs_sigmoid=all_attr_outputs_sigmoid,
+        all_attr_logits=all_attr_outputs,
+        all_attr_sigmoids=all_attr_outputs_sigmoid,
         wrong_idx=wrong_idx,
     )
 

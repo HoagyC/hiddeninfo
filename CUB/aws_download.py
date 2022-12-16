@@ -4,7 +4,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from CUB.utils import download_from_aws
+from CUB.cub_utils import download_from_aws
 
 if __name__ == "__main__":
     endings = ["train.pkl", "test.pkl", "val.pkl"]

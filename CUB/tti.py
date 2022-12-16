@@ -7,7 +7,7 @@ import torch
 import pickle
 import random
 
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict
 
 import numpy as np
 
@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from CUB.inference import *
 from CUB.config import N_CLASSES, N_ATTRIBUTES
 from CUB.utils import get_class_attribute_names
-from CUB.classes import TTI_Config
+from CUB.cub_classes import TTI_Config
 
 replace_cached: List = []
 
@@ -37,29 +37,24 @@ def simulate_group_intervention(
     ptl_95,
     model2,
     attr_group_dict,
-    b_attr_binary_outputs,
-    b_class_labels,
-    b_class_logits,
-    b_attr_outputs,  # flat list of pre-sigmoid outputs of x->c model
-    b_attr_outputs_sigmoid,  # flat list of post-sigmoid outputs of the x->c model
-    b_attr_labels,  # flat list of true test attr_labels via the data_loader which is changed to be identical for outputs of the same class
+    eval_out,  # flat list of true test attr_labels via the data_loader which is changed to be identical for outputs of the same class
+    attr_binary_outputs,
     instance_attr_labels,  # flat list of true test attr labels directly from the data
     uncertainty_attr_labels,  # flat list of uncertainty labels (same len as the rest)
-    use_not_visible,
     n_replace,
 ):
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
     assert len(instance_attr_labels) == len(
-        b_attr_labels
+        eval_out.class_labels
     ), "len(instance_attr_labels): %d, len(b_attr_labels): %d" % (
         len(instance_attr_labels),
-        len(b_attr_labels),
+        len(eval_out.attr_labels),
     )
     assert len(uncertainty_attr_labels) == len(
-        b_attr_labels
+        eval_out.attr_labels
     ), "len(uncertainty_attr_labels): %d, len(b_attr_labels): %d" % (
         len(uncertainty_attr_labels),
-        len(b_attr_labels),
+        len(eval_out.attr_labels),
     )
 
     if args.class_level:
@@ -75,7 +70,7 @@ def simulate_group_intervention(
         n_trials = args.n_trials
 
     for ndx in range(n_trials):
-        b_attr_new = np.array(b_attr_outputs[:])
+        b_attr_new = np.array(eval_out.attr_outputs[:])
 
         # Following paper, will only use rnadom intervention on CUB for now
         replace_fn = lambda attr_preds: replace_random(attr_preds)
@@ -99,12 +94,12 @@ def simulate_group_intervention(
         if n_replace == 1:
             replace_cached = []
 
-        for img_id in range(len(b_class_labels)):
+        for img_id in range(len(eval_out.class_labels)):
             # Get just the attr outputs for the current img
-            attr_preds = b_attr_outputs[
+            attr_preds = eval_out.attr_logits[
                 img_id * args.n_attributes : (img_id + 1) * args.n_attributes
             ]
-            attr_preds_sigmoid = b_attr_outputs_sigmoid[
+            attr_preds_sigmoid = eval_out.attr_sigmoids[
                 img_id * args.n_attributes : (img_id + 1) * args.n_attributes
             ]
             # Get a list of all attrs (in the flattened list) that we will intervene on
@@ -113,12 +108,14 @@ def simulate_group_intervention(
             attr_replace_idxs.extend(np.array(replace_idx) + img_id * args.n_attributes)
 
         replace_cached = all_attr_ids
-        pred_vals = b_attr_binary_outputs[attr_replace_idxs]
-        true_vals = np.array(b_attr_labels)[attr_replace_idxs]
+        pred_vals = attr_binary_outputs[attr_replace_idxs]
+        true_vals = np.array(eval_out.attr_labels)[attr_replace_idxs]
 
         # instance has the original attrs whereas b_attr has attrs averaged at the class level
         if replace_val == "class_level":
-            b_attr_new[attr_replace_idxs] = np.array(b_attr_labels)[attr_replace_idxs]
+            b_attr_new[attr_replace_idxs] = np.array(eval_out.attr_labels)[
+                attr_replace_idxs
+            ]
         else:
             b_attr_new[attr_replace_idxs] = np.array(instance_attr_labels)[
                 attr_replace_idxs
@@ -155,7 +152,9 @@ def simulate_group_intervention(
         class_outputs = model_use(stage2_inputs)
         _, preds = class_outputs.topk(1, 1, True, True)
         b_class_outputs_new = preds.data.cpu().numpy().squeeze()
-        class_acc = np.mean(np.array(b_class_outputs_new) == np.array(b_class_labels))
+        class_acc = np.mean(
+            np.array(b_class_outputs_new) == np.array(eval_out.class_labels)
+        )
         all_class_acc.append(class_acc * 100)
 
     # changing from max to sum - not sure why max would be appropriate
@@ -266,7 +265,7 @@ def parse_arguments(parser=None):
     return args
 
 
-def run(args):
+def run(args) -> List[Tuple[int, float]]:
     class_to_folder, attr_id_to_name = get_class_attribute_names()
 
     data = pickle.load(open(os.path.join(args.data_dir2, "train.pkl"), "rb"))
@@ -349,7 +348,8 @@ def run(args):
     attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoid).astype(int)  # RoundINT
 
     # Get percentile ranges for how much each attribute was predicted to be true [0,1]
-    preds_by_attr, ptl_5, ptl_95 = dict(), dict(), dict()
+    preds_by_attr: Dict[int, List] = dict()
+    ptl_5, ptl_95 = dict(), dict()
     for i, val in enumerate(eval_output.all_attr_outputs):
         attr_idx = i % args.n_attributes
         if attr_idx in preds_by_attr:
@@ -365,10 +365,7 @@ def run(args):
     # stage 2
     model = torch.load(args.model_dir)
     if args.model_dir2:
-        if "rf" in args.model_dir2:
-            model2 = load(args.model_dir2)
-        else:
-            model2 = torch.load(args.model_dir2)
+        model2 = torch.load(args.model_dir2)
     elif args.multimodel:
         model2 = model.post_models
     else:  # end2end, split model into 2
@@ -386,12 +383,13 @@ def run(args):
             model2,
             attr_group_dict,
             eval_output,
+            attr_binary_outputs,
             instance_attr_labels,
             uncertainty_attr_labels,
             n_replace,
         )
         print(n_replace, acc)  # These are the printouts
-        results.append([n_replace, acc])
+        results.append((n_replace, acc))
     return results
 
 
@@ -415,16 +413,16 @@ if __name__ == "__main__":
     args = ind_ttr_args  # Set config for how to run TTI
 
     all_values = []
+    values: List
     for i, model_dir in enumerate(args.model_dirs):
         print("----------")
         args.model_dir = model_dir
         args.model_dir2 = args.model_dirs2[i] if args.model_dirs2 else None
-        values = run(args)
-        all_values.append(values)
+        all_values.append(run(args))
 
     output_string = ""
     no_intervention_groups = np.array(all_values[0])[:, 0]
-    values = sum([np.array(values)[:, 1] / len(all_values) for values in all_values])
+    values = [sum(np.array(values)[:, 1]) / len(all_values) for value in all_values]
     for no_intervention_group, value in zip(no_intervention_groups, values):
         output_string += "%.4f %.4f\n" % (no_intervention_group, value)
     print(output_string)

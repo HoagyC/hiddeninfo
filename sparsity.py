@@ -79,12 +79,12 @@ def run_independent_sparse() -> None:
         ind_sparse_test = dataclasses.replace(
             base,
             tag="sequential_test" + str(quadrant_sparsity),
-            load_decoders_from_tag=seq_sparse_decoder.tag,
-            load_encoders_from_tag=seq_sparse_encoder.tag,
+            load_decoders_from_tag=ind_sparse_decoder.tag,
+            load_encoders_from_tag=ind_sparse_encoder.tag,
             num_batches=2000,
         )
         results += _run_experiments(
-            seq_sparse_decoder, seq_sparse_encoder, seq_sparse_test
+            ind_sparse_decoder, ind_sparse_encoder, ind_sparse_test
         )
         with open(out_loc, "wb") as f:
             pickle.dump(results, f)
@@ -112,6 +112,9 @@ def run_distill_sparse() -> None:
             tag="sparse_general_dec",
             load_encoders_from_tag=sparse_general.tag,
             shuffle_decoders=True,
+        )
+        results += _run_experiments(
+            sparse_general, sparse_general_enc, sparse_general_dec
         )
 
 

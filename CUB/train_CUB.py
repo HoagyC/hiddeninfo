@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import wandb
 
-from CUB.analysis import AverageMeter, accuracy, binary_accuracy
+from CUB.analysis import accuracy, binary_accuracy
 from CUB.dataset import load_data, find_class_imbalance
 from CUB.models import (
     ModelXtoCY,
@@ -433,7 +433,9 @@ def final_save(model: torch.nn.Module, run_path: Path, args: Experiment):
         upload_to_aws(run_path / filename)
 
 
-def make_criteria(args: Experiment) -> Tuple[torch.nn.Module, List[torch.nn.Module]]:
+def make_criteria(
+    args: Experiment,
+) -> Tuple[torch.nn.Module, Optional[List[torch.nn.Module]]]:
     # Determine imbalance
     imbalance = None
     if args.use_attr and not args.no_img and args.weighted_loss:
@@ -515,7 +517,7 @@ def run_epoch(
     args: Experiment,
     optimizer: torch.optim.Optimizer,
     criterion: torch.nn.Module,
-    attr_criterion: List[torch.nn.Module],
+    attr_criterion: Optional[List[torch.nn.Module]],
     train_loader: DataLoader,
     val_loader: DataLoader,
 ) -> Tuple[Meters, Meters]:

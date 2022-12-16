@@ -15,11 +15,11 @@ from sklearn.metrics import (
     classification_report,
 )
 
-from classes import AverageMeter
+from cub_classes import AverageMeter
 
 
 # ---------------------- OAI ----------------------
-def plot(x, y, **kw):
+def plot(x, y, **kw) -> None:
     if kw.get("multiple_plots"):
         # MANY lines on MANY plots
         assert not kw.get("multiple_plot_cols") is None
@@ -66,7 +66,7 @@ def plot(x, y, **kw):
     plt.show()
 
 
-def handle_plot_kwargs(subplot=None, **kw):
+def handle_plot_kwargs(subplot=None, **kw) -> None:
     curr_plot = subplot if subplot else plt
     if kw.get("title"):
         curr_plot.title(kw["title"])
@@ -92,13 +92,13 @@ def handle_plot_kwargs(subplot=None, **kw):
         curr_plot.subplots_adjust(**kw["subplots_adjust"])
 
 
-def plot_template_ending(**kw):
+def plot_template_ending(**kw) -> None:
     # Standard template ending for the plots
     handle_plot_kwargs(**kw)
     plt.show()
 
 
-def plot_violin(x_category, y, **kw):
+def plot_violin(x_category, y, **kw) -> None:
     unique = np.unique(x_category)
     plot_x = range(len(unique))
     plot_y = [y[x_category == val] for val in unique]
@@ -115,7 +115,7 @@ def plot_violin(x_category, y, **kw):
     plot_template_ending(**kw)
 
 
-def plot_rmse(y_true, y_pred, **kw):
+def plot_rmse(y_true, y_pred, **kw) -> None:
     unique = np.unique(y_true)
     plot_x = range(len(unique))
     ids = [y_true == val for val in unique]
