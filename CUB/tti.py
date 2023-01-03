@@ -72,9 +72,6 @@ def simulate_group_intervention(
     for ndx in range(n_trials):
         b_attr_new = np.array(eval_out.attr_outputs[:])
 
-        # Following paper, will only use rnadom intervention on CUB for now
-        replace_fn = lambda attr_preds: replace_random(attr_preds)
-
         def replace_random(attr_preds):
             replace_idx = []
             group_replace_idx = list(
@@ -83,6 +80,9 @@ def simulate_group_intervention(
             for i in group_replace_idx:
                 replace_idx.extend(attr_group_dict[i])
             return replace_idx
+
+        # Following paper, will only use random intervention on CUB for now
+        replace_fn = lambda attr_preds: replace_random(attr_preds)
 
         # List of attr_ids that have been changed in terms of the big 1D list
         attr_replace_idxs = []
@@ -121,10 +121,10 @@ def simulate_group_intervention(
                 attr_replace_idxs
             ]
 
+        # Zeroing out invisible attrs in the new attr array
         if args.use_invisible:
-            not_visible_idx = np.where(np.array(uncertainty_attr_labels) == 1)[
-                0
-            ]  # [0] because np.where returns a tuple with one element for each dimension in the array
+            # [0] because np.where returns a tuple with one element for each dimension in the array
+            not_visible_idx = np.where(np.array(uncertainty_attr_labels) == 1)[0]
             for idx in attr_replace_idxs:
                 if idx in not_visible_idx:
                     b_attr_new[idx] = 0
@@ -283,14 +283,14 @@ def run(args) -> List[Tuple[int, float]]:
     # Get those class/attribute pairs where more common to be true/false, treating equal as true
     class_attr_min_label = np.argmin(class_attr_count, axis=2)
     class_attr_max_label = np.argmax(class_attr_count, axis=2)
+    # If no. T/F are equal, argmax == argnim == 0
     equal_count = np.where(class_attr_min_label == class_attr_max_label)
     class_attr_max_label[equal_count] = 1
 
     # Get number of classes where the attribute is more common than not, select for at least min_class_count
     attr_class_count = np.sum(class_attr_max_label, axis=0)
     mask = np.where(attr_class_count >= 10)[0]
-    # Build 2D lists of attributes and certainti
-    # es
+    # Build 2D lists of attributes and certainties
     instance_attr_labels, uncertainty_attr_labels = [], []
     test_data = pickle.load(open(os.path.join(args.data_dir2, "test.pkl"), "rb"))
     for d in test_data:
@@ -363,6 +363,7 @@ def run(args) -> List[Tuple[int, float]]:
         ptl_95[attr_idx] = np.percentile(preds, 95)
 
     # stage 2
+    # Get main model and attr -> label model
     model = torch.load(args.model_dir)
     if args.model_dir2:
         model2 = torch.load(args.model_dir2)
@@ -410,7 +411,7 @@ ind_ttr_args = TTI_Config(
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
 
-    args = ind_ttr_args  # Set config for how to run TTI
+    args = ind_tti_args  # Set config for how to run TTI
 
     all_values = []
     values: List

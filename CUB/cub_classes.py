@@ -113,7 +113,8 @@ class TTI_Config(BaseConf):
     log_dir: str = "."  # where results are stored
     # where the trained model is saved
     model_dirs: List[str] = dataclasses.field(default_factory=lambda: [])
-    # where another trained model is saved (for bottleneck only)
+    # where the second half of the model is saved.
+    # If empty, the final FC layer of the first model is used.
     model_dirs2: List[str] = dataclasses.field(default_factory=lambda: [])
 
     model_dir: str = ""
