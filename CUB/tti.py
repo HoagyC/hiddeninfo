@@ -7,6 +7,8 @@ import torch
 import pickle
 import random
 
+from collections import defaultdict
+
 from typing import List, Optional, Tuple, Dict
 
 import numpy as np
@@ -137,8 +139,7 @@ def simulate_group_intervention(
                     attr_idx
                 ] + binary_vals[j] * ptl_95[attr_idx]
 
-        # stage 2
-        K = [1, 3, 5]
+        # Evaluate the model on the new attributes
 
         if args.multimodel:
             model_use = model2[ndx % n_trials]
@@ -150,10 +151,10 @@ def simulate_group_intervention(
         stage2_inputs = torch.from_numpy(np.array(b_attr_new)).cuda()
 
         class_outputs = model_use(stage2_inputs)
-        _, preds = class_outputs.topk(1, 1, True, True)
-        b_class_outputs_new = preds.data.cpu().numpy().squeeze()
+        _, predictions = class_outputs.topk(k=1, dim=1) # returns top vals and indices
+        predictions = predictions.data.cpu().numpy().squeeze()
         class_acc = np.mean(
-            np.array(b_class_outputs_new) == np.array(eval_out.class_labels)
+            np.array(predictions) == np.array(eval_out.class_labels)
         )
         all_class_acc.append(class_acc * 100)
 
@@ -264,12 +265,7 @@ def parse_arguments(parser=None):
     args = parser.parse_args()
     return args
 
-
-def run(args) -> List[Tuple[int, float]]:
-    class_to_folder, attr_id_to_name = get_class_attribute_names()
-
-    data = pickle.load(open(os.path.join(args.data_dir2, "train.pkl"), "rb"))
-
+def build_mask(data: List[Dict], min_count: int = 10) -> np.ndarray:
     # Count the number of times each attribute is known to be true or false for each class
     class_attr_count = np.zeros((N_CLASSES, N_ATTRIBUTES, 2))
     for d in data:
@@ -289,13 +285,23 @@ def run(args) -> List[Tuple[int, float]]:
 
     # Get number of classes where the attribute is more common than not, select for at least min_class_count
     attr_class_count = np.sum(class_attr_max_label, axis=0)
-    mask = np.where(attr_class_count >= 10)[0]
+    mask = np.where(attr_class_count >= min_count)[0]
+    return mask
+
+# Returns pairs of (n, score) where n is a number of attribute
+# and score is the accuracy when n attributes are intervened on
+def run(args) -> List[Tuple[int, float]]:
+    class_to_folder, attr_id_to_name = get_class_attribute_names()
+
+    data = pickle.load(open(os.path.join(args.data_dir2, "train.pkl"), "rb"))
+    mask = build_mask(data, min_count=10)
+
     # Build 2D lists of attributes and certainties
-    instance_attr_labels, uncertainty_attr_labels = [], []
+    test_instance_attr_labels, test_uncertainty_attr_labels = [], []
     test_data = pickle.load(open(os.path.join(args.data_dir2, "test.pkl"), "rb"))
     for d in test_data:
-        instance_attr_labels.extend(list(np.array(d["attribute_label"])[mask]))
-        uncertainty_attr_labels.extend(list(np.array(d["attribute_certainty"])[mask]))
+        test_instance_attr_labels.extend(list(np.array(d["attribute_label"])[mask]))
+        test_uncertainty_attr_labels.extend(list(np.array(d["attribute_certainty"])[mask]))
 
     # Build new dict from attr_id to attr_name to reflect mask
     class_attr_id_to_name = dict()
@@ -338,24 +344,20 @@ def run(args) -> List[Tuple[int, float]]:
         attr_group_dict[group_id] = class_attr_ids
 
     # Creating id_to_name dict
-    class_attr_id = 0
     for i in range(len(mask)):
         class_attr_id_to_name[i] = attr_id_to_name[mask[i]]
 
     # Run one epoch, get lots of detail about performance
-    meter, eval_output = eval(args)
+    _, eval_output = eval(args)
     class_outputs = eval_output.topk_classes[:, 0]
     attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoid).astype(int)  # RoundINT
 
-    # Get percentile ranges for how much each attribute was predicted to be true [0,1]
-    preds_by_attr: Dict[int, List] = dict()
+    # Get 5, 95 percentiles for how much each attribute was predicted to be true [0,1]
+    preds_by_attr = defaultdict(list)
     ptl_5, ptl_95 = dict(), dict()
     for i, val in enumerate(eval_output.all_attr_outputs):
         attr_idx = i % args.n_attributes
-        if attr_idx in preds_by_attr:
-            preds_by_attr[attr_idx].append(val)
-        else:
-            preds_by_attr[attr_idx] = [val]
+        preds_by_attr[attr_idx].append(val)
 
     for attr_idx in range(args.n_attributes):
         preds = preds_by_attr[attr_idx]
@@ -385,16 +387,16 @@ def run(args) -> List[Tuple[int, float]]:
             attr_group_dict,
             eval_output,
             attr_binary_outputs,
-            instance_attr_labels,
-            uncertainty_attr_labels,
+            test_instance_attr_labels,
+            test_uncertainty_attr_labels,
             n_replace,
         )
-        print(n_replace, acc)  # These are the printouts
+        print(n_replace, acc)
         results.append((n_replace, acc))
     return results
 
 
-ind_ttr_args = TTI_Config(
+ind_tti_args = TTI_Config(
     model_dirs=["out/ind_XtoC/20221130-150657/final_model.pth"],
     model_dirs2=["out/ind_CtoY/20221130-194327/final_model.pth"],
     use_attr=True,
@@ -402,7 +404,6 @@ ind_ttr_args = TTI_Config(
     n_trials=5,
     use_invisible=True,
     class_level=True,
-    data_dir="CUB_masked_class",  #
     data_dir2="CUB_processed",
     use_sigmoid=True,
     log_dir="TTI_ind",
@@ -431,3 +432,4 @@ if __name__ == "__main__":
         os.mkdir(args.log_dir)
     output = open(os.path.join(args.log_dir, "results.txt"), "w")
     output.write(output_string)
+
