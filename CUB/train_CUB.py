@@ -35,7 +35,7 @@ from CUB.models import (
 )
 from CUB.cub_classes import AverageMeter, Experiment, Meters, RunRecord
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
-from CUB.utils import upload_to_aws
+from CUB.cub_utils import upload_to_aws
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
 
@@ -420,6 +420,7 @@ def train(
             print("Early stopping because acc hasn't improved for a long time")
             break
 
+    wandb.finish()
     final_save(model, run_save_path, args)
 
 
@@ -457,7 +458,7 @@ def make_criteria(
                     torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
                 )
         else:
-            for i in range(args.n_attributes):
+            for _ in range(args.n_attributes):
                 attr_criterion.append(torch.nn.CrossEntropyLoss())
     else:
         attr_criterion = None
@@ -736,7 +737,8 @@ def _save_CUB_result(train_result):
 
 
 if __name__ == "__main__":
-    train_multimodel()
+    for attr_loss_weight in [0.1, 1, 10]:
+        train_multimodel(attr_loss_weight=attr_loss_weight)
 
     # args = parse_arguments(None)[0]
     # print(args)

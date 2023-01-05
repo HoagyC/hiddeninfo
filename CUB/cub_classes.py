@@ -154,3 +154,4 @@ class TTI_Config(BaseConf):
     mode: str = "entropy"
     n_trials: int = 1  # Number of trials to run, when mode is random
     n_groups: int = 28  # n. groups of attributes (28 enums with ~1 options = 312 attrs)
+    multimodel: bool = True # whether to use the multimodel architecture

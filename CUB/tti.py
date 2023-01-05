@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+import argparse
 import dataclasses
 import os
 import sys
@@ -9,18 +10,17 @@ import random
 
 from collections import defaultdict
 
-from typing import List, Optional, Tuple, Dict
+from typing import List, Tuple, Dict
 
 import numpy as np
 
-from scipy.stats import entropy
-
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from CUB.inference import *
+# from CUB.inference import *
 from CUB.config import N_CLASSES, N_ATTRIBUTES
 from CUB.cub_utils import get_class_attribute_names
 from CUB.cub_classes import TTI_Config
+from CUB.inference import eval
 
 replace_cached: List = []
 
@@ -87,7 +87,7 @@ def simulate_group_intervention(
         replace_fn = lambda attr_preds: replace_random(attr_preds)
 
         # List of attr_ids that have been changed in terms of the big 1D list
-        attr_replace_idxs = []
+        attr_replace_idxs: List = []
         all_attr_ids = []  # list of where attrs have been replaced
 
         # Intervene on 1, then 2, etc, so caching which to intervene on
@@ -290,7 +290,7 @@ def build_mask(data: List[Dict], min_count: int = 10) -> np.ndarray:
 
 # Returns pairs of (n, score) where n is a number of attribute
 # and score is the accuracy when n attributes are intervened on
-def run(args) -> List[Tuple[int, float]]:
+def run_tti(args) -> List[Tuple[int, float]]:
     class_to_folder, attr_id_to_name = get_class_attribute_names()
 
     data = pickle.load(open(os.path.join(args.data_dir2, "train.pkl"), "rb"))
@@ -420,7 +420,7 @@ if __name__ == "__main__":
         print("----------")
         args.model_dir = model_dir
         args.model_dir2 = args.model_dirs2[i] if args.model_dirs2 else None
-        all_values.append(run(args))
+        all_values.append(run_tti(args))
 
     output_string = ""
     no_intervention_groups = np.array(all_values[0])[:, 0]
