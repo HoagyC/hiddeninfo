@@ -138,7 +138,7 @@ class TTI_Config(BaseConf):
     )
     attr_sparsity: int = 1
 
-    data_dir: str = ""  # directory to the data used for evaluation
+    data_dir: str = "CUB_masked_class"  # directory to the data used for evaluation
     data_dir2: str = "class_attr_data_10"  # directory to the raw data
     n_attributes: int = 109
     image_dir: str = "images"  # test image folder to run inference on

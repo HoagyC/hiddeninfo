@@ -14,8 +14,8 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=16428
-VASTAI_N=6
+SSH_PORT=22462
+VASTAI_N=4
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
 
@@ -44,7 +44,7 @@ hoagy:
 # TODO: Replace this with proper make dependencies.
 .PHONY: install
 install:
-	apt install python3-venv
+	apt install python3.8-venv
 	python3.8 -m venv $(ENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r $(REQUIREMENTS)

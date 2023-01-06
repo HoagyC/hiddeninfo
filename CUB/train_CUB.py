@@ -420,7 +420,6 @@ def train(
             print("Early stopping because acc hasn't improved for a long time")
             break
 
-    wandb.finish()
     final_save(model, run_save_path, args)
 
 
@@ -629,14 +628,16 @@ def train_multimodel(attr_loss_weight=1.0) -> None:
     default_args = Experiment()
     multiple_cfg = dataclasses.replace(
         default_args,
+        tag="sparsemultimodel" + str(attr_loss_weight),
         multimodel=True,
         n_models=1,
-        epochs=1,
+        epochs=1000,
         use_aux=True,
         use_attr=True,
         bottleneck=True,
         normalize_loss=True,
         attr_loss_weight=attr_loss_weight,
+        attr_sparsity=10
     )
     retrain_dec_cfg = dataclasses.replace(
         multiple_cfg,
@@ -653,6 +654,7 @@ def train_multimodel(attr_loss_weight=1.0) -> None:
     model = Multimodel(multiple_cfg)
     train(model, multiple_cfg)
     train(model, retrain_dec_cfg, init_epoch=multiple_cfg.epochs)
+    wandb.finish()
 
 
 def train_X_to_C(args):
@@ -737,7 +739,7 @@ def _save_CUB_result(train_result):
 
 
 if __name__ == "__main__":
-    for attr_loss_weight in [0.1, 1, 10]:
+    for attr_loss_weight in [10, 1, 0.1]:
         train_multimodel(attr_loss_weight=attr_loss_weight)
 
     # args = parse_arguments(None)[0]

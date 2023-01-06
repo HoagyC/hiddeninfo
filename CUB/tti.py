@@ -13,6 +13,7 @@ from collections import defaultdict
 from typing import List, Tuple, Dict
 
 import numpy as np
+from matplotlib import pyplot as plt
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -39,7 +40,7 @@ def simulate_group_intervention(
     ptl_95,
     model2,
     attr_group_dict,
-    eval_out,  # flat list of true test attr_labels via the data_loader which is changed to be identical for outputs of the same class
+    eval_out,  # object 
     attr_binary_outputs,
     instance_attr_labels,  # flat list of true test attr labels directly from the data
     uncertainty_attr_labels,  # flat list of uncertainty labels (same len as the rest)
@@ -47,14 +48,14 @@ def simulate_group_intervention(
 ):
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
     assert len(instance_attr_labels) == len(
-        eval_out.class_labels
-    ), "len(instance_attr_labels): %d, len(b_attr_labels): %d" % (
+        eval_out.attr_labels
+    ), "len(instance_attr_labels): %d, len(eval_out.attr_labels): %d" % (
         len(instance_attr_labels),
         len(eval_out.attr_labels),
     )
     assert len(uncertainty_attr_labels) == len(
         eval_out.attr_labels
-    ), "len(uncertainty_attr_labels): %d, len(b_attr_labels): %d" % (
+    ), "len(uncertainty_attr_labels): %d, len(eval_out.attr_labels): %d" % (
         len(uncertainty_attr_labels),
         len(eval_out.attr_labels),
     )
@@ -72,7 +73,7 @@ def simulate_group_intervention(
         n_trials = args.n_trials
 
     for ndx in range(n_trials):
-        b_attr_new = np.array(eval_out.attr_outputs[:])
+        b_attr_new = np.array(eval_out.attr_pred_outputs[:])
 
         def replace_random(attr_preds):
             replace_idx = []
@@ -98,10 +99,10 @@ def simulate_group_intervention(
 
         for img_id in range(len(eval_out.class_labels)):
             # Get just the attr outputs for the current img
-            attr_preds = eval_out.attr_logits[
+            attr_preds = eval_out.attr_pred_outputs[
                 img_id * args.n_attributes : (img_id + 1) * args.n_attributes
             ]
-            attr_preds_sigmoid = eval_out.attr_sigmoids[
+            attr_preds_sigmoid = eval_out.attr_pred_sigmoids[
                 img_id * args.n_attributes : (img_id + 1) * args.n_attributes
             ]
             # Get a list of all attrs (in the flattened list) that we will intervene on
@@ -350,12 +351,12 @@ def run_tti(args) -> List[Tuple[int, float]]:
     # Run one epoch, get lots of detail about performance
     _, eval_output = eval(args)
     class_outputs = eval_output.topk_classes[:, 0]
-    attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoid).astype(int)  # RoundINT
+    attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoids).astype(int)  # RoundINT
 
     # Get 5, 95 percentiles for how much each attribute was predicted to be true [0,1]
     preds_by_attr = defaultdict(list)
     ptl_5, ptl_95 = dict(), dict()
-    for i, val in enumerate(eval_output.all_attr_outputs):
+    for i, val in enumerate(eval_output.attr_pred_outputs):
         attr_idx = i % args.n_attributes
         preds_by_attr[attr_idx].append(val)
 
@@ -408,6 +409,14 @@ ind_tti_args = TTI_Config(
     use_sigmoid=True,
     log_dir="TTI_ind",
 )
+
+def graph_tti_output(tti_output: List[Tuple[int, float]]) -> None:
+    """Graph the output of a TTI run"""
+    n_replace, acc = zip(*tti_output)
+    plt.plot(n_replace, acc)
+    plt.xlabel("Number of groups replaced")
+    plt.ylabel("Accuracy")
+    plt.show()
 
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True

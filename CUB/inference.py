@@ -6,7 +6,6 @@ import os
 import sys
 import torch
 from typing import List, Optional, Tuple, Union
-import joblib
 import argparse
 import numpy as np
 from sklearn.metrics import f1_score
@@ -38,8 +37,8 @@ class Eval_Output:
     topk_classes: np.ndarray
     class_logits: np.ndarray
     attr_labels: np.ndarray
-    attr_logits: np.ndarray
-    attr_sigmoids: np.ndarray
+    attr_pred_outputs: np.ndarray
+    attr_pred_sigmoids: np.ndarray
     wrong_idx: np.ndarray
 
 
@@ -61,7 +60,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         model = torch.load(args.model_dir)
     else:
         model = None
-
+    print(args.model_dir)
     if not hasattr(model, "use_relu"):
         if args.use_relu:
             model.use_relu = True
@@ -77,10 +76,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     model.eval()
 
     if args.model_dir2:
-        if "rf" in args.model_dir2:
-            model2 = joblib.load(args.model_dir2)
-        else:
-            model2 = torch.load(args.model_dir2)
+        model2 = torch.load(args.model_dir2)
         if not hasattr(model2, "use_relu"):
             if args.use_relu:
                 model2.use_relu = True
@@ -305,8 +301,8 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         topk_classes=topk_class_outputs,
         class_logits=all_class_outputs,
         attr_labels=all_attr_labels,
-        attr_logits=all_attr_outputs,
-        attr_sigmoids=all_attr_outputs_sigmoid,
+        attr_pred_outputs=all_attr_outputs, # may have relu or sigmoid applied if 
+        attr_pred_sigmoids=all_attr_outputs_sigmoid,
         wrong_idx=wrong_idx,
     )
 

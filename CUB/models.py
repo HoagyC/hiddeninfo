@@ -1,19 +1,21 @@
 """
 Taken from yewsiang/ConceptBottlenecks
 """
-from typing import Optional
+from typing import Optional, List
 
+import torch
 from torch import nn
 
 from CUB.template_model import MLP, inception_v3, End2EndModel
+from CUB.cub_classes import Experiment
 
 
 class Multimodel(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args: Experiment):
         super().__init__()
         self.args = args
-        self.pre_models: List[torch.nn.Module]
-        self.post_models: List[torch.nn.Module]
+        self.pre_models: nn.ModuleList
+        self.post_models: nn.ModuleList
         self.reset_pre_models()
         self.reset_post_models()
 

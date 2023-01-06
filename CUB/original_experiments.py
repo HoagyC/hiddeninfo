@@ -5,7 +5,8 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from CUB.classes import Experiment
+from CUB.cub_classes import Experiment
+from CUB.config import N_ATTRIBUTES
 
 from CUB.train_CUB import (
     train_X_to_C,
