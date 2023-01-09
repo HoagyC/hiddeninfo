@@ -38,7 +38,7 @@ from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
 from CUB.cub_utils import upload_to_aws
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
-
+RESULTS_DIR ="out"
 
 def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_training):
     """
@@ -628,11 +628,11 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
     return optimizer
 
 
-def train_multimodel(attr_loss_weight=1.0) -> None:
+def train_multimodel(attr_loss_weight=1.0, attr_sparsity: int = 1) -> None:
     default_args = Experiment()
     multiple_cfg = dataclasses.replace(
         default_args,
-        tag="sparsemultimodel" + str(attr_loss_weight),
+        tag="sparsemultimodel" + str(attr_loss_weight) + "-" + str(attr_sparsity),
         multimodel=True,
         n_models=1,
         epochs=1000,
@@ -744,8 +744,9 @@ def _save_CUB_result(train_result):
 
 
 if __name__ == "__main__":
-    for attr_loss_weight in [0.1, 1, 0.1]:
-        train_multimodel(attr_loss_weight=attr_loss_weight)
+    attr_sparsity = int(sys.argv[1])
+    for attr_loss_weight in [0.1, 1, 10]:
+        train_multimodel(attr_loss_weight=attr_loss_weight, attr_sparsity=attr_sparsity)
 
     # args = parse_arguments(None)[0]
     # print(args)
