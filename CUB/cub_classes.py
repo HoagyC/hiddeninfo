@@ -59,7 +59,7 @@ class Experiment(BaseConf):
     log_dir: str = "out"
     data_dir: str = "CUB_masked_class"
     image_dir: str = "images"
-    save_step: int = 10
+    save_step: int = 100
 
     # Model
     multimodel: bool = False

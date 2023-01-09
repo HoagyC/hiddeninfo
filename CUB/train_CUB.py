@@ -283,24 +283,28 @@ def run_multimodel_epoch(
         loss_main = 1.0 * criterion(output_labels, target=labels)
         losses.append(loss_main)
 
-        # Adding losses separately for the different classes
-        for i in range(len(attr_criterion)):
-            value = torch.masked_select(
-                concepts[i].type(torch.cuda.FloatTensor).squeeze(), attr_mask_bin
-            )
-            target = torch.masked_select(attr_labels[:, i], attr_mask_bin)
-            attr_loss = attr_criterion[i](value, target)
-
-            if args.use_aux and is_training:
-                aux_value = torch.masked_select(
-                    aux_concepts[i].type(torch.cuda.FloatTensor).squeeze(),
-                    attr_mask_bin,
+        # Adding losses separately for the different classes (if there are any non-masked attributes)
+        if attr_mask_bin is not None and int(sum(attr_mask_bin)) != 0:
+            for i in range(len(attr_criterion)):
+                value = torch.masked_select(
+                    concepts[i].type(torch.cuda.FloatTensor).squeeze(), attr_mask_bin
                 )
-                aux_attr_loss = AUX_LOSS_RATIO * attr_criterion[i](aux_value, target)
+                target = torch.masked_select(attr_labels[:, i], attr_mask_bin)
+                attr_loss = attr_criterion[i](value, target) * args.attr_sparsity
 
-                attr_loss += aux_attr_loss
+                if args.use_aux and is_training:
+                    aux_value = torch.masked_select(
+                        aux_concepts[i].type(torch.cuda.FloatTensor).squeeze(),
+                        attr_mask_bin,
+                    )
+                    aux_attr_loss = AUX_LOSS_RATIO * attr_criterion[i](aux_value, target) * args.attr_sparsity
 
-            losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
+                    attr_loss += aux_attr_loss
+
+                losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
+        else:
+            for i in range(len(attr_criterion)):
+                losses.append(0)
 
         # Calculating attribute accuracy
         sigmoid_outputs = torch.nn.Sigmoid()(concepts_t)
@@ -637,7 +641,8 @@ def train_multimodel(attr_loss_weight=1.0) -> None:
         bottleneck=True,
         normalize_loss=True,
         attr_loss_weight=attr_loss_weight,
-        attr_sparsity=10
+        attr_sparsity=10,
+        pretrained=True,
     )
     retrain_dec_cfg = dataclasses.replace(
         multiple_cfg,
@@ -739,7 +744,7 @@ def _save_CUB_result(train_result):
 
 
 if __name__ == "__main__":
-    for attr_loss_weight in [10, 1, 0.1]:
+    for attr_loss_weight in [0.1, 1, 0.1]:
         train_multimodel(attr_loss_weight=attr_loss_weight)
 
     # args = parse_arguments(None)[0]
