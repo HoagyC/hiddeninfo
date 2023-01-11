@@ -100,7 +100,7 @@ class Experiment(BaseConf):
     freeze_pre_models: bool = False
     reset_pre_models: bool = False
     reset_post_models: bool = False
-    n_models: int = 1
+    n_models: int = 4
 
     # Can predict whethe trait is visible as a third class, n_class_attr=3
     n_class_attr: int = 2

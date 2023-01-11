@@ -14,10 +14,15 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=37408
-VASTAI_N=5
+# SSH_PORT=39670
+# VASTAI_N=4
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
+
+# List of ports for different vast.ai servers.
+SSH_PORTS = 15328
+VASTAI_NS = 5
+	
 
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
@@ -44,7 +49,7 @@ hoagy:
 # TODO: Replace this with proper make dependencies.
 .PHONY: install
 install:
-	apt install python3.8-venv
+	apt install -y python3.8-venv
 	python3.8 -m venv $(ENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r $(REQUIREMENTS)
@@ -84,11 +89,24 @@ ssh-run:
 	ssh -p $(SSH_PORT) $(SSH_DESTINATION) \
 		"cd $(SSH_DIRECTORY) && pwd && make $(COMMAND)"
 
+
 .PHONY: aws-pull
 aws-pull:
 	apt install unzip
 	$(PYTHON) CUB/aws_download.py
 	unzip CUB_dataset.zip
+
+.PHONY: run-multi
+run-multi:
+	n_servers := $(words $(VASTAI_NS))
+	echo $(n_servers)
+	for n in $(seq $(n_servers)); do \
+		echo $(n)
+		$(eval VASTAI_N := $(word $(n),$(VASTAI_NS))) \
+		$(eval SSH_DESTINATION := root@ssh$(VASTAI_N).vast.ai) \
+		$(eval SSH_PORT:= $(word $(n),$(SSH_PORTS))) \
+		make ssh-setup; \
+	done
 
 .PHONY: ssh-setup
 ssh-setup:

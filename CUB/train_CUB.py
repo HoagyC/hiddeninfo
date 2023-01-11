@@ -35,7 +35,7 @@ from CUB.models import (
 )
 from CUB.cub_classes import AverageMeter, Experiment, Meters, RunRecord
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
-from CUB.cub_utils import upload_to_aws
+from CUB.cub_utils import upload_to_aws, get_secrets
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
 RESULTS_DIR ="out"
@@ -425,6 +425,7 @@ def train(
             break
 
     final_save(model, run_save_path, args)
+    return epoch_ndx
 
 
 def final_save(model: torch.nn.Module, run_path: Path, args: Experiment):
@@ -628,11 +629,11 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
     return optimizer
 
 
-def train_multimodel(attr_loss_weight=1.0, attr_sparsity: int = 1) -> None:
-    default_args = Experiment()
+def train_multimodel(args) -> None:
+    secrets = get_secrets()
+    wandb.login(key=secrets["wandb_key"])
     multiple_cfg = dataclasses.replace(
-        default_args,
-        tag="sparsemultimodel" + str(attr_loss_weight) + "-" + str(attr_sparsity),
+        args,
         multimodel=True,
         n_models=1,
         epochs=1000,
@@ -640,8 +641,6 @@ def train_multimodel(attr_loss_weight=1.0, attr_sparsity: int = 1) -> None:
         use_attr=True,
         bottleneck=True,
         normalize_loss=True,
-        attr_loss_weight=attr_loss_weight,
-        attr_sparsity=10,
         pretrained=True,
     )
     retrain_dec_cfg = dataclasses.replace(
@@ -657,8 +656,8 @@ def train_multimodel(attr_loss_weight=1.0, attr_sparsity: int = 1) -> None:
         reset_pre_models=True,
     )
     model = Multimodel(multiple_cfg)
-    train(model, multiple_cfg)
-    train(model, retrain_dec_cfg, init_epoch=multiple_cfg.epochs)
+    elapsed_epochs = train(model, multiple_cfg)
+    train(model, retrain_dec_cfg, init_epoch=elapsed_epochs)
     wandb.finish()
 
 
@@ -744,10 +743,19 @@ def _save_CUB_result(train_result):
 
 
 if __name__ == "__main__":
-    attr_sparsity = int(sys.argv[1])
-    for attr_loss_weight in [0.1, 1, 10]:
-        train_multimodel(attr_loss_weight=attr_loss_weight, attr_sparsity=attr_sparsity)
+    default_args = Experiment()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--attr-sparsity', type=int, default=default_args.attr_sparsity,
+                        help='Only use attrs if ndx % sparsity == 0')
+    parser.add_argument('--attr-loss-weight', type=float, default=default_args.attr_loss_weight,
+                        help='Relative weight of attribute loss')
+    new_args = parser.parse_args()
+    args = dataclasses.replace(
+        default_args,
+        attr_loss_weight=new_args.attr_loss_weight,
+        attr_sparsity=new_args.attr_sparsity,
+        tag="sparsemultimodel" + str(new_args.attr_loss_weight) + "-" + str(new_args.attr_sparsity),
+    )
+    train_multimodel(args)
 
-    # args = parse_arguments(None)[0]
-    # print(args)
     # train_X_to_C(args)

@@ -87,7 +87,12 @@ def inception_v3(pretrained, freeze, **kwargs):
     if pretrained:
         if "transform_input" not in kwargs:
             kwargs["transform_input"] = True
-        model = Inception3(**kwargs)
+        
+        if "mixed" in kwargs and kwargs["mixed"]:
+            model = Inception3Mixed(**kwargs)
+        else:
+            model = Inception3(**kwargs)
+    
         if os.path.exists(model_urls.get("downloaded")):
             model.load_partial_state_dict(torch.load(model_urls["downloaded"]))
         else:
@@ -99,8 +104,11 @@ def inception_v3(pretrained, freeze, **kwargs):
                 if "fc" not in name:  # and 'Mixed_7c' not in name:
                     param.requires_grad = False
         return model
-
-    return Inception3(**kwargs)
+    else:
+        if "mixed" in kwargs and kwargs["mixed"]:
+            return Inception3Mixed(**kwargs)
+        else:
+            return Inception3(**kwargs)
 
 
 class Inception3(nn.Module):
@@ -690,7 +698,7 @@ class Inception3Partial2(nn.Module):
             attr_preds = torch.cat(out[1:], dim=1)
             out[0] += self.cy_fc(attr_preds)
 
-class InceptionMixed(nn.Module):
+class Inception3Mixed(nn.Module):
     def __init__(
         self,
         n_pre_layers,
@@ -732,4 +740,8 @@ class InceptionMixed(nn.Module):
 
         layer_n = random.randint(0, len(self.pre_layers))
         x = self.pre_layers[layer_n](x)
-        return x
+
+        if self.training and self.aux_logits:
+            return x, aux_out
+        else:
+            return x
