@@ -48,7 +48,7 @@ def main():
         multimodel=True,
     )
 
-    # ind_tti_results = run_tti(ind_tti_args)
+    ind_tti_results = run_tti(ind_tti_args)
     multimodel_tti_results = run_tti(multimodel_tti_args)
 
     if not os.path.exists("tti"):
@@ -57,9 +57,6 @@ def main():
         pickle.dump(ind_tti_results, f)
     with open("tti/multimodel_tti_results.pkl", "wb") as f:
         pickle.dump(multimodel_tti_results, f)
-
-
-    
 
 
 

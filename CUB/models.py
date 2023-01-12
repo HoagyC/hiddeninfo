@@ -52,48 +52,48 @@ class Multimodel(nn.Module):
 
         self.post_models = nn.ModuleList(post_models_list)
 
-class SharedMultimodel:
-    def __init__(self, args: Experiment):
-        super().__init__()
-        self.args = args
-        self.pre_model: nn.Module
-        self.pre_layers: nn.ModuleList
-        self.post_models: nn.ModuleList
-        self.reset_pre_models()
-        self.reset_post_models()
 
-    def reset_pre_models(self, pretrained: Optional[bool] = None) -> None:
-        if pretrained is None:
-            use_pretrained = self.args.pretrained
-        else:
-            use_pretrained = pretrained
+# class SharedMultimodel(nn.Module):
+#     def __init__(self, args: Experiment):
+#         super().__init__()
+#         self.args = args
+#         self.pre_models: nn.ModuleList
+#         self.post_models: nn.ModuleList
+#         self.reset_pre_models()
+#         self.reset_post_models()
 
-        pre_models_list = [
-            ModelXtoC(
-                pretrained=use_pretrained,
-                freeze=self.args.freeze,
-                use_aux=self.args.use_aux,
-                num_classes=self.args.num_classes,
-                n_attributes=self.args.n_attributes,
-                expand_dim=self.args.expand_dim,
-                three_class=self.args.three_class,
-            )
-            for _ in range(self.args.n_models)
-        ]
-        self.pre_models = nn.ModuleList(pre_models_list)
+#     def reset_pre_models(self, pretrained: Optional[bool] = None) -> None:
+#         if pretrained is None:
+#             use_pretrained = self.args.pretrained
+#         else:
+#             use_pretrained = pretrained
 
-    def reset_post_models(self) -> None:
-        post_models_list = [
-            ModelOracleCtoY(
-                n_class_attr=self.args.n_class_attr,
-                n_attributes=self.args.n_attributes,
-                num_classes=self.args.num_classes,
-                expand_dim=self.args.expand_dim,
-            )
-            for _ in range(self.args.n_models)
-        ]
+#         pre_models_list = [
+#             ModelXtoC(
+#                 pretrained=use_pretrained,
+#                 freeze=self.args.freeze,
+#                 use_aux=self.args.use_aux,
+#                 num_classes=self.args.num_classes,
+#                 n_attributes=self.args.n_attributes,
+#                 expand_dim=self.args.expand_dim,
+#                 three_class=self.args.three_class,
+#             )
+#             for _ in range(self.args.n_models)
+#         ]
+#         self.pre_models = nn.ModuleList(pre_models_list)
 
-        self.post_models = nn.ModuleList(post_models_list)
+#     def reset_post_models(self) -> None:
+#         post_models_list = [
+#             ModelOracleCtoY(
+#                 n_class_attr=self.args.n_class_attr,
+#                 n_attributes=self.args.n_attributes,
+#                 num_classes=self.args.num_classes,
+#                 expand_dim=self.args.expand_dim,
+#             )
+#             for _ in range(self.args.n_models)
+#         ]
+
+#         self.post_models = nn.ModuleList(post_models_list)
 
 
 # Independent & Sequential Model

@@ -20,6 +20,26 @@ def get_secrets() -> Dict:
 
     return secrets
 
+# List all the objects in the specified folder(one layer only)
+def list_files(folder_name: str):
+    secrets = get_secrets()
+
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=secrets["access_key"],
+        aws_secret_access_key=secrets["secret_key"],
+    )
+    # Add a trailing slash if missing to get folder names 
+    if folder_name[-1] != "/":
+        folder_name += "/"
+
+    # Get subdiretories which are the different runs under that name and sort them by date
+    response = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=folder_name, Delimiter="/")
+    folders = [content["Prefix"] for content in response["CommonPrefixes"]]
+    folders.sort()
+    
+    return folders
+
 
 def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
     secrets = get_secrets()

@@ -139,7 +139,7 @@ class TTI_Config(BaseConf):
     attr_sparsity: int = 1
 
     data_dir: str = "CUB_masked_class"  # directory to the data used for evaluation
-    data_dir2: str = "class_attr_data_10"  # directory to the raw data
+    data_dir2: str = "CUB_processed"  # directory to the raw data
     n_attributes: int = 109
     image_dir: str = "images"  # test image folder to run inference on
     # file listing the (trained) model directory for each attribute group
@@ -151,7 +151,7 @@ class TTI_Config(BaseConf):
     use_invisible: bool = False
 
     # Which mode to use for correction. Choose from wrong_idx, entropy, uncertainty, random
-    mode: str = "entropy"
+    mode: str = "random"
     n_trials: int = 1  # Number of trials to run, when mode is random
     n_groups: int = 28  # n. groups of attributes (28 enums with ~1 options = 312 attrs)
     multimodel: bool = True # whether to use the multimodel architecture
