@@ -410,7 +410,7 @@ ind_tti_args = TTI_Config(
     log_dir="TTI_ind",
 )
 
-def graph_tti_output(tti_output: List[Tuple[int, float]], save_dir: Optional[str] = None) -> None:
+def graph_tti_output(tti_output: List[Tuple[int, float]], save_dir: Optional[str] = None, show: bool = True) -> None:
     """Graph the output of a TTI run"""
     n_replace, acc = zip(*tti_output)
     plt.plot(n_replace, acc)
@@ -418,7 +418,8 @@ def graph_tti_output(tti_output: List[Tuple[int, float]], save_dir: Optional[str
     plt.ylabel("Accuracy")
     if save_dir:
         plt.savefig(os.path.join(save_dir, "tti_results.png"))
-    plt.show()
+    if show:
+        plt.show()
 
 
 if __name__ == "__main__":

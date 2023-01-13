@@ -60,6 +60,10 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         model = torch.load(args.model_dir)
     else:
         model = None
+
+    if args.multimodel:
+        model2 = model.post_models[0]
+        model = model.pre_models[0]
     print(args.model_dir)
     if not hasattr(model, "use_relu"):
         if args.use_relu:
@@ -90,6 +94,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         model2.eval()
     else:
         model2 = None
+    
 
     # Add meters for the overall attr_acc and (optional) for each attr
     meters: Union[Eval_Meter, Eval_Meter_Acc]
