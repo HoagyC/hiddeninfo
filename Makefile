@@ -14,8 +14,8 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=37408
-VASTAI_N=5
+SSH_PORT=24276
+VASTAI_N=4
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
 
@@ -95,6 +95,11 @@ aws-pull:
 	apt install unzip
 	$(PYTHON) CUB/aws_download.py
 	unzip CUB_dataset.zip
+
+# Get a file through scp from the remote location.
+.PHONY: retrieve
+retrieve:
+	scp -P $(SSH_PORT) $(SSH_DESTINATION):/root/$(SSH_DIRECTORY)/$(FILE) .
 
 .PHONY: run-multi
 run-multi:

@@ -20,7 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 # from CUB.inference import *
 from CUB.config import N_CLASSES, N_ATTRIBUTES
 from CUB.cub_utils import get_class_attribute_names
-from CUB.cub_classes import TTI_Config
+from CUB.cub_classes import TTI_Config, TTI_Output
 from CUB.inference import eval
 
 replace_cached: List = []
@@ -410,16 +410,26 @@ ind_tti_args = TTI_Config(
     log_dir="TTI_ind",
 )
 
-def graph_tti_output(tti_output: List[Tuple[int, float]], save_dir: Optional[str] = None, show: bool = True) -> None:
+def graph_tti_output(tti_output: List[Tuple[int, float]], save_dir: Optional[str] = None, show: bool = True, label: Optional[str]=None) -> None:
     """Graph the output of a TTI run"""
     n_replace, acc = zip(*tti_output)
-    plt.plot(n_replace, acc)
+    plt.plot(n_replace, acc, label=label)
     plt.xlabel("Number of groups replaced")
     plt.ylabel("Accuracy")
     if save_dir:
         plt.savefig(os.path.join(save_dir, "tti_results.png"))
     if show:
         plt.show()
+
+def graph_multi_tti_output(tti_outputs: List[TTI_Output], save_dir: Optional[str]):
+    """Graph the output of multiple TTI runs"""
+    for tti_o in tti_outputs:
+        graph_tti_output(tti_o.result, show=False, label=f"Coef: {tti_o.coef}, Sparsity: {tti_o.sparsity}, Run: {tti_o.name}")
+
+    plt.legend()
+    if not os.path.exists("images"):
+        os.mkdir("images")
+    plt.savefig("images/tti_results.png")
 
 
 if __name__ == "__main__":

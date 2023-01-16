@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from CUB.config import N_ATTRIBUTES, N_CLASSES
 
@@ -155,3 +155,11 @@ class TTI_Config(BaseConf):
     n_trials: int = 1  # Number of trials to run, when mode is random
     n_groups: int = 28  # n. groups of attributes (28 enums with ~1 options = 312 attrs)
     multimodel: bool = True # whether to use the multimodel architecture
+
+
+@dataclasses.dataclass
+class TTI_Output:
+    coef: float
+    sparsity: int
+    result: List[Tuple[int, float]]
+    model_name: Optional[str] = None
