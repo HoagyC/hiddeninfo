@@ -8,7 +8,7 @@ from matplotlib.pyplot import figure, imshow, axis, show
 from matplotlib.image import imread
 
 import boto3
-from botocore.exceptions import NoCredentialsError
+from botocore.exceptions import NoCredentialsError, ClientError
 
 BUCKET_NAME = "distilledrepr"
 
@@ -78,12 +78,18 @@ def download_from_aws(files: List[str]) -> None:
         aws_secret_access_key=secrets["secret_key"],
     )
     for filename in files:
-        print(f"Downloading {filename}")
-        parent_dir = os.path.dirname(filename)
-        if not os.path.exists(parent_dir) and parent_dir != "":
-            os.makedirs(os.path.dirname(filename))
-        with open(filename, "wb") as f:
-            s3.download_fileobj(BUCKET_NAME, filename, f)
+        try:
+            parent_dir = os.path.dirname(filename)
+            if not os.path.exists(parent_dir) and parent_dir != "":
+                os.makedirs(os.path.dirname(filename))
+            with open(filename, "wb") as f:
+                s3.download_fileobj(BUCKET_NAME, filename, f)
+
+            print(f"Successfully downloaded file: {filename}")
+        except ClientError:
+            print(f"File: {filename} does not exist")
+
+
 
 
 def _upload_directory(path, s3_client):
