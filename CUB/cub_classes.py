@@ -157,6 +157,17 @@ class TTI_Config(BaseConf):
     multimodel: bool = True # whether to use the multimodel architecture
 
 
+base_ind_tti_cfg = TTI_Config(
+    use_attr=True,
+    bottleneck=True,
+    n_trials=5,
+    use_invisible=True,
+    class_level=True,
+    data_dir2="CUB_processed",
+    use_sigmoid=True,
+    log_dir="TTI_ind",
+)
+
 @dataclasses.dataclass
 class TTI_Output:
     coef: float

@@ -198,7 +198,7 @@ python3 src/experiments.py cub Independent_CtoY --seed 1 -log_dir IndependentMod
 """
 
 ind_XtoC_cfg = Experiment(
-    tag="ind_XtoC",
+    tag="independent",
     seed=1,
     exp="Concept_XtoC",
     epochs=1000,
@@ -215,7 +215,7 @@ ind_XtoC_cfg = Experiment(
 )
 
 ind_CtoY_cfg = Experiment(
-    tag="ind_CtoY",
+    tag="independent",
     exp="Independent_CtoY",
     seed=1,
     epochs=500,

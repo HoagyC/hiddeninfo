@@ -21,7 +21,7 @@ def get_secrets() -> Dict:
     return secrets
 
 # List all the objects in the specified folder(one layer only)
-def list_files(folder_name: str):
+def list_aws_files(folder_name: str, get_folders: bool = True) -> List[str]:
     secrets = get_secrets()
 
     s3 = boto3.client(
@@ -33,12 +33,17 @@ def list_files(folder_name: str):
     if folder_name[-1] != "/":
         folder_name += "/"
 
-    # Get subdiretories which are the different runs under that name and sort them by date
     response = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=folder_name, Delimiter="/")
-    folders = [content["Prefix"] for content in response["CommonPrefixes"]]
-    folders.sort()
+    if get_folders:
+        # Get subdiretories which are the different runs under that name and sort them by date (no folder path)
+        results = [content["Prefix"] for content in response["CommonPrefixes"]]
+        results.sort()
+    else:
+        # Get objects within the folder (includes the rest of the folder path)
+        results = [content["Key"] for content in response["Contents"]]
+        results.sort()
     
-    return folders
+    return results
 
 
 def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
@@ -99,26 +104,32 @@ def _upload_directory(path, s3_client):
             s3_client.upload_file(str(full_file_name), BUCKET_NAME, str(full_file_name))
 
 
-def get_class_attribute_names(
+def make_class_id_to_folder_dict(
     img_dir="CUB_200_2011/images/",
-    feature_file="CUB_200_2011/attributes/attributes.txt",
 ):
     """
     Returns:
     class_to_folder: map class id (0 to 199) to the path to the corresponding image folder (containing actual class names)
-    attr_id_to_name: map attribute id (0 to 311) to actual attribute name read from feature_file argument
     """
     class_to_folder = dict()
     for folder in os.listdir(img_dir):
         class_id = int(folder.split(".")[0])
         class_to_folder[class_id - 1] = os.path.join(img_dir, folder)
+    return class_to_folder
+
+
+def make_attr_id_to_name_dict(feature_file="CUB_200_2011/attributes/image_attribute_labels.txt"):
+    """
+    Returns:
+    attr_id_to_name: map attribute id (0 to 311) to actual attribute name read from feature_file argument
+    """
 
     attr_id_to_name = dict()
     with open(feature_file, "r") as f:
         for line in f:
             idx, name = line.strip().split(" ")
             attr_id_to_name[int(idx) - 1] = name
-    return class_to_folder, attr_id_to_name
+    return attr_id_to_name
 
 
 def sample_files(class_label, class_to_folder, number_of_files=10) -> List[str]:
