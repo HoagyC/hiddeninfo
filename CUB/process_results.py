@@ -113,7 +113,7 @@ if __name__ == "__main__":
     #     "out/sparsemultimodel1-3",
     # ]
 
-    process_results(runs_list, process_all=True)
+    process_results(runs_list, process_all=True, reprocess=True)
     results = get_results_pkls(runs_list, use_all=True)
     print(len(results))
     graph_multi_tti_output(results)

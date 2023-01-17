@@ -66,7 +66,7 @@ class Experiment(BaseConf):
     n_attributes: int = 109
     num_classes: int = N_CLASSES
     expand_dim: int = 500
-    use_relu: bool = True
+    use_relu: bool = False
     use_sigmoid: bool = False
     pretrained: bool = False
     use_aux: bool = False
@@ -89,7 +89,7 @@ class Experiment(BaseConf):
     freeze: bool = False
     use_attr: bool = False
     no_img: bool = False
-    bottleneck: bool = False
+    bottleneck: bool = True # Passed to inception_v3, if True doesn't predict output class.
     weighted_loss: str = ""
     uncertain_labels: bool = False
     normalize_loss: bool = False

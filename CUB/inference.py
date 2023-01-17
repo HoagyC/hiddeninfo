@@ -36,7 +36,7 @@ class Eval_Output:
     class_labels: np.ndarray
     topk_classes: np.ndarray
     class_logits: np.ndarray
-    attr_labels: np.ndarray
+    attr_true_labels: np.ndarray
     attr_pred_outputs: np.ndarray
     attr_pred_sigmoids: np.ndarray
     wrong_idx: np.ndarray
@@ -49,7 +49,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     all_class_labels: flattened list of class labels for each image.
     topk_class_outputs: array of top k class ids predicted for each image. Shape = N_TEST * max(K)
     all_class_outputs: array of all logit outputs for class prediction. shape = N_TEST * N_CLASS
-    all_attr_labels: flattened list of labels for each attribute for each image (length = N_ATTRIBUTES * N_TEST)
+    all_attr_labels: flattened list of ground-truth labels for each attribute for each image (length = N_ATTRIBUTES * N_TEST)
     all_attr_outputs: flatted list of attribute logits (after ReLU/ Sigmoid respectively) predicted for each attribute for each image (length = N_ATTRIBUTES * N_TEST)
     all_attr_outputs_sigmoid: flatted list of attribute logits predicted (after Sigmoid) for each attribute for each image (length = N_ATTRIBUTES * N_TEST)
     wrong_idx: image ids where the model got the wrong class prediction (to compare with other models)
@@ -305,7 +305,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         class_labels=all_class_labels,
         topk_classes=topk_class_outputs,
         class_logits=all_class_outputs,
-        attr_labels=all_attr_labels,
+        attr_true_labels=all_attr_labels,
         attr_pred_outputs=all_attr_outputs, # may have relu or sigmoid applied if 
         attr_pred_sigmoids=all_attr_outputs_sigmoid,
         wrong_idx=wrong_idx,
