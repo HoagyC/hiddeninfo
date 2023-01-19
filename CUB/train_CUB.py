@@ -4,7 +4,6 @@ Train InceptionV3 Network using the CUB-200-2011 dataset
 import argparse
 import dataclasses
 from datetime import datetime
-import logging
 import os
 from pathlib import Path
 import pickle
@@ -33,7 +32,9 @@ from CUB.models import (
     ModelXtoCtoY,
     Multimodel,
 )
-from CUB.cub_classes import AverageMeter, Experiment, Meters, RunRecord
+from CUB.cub_classes import Experiment, Meters, RunRecord
+from CUB.cub_classes import ind_XtoC_cfg, ind_CtoY_cfg, joint_cfg
+
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
 from CUB.cub_utils import upload_to_aws, get_secrets
 
@@ -153,6 +154,7 @@ def run_twopart_epoch(
                     )
 
                     masked_attr_target = masked_attr_labels[:, i]
+                    import pdb; pdb.set_trace()
                     main_loss = attr_criterion[i](
                         masked_attr_output, masked_attr_target
                     )
@@ -343,9 +345,6 @@ def train(
         run_save_path.mkdir(parents=True)
     wandb.init(project="distill_CUB", config=args.__dict__)
 
-    logging.basicConfig(filename=run_save_path / "log.txt", level=logging.INFO)
-    logging.info(str(args) + "\n")
-
     if args.multimodel:
         if args.reset_pre_models:
             model.reset_pre_models()
@@ -379,7 +378,6 @@ def train(
 
     train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
     val_data_path = train_data_path.replace("train.pkl", "val.pkl")
-    logging.info("train data path: %s\n" % train_data_path)
 
     train_loader = load_data([train_data_path], args, resampling=args.resampling)
     val_loader = load_data([val_data_path], args)
@@ -479,10 +477,17 @@ def write_metrics(
     val_records: RunRecord,
     save_path: Path,
 ) -> None:
-    if val_records.acc < val_meters.label_acc.avg:
+    # If training independent models, use concept accuracy as key metric since we don't have labels
+    if args.exp == "Independent_XtoC":
+        key_metric = val_meters.concept_acc.avg
+        key_record = val_records.concept_acc
+    else:
+        key_metric = val_meters.label_acc.avg
+        key_record = val_records.acc
+
+    if key_record < key_metric:
         val_records.epoch = epoch
-        val_records.acc = val_meters.label_acc.avg
-        logging.info("New model best model at epoch %d\n" % epoch)
+        key_record = key_metric
         torch.save(model, save_path / f"best_model_{args.seed}.pth")
         # if best_val_acc >= 100: #in the case of retraining, stop when the model reaches 100% accuracy on both train + val sets
         #    break
@@ -502,19 +507,6 @@ def write_metrics(
     }
 
     wandb.log(metrics_dict)
-    logging.info(
-        "Epoch [%d]:\tTrain loss: %.4f\tTrain accuracy: %.4f\t"
-        "Val loss: %.4f\tVal acc: %.4f\t"
-        "Best val epoch: %d\n"
-        % (
-            epoch,
-            train_loss_avg,
-            train_meters.label_acc.avg,
-            val_loss_avg,
-            val_meters.label_acc.avg,
-            val_records.epoch,
-        )
-    )
 
 
 def run_epoch(
@@ -661,75 +653,81 @@ def train_multimodel(args) -> None:
     wandb.finish()
 
 
-def train_X_to_C(args):
-    model = ModelXtoC(
-        pretrained=args.pretrained,
-        freeze=args.freeze,
-        use_aux=args.use_aux,
-        num_classes=args.num_classes,
-        n_attributes=args.n_attributes,
-        expand_dim=args.expand_dim,
-        three_class=args.three_class,
-    )
+def make_model(exp: str) -> torch.nn.Module:
+    exp_strs = [
+        "Concept_XtoC",
+        "Independent_CtoY",
+        "Sequential_CtoY",
+        "Standard",
+        "Joint",
+        "Multitask",
+    ]
+    assert exp in exp_strs, f"Experiment {exp} not recognized"
+    
+    if exp == "Concept_XtoC":
+        model = ModelXtoC(
+            pretrained=args.pretrained,
+            freeze=args.freeze,
+            use_aux=args.use_aux,
+            num_classes=args.num_classes,
+            n_attributes=args.n_attributes,
+            expand_dim=args.expand_dim,
+            three_class=args.three_class,
+        )
+    elif exp == "Independent_CtoY":
+        model = ModelOracleCtoY(
+            n_class_attr=args.n_class_attr,
+            n_attributes=args.n_attributes,
+            num_classes=args.num_classes,
+            expand_dim=args.expand_dim,
+        )
+    elif exp == "Sequential_CtoY":
+        model = ModelXtoChat_ChatToY(
+            n_class_attr=args.n_class_attr,
+            n_attributes=args.n_attributes,
+            num_classes=args.num_classes,
+            expand_dim=args.expand_dim,
+        )
+    elif exp == "Joint":
+        model = ModelXtoCtoY(
+            n_class_attr=args.n_class_attr,
+            pretrained=args.pretrained,
+            use_aux=args.use_aux,
+            freeze=args.freeze,
+            num_classes=args.num_classes,
+            n_attributes=args.n_attributes,
+            expand_dim=args.expand_dim,
+            use_relu=args.use_relu,
+            use_sigmoid=args.use_sigmoid,
+        )
+    elif exp == "Standard":
+        model = ModelXtoY(
+            pretrained=args.pretrained,
+            freeze=args.freeze,
+            use_aux=args.use_aux,
+            num_classes=args.num_classes,
+        )
+    elif exp == "Multitask":
+        model = ModelXtoCY(
+            pretrained=args.pretrained,
+            freeze=args.freeze,
+            num_classes=args.num_classes,
+            use_aux=args.use_aux,
+            n_attributes=args.n_attributes,
+            three_class=args.three_class,
+            connect_CY=args.connect_CY,
+        )
+    
+    return model
+
+
+
+def train_old(args):
+    secrets = get_secrets()
+    wandb.login(key=secrets["wandb_key"])
+    model = make_model(args.exp)
     train(model, args)
-
-
-def train_oracle_C_to_y_and_test_on_Chat(args):
-    model = ModelOracleCtoY(
-        n_class_attr=args.n_class_attr,
-        n_attributes=args.n_attributes,
-        num_classes=args.num_classes,
-        expand_dim=args.expand_dim,
-    )
-    train(model, args)
-
-
-def train_Chat_to_y_and_test_on_Chat(args):
-    model = ModelXtoChat_ChatToY(
-        n_class_attr=args.n_class_attr,
-        n_attributes=args.n_attributes,
-        num_classes=args.num_classes,
-        expand_dim=args.expand_dim,
-    )
-    train(model, args)
-
-
-def train_X_to_C_to_y(args):
-    model = ModelXtoCtoY(
-        n_class_attr=args.n_class_attr,
-        pretrained=args.pretrained,
-        use_aux=args.use_aux,
-        freeze=args.freeze,
-        num_classes=args.num_classes,
-        n_attributes=args.n_attributes,
-        expand_dim=args.expand_dim,
-        use_relu=args.use_relu,
-        use_sigmoid=args.use_sigmoid,
-    )
-    train(model, args)
-
-
-def train_X_to_y(args):
-    model = ModelXtoY(
-        pretrained=args.pretrained,
-        freeze=args.freeze,
-        use_aux=args.use_aux,
-        num_classes=args.num_classes,
-    )
-    train(model, args)
-
-
-def train_X_to_Cy(args):
-    model = ModelXtoCY(
-        pretrained=args.pretrained,
-        freeze=args.freeze,
-        num_classes=args.num_classes,
-        use_aux=args.use_aux,
-        n_attributes=args.n_attributes,
-        three_class=args.three_class,
-        connect_CY=args.connect_CY,
-    )
-    train(model, args)
+    wandb.finish()
 
 
 def _save_CUB_result(train_result):
@@ -742,20 +740,30 @@ def _save_CUB_result(train_result):
         pickle.dump(train_result, f)
 
 
+def make_configs_list() -> List[Experiment]:
+    configs = [
+        # ind_XtoC_cfg,
+        # ind_CtoY_cfg,
+        joint_cfg,
+    ]
+    configs[0].epochs = 1
+    return configs
+
+
 if __name__ == "__main__":
-    default_args = Experiment()
+    # default_args = Experiment()
     parser = argparse.ArgumentParser()
-    parser.add_argument('--attr-sparsity', type=int, default=default_args.attr_sparsity,
-                        help='Only use attrs if ndx % sparsity == 0')
-    parser.add_argument('--attr-loss-weight', type=float, default=default_args.attr_loss_weight,
-                        help='Relative weight of attribute loss')
-    new_args = parser.parse_args()
-    args = dataclasses.replace(
-        default_args,
-        attr_loss_weight=new_args.attr_loss_weight,
-        attr_sparsity=new_args.attr_sparsity,
-        tag="sparsemultimodel" + str(new_args.attr_loss_weight) + "-" + str(new_args.attr_sparsity),
-    )
-    train_multimodel(args)
+    # parser.add_argument('--attr-sparsity', type=int, default=default_args.attr_sparsity,
+    #                     help='Only use attrs if ndx % sparsity == 0')
+    # parser.add_argument('--attr-loss-weight', type=float, default=default_args.attr_loss_weight,
+    #                     help='Relative weight of attribute loss')
+    parser.add_argument('--cfg-index', type=int, default=0, help='Index of config to run')
+    args = parser.parse_args()
+    configs = make_configs_list()
+    args = configs[args.cfg_index]
+    if args.multimodel:
+        train_multimodel(args)
+    else:
+        train_old(args)
 
     # train_X_to_C(args)

@@ -2,7 +2,7 @@ import subprocess
 import sys
 from itertools import product
 
-VAST_AI_SERVERS = [(15328, 5), (15304, 4)]
+VAST_AI_SERVERS = [(19952, 6)]
 
 ATTN_COEFS = [0.1, 1, 10]
 ATTR_SPARSITIES = [1, 3, 10]
@@ -17,7 +17,7 @@ def run_multiple(setup: bool) -> None:
 
         if setup:
             # Install python3-venv and build-essential
-            pre_install_cmd = f"ssh -p {port} {addr} \"apt update && apt install -y python3-venv && apt install -y build-essential\""
+            pre_install_cmd = f"ssh -p {port} {addr} \"apt update && apt install -y python3-venv build-essential\""
             subprocess.run(pre_install_cmd, shell=True)
 
             # Setup the server for running experiments
@@ -29,8 +29,8 @@ def run_multiple(setup: bool) -> None:
         subprocess.run(sync_cmd, shell=True)
 
         # Run the experiment with the given parameters
-        attr_coef, sparsity = run_params[ndx]
-        run_cmd = f"ssh -fn -p {port} {addr} \" cd ~/hoagy-hiddeninfo-sync && source .env/bin/activate && python CUB/train_CUB.py --attr-sparsity={sparsity} --attr-loss-weight={attr_coef}\"&"
+        # attr_coef, sparsity = run_params[ndx]
+        run_cmd = f"ssh -fn -p {port} {addr} \" cd ~/hoagy-hiddeninfo-sync && source .env/bin/activate && python CUB/train_CUB.py --cfg-index={ndx}\"&"
         subprocess.Popen(run_cmd, shell=True)
 
 

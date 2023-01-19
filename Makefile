@@ -14,16 +14,15 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=11082
+SSH_PORT=19952
 VASTAI_N=6
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
 
 # List of ports for different vast.ai servers.
-SSH_PORTS = 15328
-VASTAI_NS = 5
+SSH_PORTS = 11082
+VASTAI_NS = 6
 	
-
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
 	$(STREAMLIT) run main.py
@@ -100,18 +99,6 @@ aws-pull:
 .PHONY: retrieve
 retrieve:
 	scp -P $(SSH_PORT) $(SSH_DESTINATION):/root/$(SSH_DIRECTORY)/$(FILE) .
-
-.PHONY: run-multi
-run-multi:
-	n_servers := $(words $(VASTAI_NS))
-	echo $(n_servers)
-	for n in $(seq $(n_servers)); do \
-		echo $(n)
-		$(eval VASTAI_N := $(word $(n),$(VASTAI_NS))) \
-		$(eval SSH_DESTINATION := root@ssh$(VASTAI_N).vast.ai) \
-		$(eval SSH_PORT:= $(word $(n),$(SSH_PORTS))) \
-		make ssh-setup; \
-	done
 
 .PHONY: ssh-setup
 ssh-setup:

@@ -486,3 +486,17 @@ if __name__ == "__main__":
         data_dir=Path("CUB_processed"),
         modify_data_dir="CUB_processed",
     )
+
+    # Args dict from original for making dataset from ind_XtoC model
+    create_logits_args = {
+        "exp": "ExtractConcepts",
+        "model_path": "ConceptModel__Seed1/outputs/best_model_1.pth",
+        "data_dir": "CUB_processed/class_attr_data_10",
+        "out_dir": "ConceptModel1__PredConcepts",
+    }
+
+    create_logits_data(
+        create_logits_args["model_path"], 
+        create_logits_args["out_dir"], 
+        create_logits_args["data_dir"],
+    )

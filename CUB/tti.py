@@ -14,6 +14,8 @@ from typing import List, Tuple, Dict, Optional
 
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
+
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -98,8 +100,6 @@ def build_dict_from_mask(attr_mask: np.ndarray) -> Dict:
         class_attr_ids = list(range(total_so_far, total_so_far + len(attr_ids)))
         total_so_far += len(attr_ids)
         attr_group_dict[group_id] = class_attr_ids
-
-    import pdb; pdb.set_trace()
     
     return attr_group_dict
     
@@ -268,7 +268,13 @@ ind_tti_args = TTI_Config(
     log_dir="TTI_ind",
 )
 
-def graph_tti_output(tti_output: List[Tuple[int, float]], save_dir: Optional[str] = None, show: bool = True, label: Optional[str]=None) -> None:
+def graph_tti_output(
+    tti_output: List[Tuple[int, float]], 
+    save_dir: Optional[str] = None, 
+    show: bool = True, 
+    label: Optional[str]=None, 
+    return_fig: bool = False
+    ) -> Optional[Figure]:
     """Graph the output of a TTI run"""
     n_replace, acc = zip(*tti_output)
     plt.plot(n_replace, acc, label=label)
@@ -278,6 +284,8 @@ def graph_tti_output(tti_output: List[Tuple[int, float]], save_dir: Optional[str
         plt.savefig(os.path.join(save_dir, "tti_results.png"))
     if show:
         plt.show()
+    if return_fig:
+        return plt.gcf()
 
 def graph_multi_tti_output(tti_outputs: List[TTI_Output], save_dir: Optional[str] = None):
     """Graph the output of multiple TTI runs"""

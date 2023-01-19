@@ -212,6 +212,7 @@ ind_XtoC_cfg = Experiment(
     scheduler_step=1000,
     use_aux=True,
     bottleneck=True,
+    data_dir="CUB_masked_class"
 )
 
 ind_CtoY_cfg = Experiment(
@@ -255,6 +256,7 @@ seq_CtoY_cfg = Experiment(
     weight_decay=4e-5,
     lr=0.001,
     scheduler_step=1000,
+    data_dir = "ConceptModel1__PredConcepts",
 )
 
 """

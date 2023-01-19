@@ -9,6 +9,8 @@ from cub_utils import download_from_aws, list_aws_files, upload_to_aws
 from cub_classes import TTI_Config, TTI_Output
 from tti import run_tti, graph_tti_output, graph_multi_tti_output
 
+# Location of the XtoC model to be used for independent and sequential runs
+IND_XTOC_MODEL = "out/ind_XtoC/20221130-150657/final_model.pth"
 
 def get_most_recent(run_name: str) -> str:
     """Get the most recent run folder for a given run name."""
@@ -29,6 +31,40 @@ def process_run_name(model_file: str) -> Tuple[float, int, str]:
     coef = float(coef.replace("sparsemultimodel", ""))
     sparsity = int(sparsity)
     return coef, sparsity, model_date
+
+
+def create_tti_cfg(model_file: str, model_folder: str) -> Optional[TTI_Config]:
+    """Create the TTI config based on the name of the run."""
+    if "multimodel" in model_folder:
+        tti_config = TTI_Config(
+            log_dir=model_folder,
+            model_dir=model_file,
+            multimodel=True,
+            use_attr=True,
+            bottleneck=True
+        )
+    elif "CtoY" in model_folder:
+        tti_config = TTI_Config(
+            model_dir=IND_XTOC_MODEL,
+            log_dir=model_folder,
+            model_dir2=model_file,
+            multimodel=False,
+            use_attr=True,
+            bottleneck=True
+        )
+    elif "joint" in model_folder:
+        tti_config = TTI_Config(
+            log_dir=model_folder,
+            model_dir=model_file,
+            multimodel=False,
+            use_attr=True,
+            bottleneck=False
+        )
+    else:
+        print(f"Unknown model type: {model_folder}, can't create TTI config")
+        tti_config = None
+    
+    return tti_config
 
 def process_results(runs_list: List[str], process_all: bool = False, reprocess: bool = False) -> None:
     """Process TTI results for a list of runs and upload results and graphs to AWS."""
@@ -53,18 +89,13 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
 
         # Get the sparsity and coef from the file name
         model_folder = os.path.join(*model_file.split("/")[:-1])
-        coef, sparsity, _ = process_run_name(model_file)
+        # coef, sparsity, _ = process_run_name(model_file)
+        # print(f"Running tti with folder {model_folder}, file {model_file}, sparisty {sparsity}, attn_coef {coef}")
+
 
         # Create the TTI config
-        tti_config = TTI_Config(
-            log_dir=model_folder,
-            model_dir=model_file,
-            multimodel=True,
-            use_attr=True,
-            bottleneck=True
-        )
+        tti_config = create_tti_cfg(model_file, model_folder)
 
-        print(f"Running tti with folder {model_folder}, file {model_file}, sparisty {sparsity}, attn_coef {coef}")
         # Run TTI and graph results
         results = run_tti(tti_config)
         graph_tti_output(results, save_dir=model_folder, show=False)
@@ -103,15 +134,14 @@ def get_results_pkls(runs_list: List[str], use_all: bool = False) -> List[TTI_Ou
 
 
 
+
 if __name__ == "__main__":
     # List of models to download from AWS (getting the most recent one in each case
     runs_list = [
-        "out/sparsemultimodel1-10",
-        "out/sparsemultimodel10-10",
+        # "out/ind_CtoY",
+        "out/joint",
+        "out/seq_CtoY",
     ]
-    #     "out/sparsemultimodel0.1-3",
-    #     "out/sparsemultimodel1-3",
-    # ]
 
     process_results(runs_list, process_all=True, reprocess=True)
     results = get_results_pkls(runs_list, use_all=True)

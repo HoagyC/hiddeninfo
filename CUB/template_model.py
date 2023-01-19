@@ -42,7 +42,7 @@ class End2EndModel(torch.nn.Module):
         stage2_inputs = attr_outputs
         stage2_inputs = torch.cat(stage2_inputs, dim=1)
         all_out = [self.sec_model(stage2_inputs)]
-        all_out.extend(stage1_out)
+        all_out.extend(stage1_out) # add the attribute outputs as output[1:]
         return all_out
 
     def forward(self, x):
