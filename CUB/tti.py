@@ -147,10 +147,10 @@ def run_tti(args) -> List[Tuple[int, float]]:
         model2 = torch.load(args.model_dir2)
     elif args.multimodel:
         model2 = model.post_models
-    else:  # end2end, split model into 2
-        all_mods = list(model.modules())
-        # model = ListModule(all_mods[:-1])
-        model2 = all_mods[-1]  # last fully connected layer
+    else:  
+        # end2end, get the second poart 
+        # TODO: deal with relu and sigmoid = True
+        model2=model.sec_model
 
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
     assert len(test_instance_attr_labels) == len(

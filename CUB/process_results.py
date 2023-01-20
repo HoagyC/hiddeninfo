@@ -10,7 +10,7 @@ from cub_classes import TTI_Config, TTI_Output
 from tti import run_tti, graph_tti_output, graph_multi_tti_output
 
 # Location of the XtoC model to be used for independent and sequential runs
-IND_XTOC_MODEL = "out/ind_XtoC/20221130-150657/final_model.pth"
+IND_XTOC_MODEL = "out/ind_XtoC/20230118-154035/final_model.pth"
 
 def get_most_recent(run_name: str) -> str:
     """Get the most recent run folder for a given run name."""
@@ -85,7 +85,6 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
             print(f"Results for {folder} already processed")
             continue
     
-        download_from_aws([model_file])
 
         # Get the sparsity and coef from the file name
         model_folder = os.path.join(*model_file.split("/")[:-1])
@@ -95,6 +94,11 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
 
         # Create the TTI config
         tti_config = create_tti_cfg(model_file, model_folder)
+
+        download_from_aws([model_file])
+        # Also get the XtoC model if needed
+        if tti_config.model_dir2 is not None:
+            download_from_aws([tti_config.model_dir])
 
         # Run TTI and graph results
         results = run_tti(tti_config)
@@ -138,12 +142,12 @@ def get_results_pkls(runs_list: List[str], use_all: bool = False) -> List[TTI_Ou
 if __name__ == "__main__":
     # List of models to download from AWS (getting the most recent one in each case
     runs_list = [
-        # "out/ind_CtoY",
-        "out/joint",
-        "out/seq_CtoY",
+        "out/ind_CtoY",
+        # "out/joint",
+        # "out/seq_CtoY",
     ]
 
-    process_results(runs_list, process_all=True, reprocess=True)
-    results = get_results_pkls(runs_list, use_all=True)
-    print(len(results))
-    graph_multi_tti_output(results)
+    process_results(runs_list, process_all=False, reprocess=True)
+    # results = get_results_pkls(runs_list, use_all=False)
+    # print(len(results))
+    # graph_multi_tti_output(results)

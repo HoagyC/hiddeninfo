@@ -154,7 +154,6 @@ def run_twopart_epoch(
                     )
 
                     masked_attr_target = masked_attr_labels[:, i]
-                    import pdb; pdb.set_trace()
                     main_loss = attr_criterion[i](
                         masked_attr_output, masked_attr_target
                     )
@@ -479,19 +478,21 @@ def write_metrics(
 ) -> None:
     # If training independent models, use concept accuracy as key metric since we don't have labels
     if args.exp == "Independent_XtoC":
-        key_metric = val_meters.concept_acc.avg
-        key_record = val_records.concept_acc
+        is_record = val_meters.concept_acc.avg > val_records.concept_acc
+        if is_record:
+            val_records.concept_acc = val_meters.concept_acc.avg
     else:
-        key_metric = val_meters.label_acc.avg
-        key_record = val_records.acc
+        is_record = val_meters.label_acc.avg > val_records.acc
+        if is_record:
+            val_records.acc = val_meters.label_acc.avg
 
-    if key_record < key_metric:
+    if is_record:
         val_records.epoch = epoch
-        key_record = key_metric
         torch.save(model, save_path / f"best_model_{args.seed}.pth")
         # if best_val_acc >= 100: #in the case of retraining, stop when the model reaches 100% accuracy on both train + val sets
         #    break
 
+    
     train_loss_avg = train_meters.loss.avg
     val_loss_avg = val_meters.loss.avg
 
@@ -742,11 +743,10 @@ def _save_CUB_result(train_result):
 
 def make_configs_list() -> List[Experiment]:
     configs = [
-        # ind_XtoC_cfg,
-        # ind_CtoY_cfg,
+        ind_XtoC_cfg,
+        ind_CtoY_cfg,
         joint_cfg,
     ]
-    configs[0].epochs = 1
     return configs
 
 

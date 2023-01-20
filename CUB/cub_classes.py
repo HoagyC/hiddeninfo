@@ -289,6 +289,7 @@ joint_cfg = Experiment(
     lr=0.001,
     scheduler_step=1000,
     end2end=True,
+    bottleneck=False
 )
 
 """

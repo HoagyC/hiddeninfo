@@ -14,14 +14,14 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=19952
+SSH_PORT=14410
 VASTAI_N=6
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
 
 # List of ports for different vast.ai servers.
-SSH_PORTS = 11082
-VASTAI_NS = 6
+# SSH_PORTS = 11082
+# VASTAI_NS = 6
 	
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
@@ -102,6 +102,8 @@ retrieve:
 
 .PHONY: ssh-setup
 ssh-setup:
+	ssh -p $(SSH_PORT) $(SSH_DESTINATION) \
+		"apt install -y build-essential python3-venv"
 	make ssh-sync
 	make ssh-run COMMAND="install"
 	make secret

@@ -160,7 +160,7 @@ def ModelXtoCtoY(
         num_classes=num_classes,
         n_attributes=n_attributes,
         aux_logits=use_aux,
-        bottleneck=True,
+        bottleneck=True, # BASTARDSS!!!! this is a different bottleneck flag than the one in the other model
         expand_dim=expand_dim,
         three_class=(n_class_attr == 3),
     )

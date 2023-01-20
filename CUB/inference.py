@@ -190,8 +190,6 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
                         ]
 
                     class_outputs = outputs[0]
-
-                import pdb; pdb.set_trace()
                 for i in range(args.n_attributes):
                     acc = binary_accuracy(
                         attr_outputs_sigmoid[i].squeeze(), attr_labels[:, i]
@@ -311,6 +309,8 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         attr_pred_sigmoids=all_attr_outputs_sigmoid,
         wrong_idx=wrong_idx,
     )
+
+    import pdb; pdb.set_trace()
 
     return meters, output
 
