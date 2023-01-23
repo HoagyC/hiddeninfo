@@ -142,8 +142,8 @@ def get_results_pkls(runs_list: List[str], use_all: bool = False) -> List[TTI_Ou
 if __name__ == "__main__":
     # List of models to download from AWS (getting the most recent one in each case
     runs_list = [
-        "out/ind_CtoY",
-        # "out/joint",
+        # "out/ind_CtoY",
+        "out/joint",
         # "out/seq_CtoY",
     ]
 

@@ -1,14 +1,17 @@
 """
 Taken from yewsiang/ConceptBottlenecks
 """
+import os
 from typing import Optional, List
 
 import torch
 from torch import nn
 
+from CUB.analysis import accuracy
 from CUB.template_model import MLP, inception_v3, End2EndModel
 from CUB.cub_classes import Experiment
-
+from CUB.dataset import find_class_imbalance
+from CUB.config import BASE_DIR
 
 class Multimodel(nn.Module):
     def __init__(self, args: Experiment):
@@ -201,3 +204,65 @@ def ModelXtoCY(
         three_class=three_class,
         connect_CY=connect_CY,
     )
+
+
+def make_weighted_criteria(args):
+    attr_criterion = []
+    train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
+    imbalance = find_class_imbalance(train_data_path, True) # assume args.weighted loss is always "multiple" if not ""
+    for ratio in imbalance:
+        attr_criterion.append(
+            torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
+        )
+
+
+class JointModel(nn.Module):
+    def __init__(self, args) -> None:
+        super().__init__()
+        self.args = args
+        self.first_model = ModelXtoC()
+        self.second_model = MLP(
+            input_dim=args.n_attributes, num_classes=args.num_classes, expand_dim=args.expand_dim
+        )
+
+
+class IndependentModel(nn.Module):
+    def __init__(self, args) -> None:
+        super().__init__()
+        self.args = args
+        self.first_model = ModelXtoC()
+        self.second_model = ModelOracleCtoY()
+        self.criterion = nn.CrossEntropyLoss()
+        if self.args.weighted_loss:
+            self.attr_criterion = make_weighted_criteria(args)
+        else:
+            self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
+
+        self.train_mode: str = "XtoC"
+    
+    def to_first_stage_mode(self):
+        self.train_mode = "XtoC"
+    
+    def to_second_stage_mode(self):
+        self.train_mode = "CtoY"
+
+    
+    def run_batch(self, batch):
+        inputs, labels, attr_labels = batch
+        if self.train_mode == "XtoC":
+            outputs = self.first_model(inputs)
+            loss = self.criterion(outputs, attr_labels)
+            _, preds = torch.max(outputs, 1)
+            return loss, preds
+
+        if self.train_mode == "CtoY":
+            outputs = self.model(inputs)
+            loss = self.criterion(outputs, labels)
+            acc = accuracy(outputs, labels, topk=(1,))
+            if self.is_training:
+                self.optimizer.zero_grad()  # zero the parameter gradients
+                loss.backward()
+                self.optimizer.step()  # optimizer step to update parameters
+
+            return loss, preds
+
