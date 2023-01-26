@@ -158,10 +158,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
                 class_outputs = outputs
             else:
                 if args.bottleneck:
-                    if args.use_relu:
-                        attr_outputs = [torch.nn.ReLU()(o) for o in outputs]
-                        attr_outputs_sigmoid = [torch.nn.Sigmoid()(o) for o in outputs]
-                    elif args.use_sigmoid:
+                    if args.use_sigmoid:
                         attr_outputs = [torch.nn.Sigmoid()(o) for o in outputs]
                         attr_outputs_sigmoid = attr_outputs
                     else:

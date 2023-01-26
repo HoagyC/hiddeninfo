@@ -10,7 +10,7 @@ import pickle
 import random
 import sys
 
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,7 +18,6 @@ import math
 import torch
 from torch.utils.data import DataLoader
 
-import numpy as np
 import wandb
 
 from CUB.analysis import accuracy, binary_accuracy
@@ -35,185 +34,51 @@ from CUB.models import (
 from CUB.cub_classes import Experiment, Meters, RunRecord
 from CUB.cub_classes import ind_XtoC_cfg, ind_CtoY_cfg, joint_cfg
 
-from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE, AUX_LOSS_RATIO
+from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
 RESULTS_DIR ="out"
 
-def run_epoch_simple(model, optimizer, loader, meters, criterion, args, is_training):
-    """
-    A -> Y: Predicting class labels using only attributes with MLP
-    """
-    if is_training:
-        model.train()
-    else:
-        model.eval()
-    for _, data in enumerate(loader):
-        inputs, labels, attr_mask = data
-        if isinstance(inputs, list):
-            # inputs = [i.long() for i in inputs]
-            inputs = torch.stack(inputs).t().float()
-        inputs = torch.flatten(inputs, start_dim=1).float()
-        inputs = inputs.cuda() if torch.cuda.is_available() else inputs
-        labels = labels.cuda() if torch.cuda.is_available() else labels
-        attr_mask = attr_mask.cuda() if torch.cuda.is_available else attr_mask
-
-        masked_inputs = inputs[attr_mask]
-        masked_labels = labels[attr_mask]
-
-        masked_outputs = model(masked_inputs)
-        loss = criterion(masked_outputs, masked_labels)
-        acc = accuracy(masked_outputs, labels, topk=(1,))
-        meters.loss.update(loss.item(), masked_inputs.size(0))
-        meters.label_acc.update(acc[0], masked_inputs.size(0))
-
-        if is_training:
-            optimizer.zero_grad()  # zero the parameter gradients
-            loss.backward()
-            optimizer.step()  # optimizer step to update parameters
-
-        if args.quick:
-            break
-    return meters
-
-
-def run_twopart_epoch(
+def run_epoch(
     model,
     optimizer,
     loader,
     meters,
-    criterion,
-    attr_criterion,
-    args,
     is_training,
 ):
-    """
-    For the rest of the networks (X -> A, cotraining, simple finetune)
-    """
     if is_training:
         model.train()
     else:
         model.eval()
 
-    for _, data in enumerate(loader):
-        if attr_criterion is None:
-            inputs, labels = data
-            attr_labels = None
-            attr_mask = torch.ones(inputs.shape[0]).to(torch.bool)
-        else:
-            dat_tup = data
-            inputs, labels, attr_labels, attr_mask = data
-            if args.n_attributes > 1:
-                attr_labels = [i.long() for i in attr_labels]
-                attr_labels = torch.stack(attr_labels).t()  # .float() #N x 312
-            else:
-                if isinstance(attr_labels, list):
-                    attr_labels = attr_labels[0]
-                attr_labels = attr_labels.unsqueeze(1)
-            attr_labels = attr_labels.float()
-            attr_labels = (
-                attr_labels.cuda() if torch.cuda.is_available() else attr_labels
-            )
+    for data in loader:
+        # if attr_criterion is None:
 
+        inputs, class_labels, attr_labels, attr_mask = data
+
+        attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
-        labels = labels.cuda() if torch.cuda.is_available() else labels
-        if attr_labels is not None:
-            attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
-            masked_attr_labels = attr_labels[attr_mask]
+        class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
+        attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
 
-        masked_inputs = inputs[attr_mask]
-        masked_labels = labels[attr_mask]
+        attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, attr_mask)
 
-        losses = []
-        out_start = 0
-
-        if is_training and args.use_aux:
-            masked_outputs, masked_aux_outputs = model(masked_inputs)
-
-            if not args.bottleneck:
-                # loss main is for the main task label (always the first output)
-                loss_main = criterion(
-                    masked_outputs[0], masked_labels
-                ) + AUX_LOSS_RATIO * criterion(masked_aux_outputs[0], masked_labels)
-                losses.append(loss_main)
-                out_start = 1
-            if (
-                attr_criterion is not None and args.attr_loss_weight > 0
-            ):  # X -> A, cotraining, end2end
-                for i in range(len(attr_criterion)):
-                    masked_attr_output = (
-                        masked_outputs[i + out_start]
-                        .squeeze()
-                        .type(torch.cuda.FloatTensor)
-                    )
-                    masked_attr_aux_output = (
-                        masked_aux_outputs[i + out_start]
-                        .squeeze()
-                        .type(torch.cuda.FloatTensor)
-                    )
-
-                    masked_attr_target = masked_attr_labels[:, i]
-                    main_loss = attr_criterion[i](
-                        masked_attr_output, masked_attr_target
-                    )
-
-                    aux_loss = attr_criterion[i](
-                        masked_attr_aux_output, masked_attr_target
-                    )
-                    losses.append(
-                        args.attr_loss_weight * (main_loss + AUX_LOSS_RATIO * aux_loss)
-                    )
-
-        else:
-            masked_outputs = model(masked_inputs)
-
-            if not args.bottleneck:
-                loss_main = criterion(masked_outputs[0], masked_labels)
-                losses.append(loss_main)
-                out_start = 1
-            if (
-                attr_criterion is not None and args.attr_loss_weight > 0
-            ):  # X -> A, cotraining, end2end
-                for i in range(len(attr_criterion)):
-                    masked_attr_value = (
-                        masked_outputs[i + out_start]
-                        .squeeze()
-                        .type(torch.cuda.FloatTensor)
-                    )
-                    masked_attr_target = masked_attr_labels[:, i]
-                    attr_loss = attr_criterion[i](masked_attr_value, masked_attr_target)
-                    losses.append(args.attr_loss_weight * attr_loss)
-
-        if args.bottleneck:  # attribute accuracy
-            sigmoid_outputs = torch.nn.Sigmoid()(torch.cat(masked_outputs, dim=1))
-            acc = binary_accuracy(sigmoid_outputs, attr_labels)
-            meters.concept_acc.update(acc.data.cpu().numpy(), inputs.size(0))
-        else:
-            acc = accuracy(
-                masked_outputs[0], labels, topk=(1,)
-            )  # only care about class prediction accuracy
-            meters.label_acc.update(acc[0], inputs.size(0))
-
-        if attr_criterion is not None:
-            if args.bottleneck:
-                total_loss = sum(losses) / args.n_attributes
-            else:  # cotraining, loss by class prediction and loss by attribute prediction have the same weight
-                total_loss = losses[0] + sum(losses[1:])
-                if args.normalize_loss:
-                    total_loss = total_loss / (
-                        1 + args.attr_loss_weight * args.n_attributes
-                    )
-        else:  # finetune
-            total_loss = sum(losses)
-        meters.loss.update(total_loss.item(), inputs.size(0))
         if is_training:
+            loss = model.generate_loss(attr_preds, aux_attr_preds, class_preds, aux_class_preds, attr_labels, class_labels)
             optimizer.zero_grad()
-            total_loss.backward()
+            loss.backward()
             optimizer.step()
+    
+        attr_pred_sigmoids = torch.nn.Sigmoid()(torch.cat(attr_preds, dim=1))
 
-        if args.quick:
-            break
+        attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels)
+        class_acc = accuracy(class_preds, class_labels, topk=(1,))
+
+        meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
+        meters.label_acc.update(class_acc[0], inputs.size(0))
+        meters.loss.update(loss.item(), inputs.size(0))
+
     return meters
 
 
@@ -243,9 +108,6 @@ def run_multimodel_epoch(
         pre_model = model.pre_models[pre_model_ndx]
         post_model = model.post_models[post_model_ndx]
 
-        if attr_criterion is None:
-            inputs, labels = data
-            attr_labels = None
         else:
             inputs, labels, attr_labels, attr_mask_bin = data
             if args.n_attributes > 1:
@@ -336,8 +198,6 @@ def train(
     init_epoch: int = 0,
 ):
     print(f"Running {args.tag}")
-    if args.quick:
-        print("Speed running!")
     now_str = datetime.now().strftime(DATETIME_FMT)
     run_save_path = Path(args.log_dir) / args.tag / now_str
     if not run_save_path.is_dir():
@@ -351,8 +211,8 @@ def train(
             model.reset_post_models()
 
     model = model.cuda()
-
     criterion, attr_criterion = make_criteria(args)
+    model.set_criteria(criterion, attr_criterion)
 
     for param in model.parameters():
         param.requires_grad = True
@@ -384,14 +244,22 @@ def train(
     val_records = RunRecord()
 
     for epoch_ndx in range(init_epoch, args.epochs + init_epoch):
-        train_meters, val_meters = run_epoch(
+        train_meters = run_epoch(
             model,
-            args,
             optimizer,
             criterion,
             attr_criterion,
             train_loader,
+            is_training=True
+        )
+
+        val_meters = run_epoch(
+            model,
+            optimizer,
+            criterion,
+            attr_criterion,
             val_loader,
+            is_training=False
         )
 
         write_metrics(
@@ -438,22 +306,15 @@ def final_save(model: torch.nn.Module, run_path: Path, args: Experiment):
 def make_criteria(
     args: Experiment,
 ) -> Tuple[torch.nn.Module, Optional[List[torch.nn.Module]]]:
-    # Determine imbalance
-    imbalance = None
-    if args.use_attr and not args.no_img and args.weighted_loss:
-        train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
-        if args.weighted_loss == "multiple":
-            imbalance = find_class_imbalance(train_data_path, True)
-        else:
-            imbalance = find_class_imbalance(train_data_path, False)
+    criterion = torch.nn.CrossEntropyLoss()
 
     attr_criterion: Optional[List[torch.nn.Module]]
-    criterion = torch.nn.CrossEntropyLoss()
 
     if args.use_attr and not args.no_img:
         attr_criterion = []  # separate criterion (loss function) for each attribute
         if args.weighted_loss:
-            assert imbalance is not None
+            train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
+            imbalance = find_class_imbalance(train_data_path, True)
             for ratio in imbalance:
                 attr_criterion.append(
                     torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
@@ -508,90 +369,6 @@ def write_metrics(
     }
 
     wandb.log(metrics_dict)
-
-
-def run_epoch(
-    model: torch.nn.Module,
-    args: Experiment,
-    optimizer: torch.optim.Optimizer,
-    criterion: torch.nn.Module,
-    attr_criterion: Optional[List[torch.nn.Module]],
-    train_loader: DataLoader,
-    val_loader: DataLoader,
-) -> Tuple[Meters, Meters]:
-
-    train_meters = Meters()
-    val_meters = Meters()
-
-    if args.multimodel:
-        run_multimodel_epoch(
-            model,
-            optimizer,
-            train_loader,
-            train_meters,
-            criterion,
-            attr_criterion,
-            args,
-            is_training=True,
-        )
-
-    elif args.no_img:
-        run_epoch_simple(
-            model,
-            optimizer,
-            train_loader,
-            train_meters,
-            criterion,
-            args,
-            is_training=True,
-        )
-    else:
-        run_twopart_epoch(
-            model,
-            optimizer,
-            train_loader,
-            train_meters,
-            criterion,
-            attr_criterion,
-            args,
-            is_training=True,
-        )
-
-    with torch.no_grad():
-        if args.multimodel:
-            run_multimodel_epoch(
-                model,
-                optimizer,
-                val_loader,
-                val_meters,
-                criterion,
-                attr_criterion,
-                args,
-                is_training=False,
-            )
-        elif args.no_img:
-            run_epoch_simple(
-                model,
-                optimizer,
-                val_loader,
-                val_meters,
-                criterion,
-                args,
-                is_training=False,
-            )
-        else:
-            run_twopart_epoch(
-                model,
-                optimizer,
-                val_loader,
-                val_meters,
-                criterion,
-                attr_criterion,
-                args,
-                is_training=False,
-            )
-
-    return train_meters, val_meters
 
 
 def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:

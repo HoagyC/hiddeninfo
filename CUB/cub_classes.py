@@ -81,9 +81,6 @@ class Experiment(BaseConf):
     weight_decay: float = 5e-5
     attr_sparsity: int = 1
 
-    # Legacy
-    connect_CY: bool = False
-    resampling: bool = False
     batch_size: int = 32
 
     freeze: bool = False
@@ -102,9 +99,6 @@ class Experiment(BaseConf):
     reset_post_models: bool = False
     n_models: int = 4
 
-    # Can predict whethe trait is visible as a third class, n_class_attr=3
-    n_class_attr: int = 2
-    three_class: bool = n_class_attr == 3
     quick: bool = False
 
 
@@ -214,7 +208,8 @@ ind_XtoC_cfg = Experiment(
     scheduler_step=1000,
     use_aux=True,
     bottleneck=True,
-    data_dir="CUB_masked_class"
+    data_dir="CUB_masked_class",
+    weighted_loss="multiple"
 )
 
 ind_CtoY_cfg = Experiment(
@@ -335,6 +330,7 @@ python3 src/experiments.py cub Standard --seed 1 -ckpt 1 -log_dir StandardNoBNMo
 standard_nobottle_cfg = Experiment(
     tag="standard_nobottle",
     exp="Standard",
+    use_attr=False,
     seed=1,
     epochs=1000,
     optimizer="SGD",
