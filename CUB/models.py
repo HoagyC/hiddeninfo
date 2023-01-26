@@ -7,36 +7,27 @@ from typing import Optional, List, Tuple
 import torch
 from torch import nn
 
-from CUB.analysis import accuracy
-from CUB.template_model import MLP, inception_v3, End2EndModel
+from CUB.template_model import MLP, inception_v3
 from CUB.cub_classes import Experiment
 from CUB.dataset import find_class_imbalance
 from CUB.config import BASE_DIR, AUX_LOSS_RATIO
 
 # Basic model for predicting attributes from images
-def ModelXtoC(
-    pretrained: bool,
-    num_classes: int,
-    n_attributes: int,
-    expand_dim: int,
-) -> nn.Module:
+def ModelXtoC(args: Experiment) -> nn.Module:
     return inception_v3(
-        pretrained=pretrained,
+        pretrained=args.pretrained,
         freeze=False,
         aux_logits=True,
-        num_classes=num_classes,
-        n_attributes=n_attributes,
+        num_classes=args.num_classes,
+        n_attributes=args.n_attributes,
         bottleneck=True,
-        expand_dim=expand_dim,
+        expand_dim=args.expand_dim,
     )
 
-
 # Basic model for predicting classes from attributes
-def ModelCtoY(
-    n_attributes: int, num_classes: int, expand_dim: int
-) -> nn.Module:
+def ModelCtoY(args: Experiment) -> nn.Module:
     model = MLP(
-        input_dim=n_attributes, num_classes=num_classes, expand_dim=expand_dim
+        input_dim=args.n_attributes, num_classes=args.num_classes, expand_dim=args.expand_dim
     )
     return model
 
@@ -58,24 +49,14 @@ class Multimodel(nn.Module):
             use_pretrained = pretrained
 
         pre_models_list = [
-            ModelXtoC(
-                pretrained=use_pretrained,
-                num_classes=self.args.num_classes,
-                n_attributes=self.args.n_attributes,
-                expand_dim=self.args.expand_dim,
-                three_class=self.args.three_class,
-            )
+            ModelXtoC(self.args)
             for _ in range(self.args.n_models)
         ]
         self.pre_models = nn.ModuleList(pre_models_list)
 
     def reset_post_models(self) -> None:
         post_models_list = [
-            ModelCtoY(
-                n_attributes=self.args.n_attributes,
-                num_classes=self.args.num_classes,
-                expand_dim=self.args.expand_dim,
-            )
+            ModelCtoY(self.args)
             for _ in range(self.args.n_models)
         ]
 
@@ -143,8 +124,8 @@ class JointModel(nn.Module):
     def __init__(self, args) -> None:
         super().__init__()
         self.args = args
-        self.first_model = ModelXtoC()
-        self.second_model = ModelCtoY()
+        self.first_model = ModelXtoC(self.args)
+        self.second_model = ModelCtoY(self.args)
         self.criterion = nn.CrossEntropyLoss()
         if self.args.weighted_loss:
             self.attr_criterion = make_weighted_criteria(args)
@@ -177,25 +158,19 @@ class JointModel(nn.Module):
         return loss
 
 class IndependentModel(nn.Module):
-    def __init__(self, args) -> None:
+    def __init__(self, args: Experiment, train_mode: str) -> None:
         super().__init__()
         self.args = args
-        self.first_model = ModelXtoC()
-        self.second_model = ModelCtoY()
+        self.first_model = ModelXtoC(self.args)
+        self.second_model = ModelCtoY(self.args)
         self.criterion = nn.CrossEntropyLoss()
         if self.args.weighted_loss:
             self.attr_criterion = make_weighted_criteria(args)
         else:
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
 
-        if args.exp == "Concept_XtoC":
-            self.train_mode = "XtoC"
-        elif args.exp == "Independent_CtoY":
-            self.train_mode = "CtoY"
-        else:
-            raise ValueError(f"Invalid experiment name {args.exp} for IndependentModel")
-
         self.attr_loss_ratio = args.attr_loss_ratio
+        self.train_mode = train_mode
 
     
     def generate_predictions(self, inputs, attr_labels, mask):

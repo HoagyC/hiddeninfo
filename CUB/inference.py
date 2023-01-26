@@ -64,28 +64,17 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     if args.multimodel:
         model2 = model.post_models[0]
         model = model.pre_models[0]
+
     print(args.model_dir)
-    if not hasattr(model, "use_relu"):
-        if args.use_relu:
-            model.use_relu = True
-        else:
-            model.use_relu = False
     if not hasattr(model, "use_sigmoid"):
         if args.use_sigmoid:
             model.use_sigmoid = True
         else:
             model.use_sigmoid = False
-    if not hasattr(model, "cy_fc"):
-        model.cy_fc = None
     model.eval()
 
     if args.model_dir2:
         model2 = torch.load(args.model_dir2)
-        if not hasattr(model2, "use_relu"):
-            if args.use_relu:
-                model2.use_relu = True
-            else:
-                model2.use_relu = False
         if not hasattr(model2, "use_sigmoid"):
             if args.use_sigmoid:
                 model2.use_sigmoid = True
@@ -122,36 +111,19 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     topk_class_labels, topk_class_outputs = [], []
 
     # Run a normal epoch, get outputs and top K class outputs
-    for data_idx, data in enumerate(loader):
-        if args.use_attr:
-            if args.no_img:  # A -> Y
-                inputs, labels = data
-                if isinstance(inputs, list):
-                    inputs = torch.stack(inputs).t().float()
-                inputs = inputs.float()
-                # inputs = torch.flatten(inputs, start_dim=1).float()
-            else:
-                inputs, labels, attr_labels, attr_mask = data
-                attr_labels = torch.stack(attr_labels).t()  # N x 312
-        else:  # simple finetune
-            inputs, labels = data
+    for data in loader:
+        inputs, class_labels, attr_labels, attr_mask = data
 
-        inputs = inputs.cuda()
-        labels = labels.cuda()
+        attr_labels = [i.long() for i in attr_labels]
+        attr_labels = torch.stack(attr_labels).t()
 
-        # Option to run separate models for each attribute??
-        if args.attribute_group:
-            outputs = []
-            f = open(args.attribute_group, "r")
-            for line in f:
-                attr_model = torch.load(line.strip())
-                outputs.extend(attr_model(inputs))
-        else:
-            outputs = model(inputs)
+        attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
+        inputs = inputs.cuda() if torch.cuda.is_available() else inputs
+        class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
+        attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
 
-        class_outputs: torch.Tensor
-        attr_outputs: torch.Tensor
-        attr_outputs_sigmoid: torch.Tensor
+        attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, attr_mask)
+
         if args.use_attr:
             assert type(meters) == Eval_Meter_Acc
             if args.no_img:  # A -> Y
@@ -314,76 +286,6 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
 
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
-    parser = argparse.ArgumentParser(description="PyTorch Training")
-    parser.add_argument("-log_dir", default=".", help="where results are stored")
-    parser.add_argument(
-        "-model_dirs",
-        default=None,
-        nargs="+",
-        help="where the trained models are saved",
-    )
-    parser.add_argument(
-        "-model_dirs2",
-        default=None,
-        nargs="+",
-        help="where another trained model are saved (for bottleneck only)",
-    )
-    parser.add_argument(
-        "-eval_data", default="test", help="Type of data (train/ val/ test) to be used"
-    )
-    parser.add_argument(
-        "-use_attr",
-        help="whether to use attributes (FOR COTRAINING ARCHITECTURE ONLY)",
-        action="store_true",
-    )
-    parser.add_argument(
-        "-no_img",
-        help="if included, only use attributes (and not raw imgs) for class prediction",
-        action="store_true",
-    )
-    parser.add_argument(
-        "-bottleneck",
-        help="whether to predict attributes before class labels",
-        action="store_true",
-    )
-    parser.add_argument(
-        "-image_dir", default="images", help="test image folder to run inference on"
-    )
-    parser.add_argument(
-        "-n_class_attr",
-        type=int,
-        default=2,
-        help="whether attr prediction is a binary or triary classification",
-    )
-    parser.add_argument(
-        "-data_dir", default="", help="directory to the data used for evaluation"
-    )
-    parser.add_argument(
-        "-n_attributes",
-        type=int,
-        default=N_ATTRIBUTES,
-        help="whether to apply bottlenecks to only a few attributes",
-    )
-    parser.add_argument(
-        "-attribute_group",
-        default=None,
-        help="file listing the (trained) model directory for each attribute group",
-    )
-    parser.add_argument(
-        "-feature_group_results",
-        help="whether to print out performance of individual atttributes",
-        action="store_true",
-    )
-    parser.add_argument(
-        "-use_relu",
-        help="Whether to include relu activation before using attributes to predict Y. For end2end & bottleneck model",
-        action="store_true",
-    )
-    parser.add_argument(
-        "-use_sigmoid",
-        help="Whether to include sigmoid activation before using attributes to predict Y. For end2end & bottleneck model",
-        action="store_true",
-    )
     args = parser.parse_args()
     args.batch_size = 16
 

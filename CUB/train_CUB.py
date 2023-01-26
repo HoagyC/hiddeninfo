@@ -16,19 +16,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import math
 import torch
-from torch.utils.data import DataLoader
 
 import wandb
 
 from CUB.analysis import accuracy, binary_accuracy
 from CUB.dataset import load_data, find_class_imbalance
 from CUB.models import (
-    ModelXtoCY,
-    ModelXtoChat_ChatToY,
-    ModelXtoY,
-    ModelXtoC,
-    ModelOracleCtoY,
-    ModelXtoCtoY,
+    IndependentModel,
+    JointModel,
     Multimodel,
 )
 from CUB.cub_classes import Experiment, Meters, RunRecord
@@ -53,9 +48,10 @@ def run_epoch(
         model.eval()
 
     for data in loader:
-        # if attr_criterion is None:
-
         inputs, class_labels, attr_labels, attr_mask = data
+
+        attr_labels = [i.long() for i in attr_labels]
+        attr_labels = torch.stack(attr_labels).t()
 
         attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
@@ -81,120 +77,9 @@ def run_epoch(
 
     return meters
 
-
-def run_multimodel_epoch(
-    model,
-    optimizer,
-    loader,
-    meters,
-    criterion,
-    attr_criterion,
-    args,
-    is_training,
-):
-
-    if is_training:
-        model.train()
-    else:
-        model.eval()
-
-    for _, data in enumerate(loader):
-        pre_model_ndx = random.randint(0, len(model.pre_models) - 1)
-        if args.shuffle_models:
-            post_model_ndx = random.randint(0, len(model.pre_models) - 1)
-        else:
-            post_model_ndx = pre_model_ndx
-
-        pre_model = model.pre_models[pre_model_ndx]
-        post_model = model.post_models[post_model_ndx]
-
-        else:
-            inputs, labels, attr_labels, attr_mask_bin = data
-            if args.n_attributes > 1:
-                attr_labels = [i.long() for i in attr_labels]
-                attr_labels = torch.stack(attr_labels).t()  # .float() #N x 312
-            else:
-                if isinstance(attr_labels, list):
-                    attr_labels = attr_labels[0]
-                attr_labels = attr_labels.unsqueeze(1)
-            attr_labels = attr_labels.float()
-            attr_labels = (
-                attr_labels.cuda() if torch.cuda.is_available() else attr_labels
-            )
-
-        inputs = inputs.cuda() if torch.cuda.is_available() else inputs
-        labels = labels.cuda() if torch.cuda.is_available() else labels
-        attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
-        attr_mask_bin = (
-            attr_mask_bin.cuda() if torch.cuda.is_available() else attr_mask_bin
-        )
-
-        # args.use_aux adds an additional concept prediction layer to the pre_model, predicting
-        # concepts from non-final layers to pass concept info to lower layers.
-        if args.use_aux and is_training:
-            concepts, aux_concepts = pre_model(inputs)
-            concepts_t = torch.cat(concepts, dim=1)
-
-        else:
-            concepts = pre_model(inputs)
-            concepts_t = torch.cat(concepts, dim=1)
-
-        output_labels = post_model(concepts_t)
-
-        losses = []
-        # Loss main is for the main task label (always the first output)
-        loss_main = 1.0 * criterion(output_labels, target=labels)
-        losses.append(loss_main)
-
-        # Adding losses separately for the different classes (if there are any non-masked attributes)
-        if attr_mask_bin is not None and int(sum(attr_mask_bin)) != 0:
-            for i in range(len(attr_criterion)):
-                value = torch.masked_select(
-                    concepts[i].type(torch.cuda.FloatTensor).squeeze(), attr_mask_bin
-                )
-                target = torch.masked_select(attr_labels[:, i], attr_mask_bin)
-                attr_loss = attr_criterion[i](value, target) * args.attr_sparsity
-
-                if args.use_aux and is_training:
-                    aux_value = torch.masked_select(
-                        aux_concepts[i].type(torch.cuda.FloatTensor).squeeze(),
-                        attr_mask_bin,
-                    )
-                    aux_attr_loss = AUX_LOSS_RATIO * attr_criterion[i](aux_value, target) * args.attr_sparsity
-
-                    attr_loss += aux_attr_loss
-
-                losses.append(args.attr_loss_weight * attr_loss / args.n_attributes)
-        else:
-            for i in range(len(attr_criterion)):
-                losses.append(0)
-
-        # Calculating attribute accuracy
-        sigmoid_outputs = torch.nn.Sigmoid()(concepts_t)
-        concept_acc = binary_accuracy(sigmoid_outputs, attr_labels)
-        meters.concept_acc.update(concept_acc.data.cpu().numpy(), inputs.size(0))
-
-        label_acc = accuracy(
-            output_labels, labels, topk=(1,)
-        )  # only care about class prediction accuracy
-        meters.label_acc.update(label_acc[0], inputs.size(0))
-
-        total_loss = sum(losses)
-        meters.loss.update(total_loss.item(), inputs.size(0))
-        if is_training:
-            optimizer.zero_grad()
-            total_loss.backward()
-            optimizer.step()
-
-        if args.quick:
-            break
-    return meters
-
-
 def train(
     model: torch.nn.Module,
     args: Experiment,
-    split_models: bool = False,
     init_epoch: int = 0,
 ):
     print(f"Running {args.tag}")
@@ -211,8 +96,6 @@ def train(
             model.reset_post_models()
 
     model = model.cuda()
-    criterion, attr_criterion = make_criteria(args)
-    model.set_criteria(criterion, attr_criterion)
 
     for param in model.parameters():
         param.requires_grad = True
@@ -247,8 +130,6 @@ def train(
         train_meters = run_epoch(
             model,
             optimizer,
-            criterion,
-            attr_criterion,
             train_loader,
             is_training=True
         )
@@ -256,8 +137,6 @@ def train(
         val_meters = run_epoch(
             model,
             optimizer,
-            criterion,
-            attr_criterion,
             val_loader,
             is_training=False
         )
@@ -400,112 +279,22 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 
 
 def train_multimodel(args) -> None:
-    secrets = get_secrets()
-    wandb.login(key=secrets["wandb_key"])
-    multiple_cfg = dataclasses.replace(
-        args,
-        multimodel=True,
-        n_models=1,
-        epochs=1000,
-        use_aux=True,
-        use_attr=True,
-        bottleneck=True,
-        normalize_loss=True,
-        pretrained=True,
-    )
-    retrain_dec_cfg = dataclasses.replace(
-        multiple_cfg,
-        shuffle_models=True,
-        freeze_post_models=True,
-        reset_post_models=True,
-    )
-    retrain_enc_cfg = dataclasses.replace(
-        multiple_cfg,
-        shuffle_models=True,
-        freeze_pre_models=True,
-        reset_pre_models=True,
-    )
-    model = Multimodel(multiple_cfg)
-    elapsed_epochs = train(model, multiple_cfg)
-    train(model, retrain_dec_cfg, init_epoch=elapsed_epochs)
-    wandb.finish()
-
-
-def make_model(exp: str) -> torch.nn.Module:
-    exp_strs = [
-        "Concept_XtoC",
-        "Independent_CtoY",
-        "Sequential_CtoY",
-        "Standard",
-        "Joint",
-        "Multitask",
-    ]
-    assert exp in exp_strs, f"Experiment {exp} not recognized"
-    
-    if exp == "Concept_XtoC":
-        model = ModelXtoC(
-            pretrained=args.pretrained,
-            freeze=args.freeze,
-            use_aux=args.use_aux,
-            num_classes=args.num_classes,
-            n_attributes=args.n_attributes,
-            expand_dim=args.expand_dim,
-            three_class=args.three_class,
-        )
-    elif exp == "Independent_CtoY":
-        model = ModelOracleCtoY(
-            n_class_attr=args.n_class_attr,
-            n_attributes=args.n_attributes,
-            num_classes=args.num_classes,
-            expand_dim=args.expand_dim,
-        )
-    elif exp == "Sequential_CtoY":
-        model = ModelXtoChat_ChatToY(
-            n_class_attr=args.n_class_attr,
-            n_attributes=args.n_attributes,
-            num_classes=args.num_classes,
-            expand_dim=args.expand_dim,
-        )
-    elif exp == "Joint":
-        model = ModelXtoCtoY(
-            n_class_attr=args.n_class_attr,
-            pretrained=args.pretrained,
-            use_aux=args.use_aux,
-            freeze=args.freeze,
-            num_classes=args.num_classes,
-            n_attributes=args.n_attributes,
-            expand_dim=args.expand_dim,
-            use_relu=args.use_relu,
-            use_sigmoid=args.use_sigmoid,
-        )
-    elif exp == "Standard":
-        model = ModelXtoY(
-            pretrained=args.pretrained,
-            freeze=args.freeze,
-            use_aux=args.use_aux,
-            num_classes=args.num_classes,
-        )
-    elif exp == "Multitask":
-        model = ModelXtoCY(
-            pretrained=args.pretrained,
-            freeze=args.freeze,
-            num_classes=args.num_classes,
-            use_aux=args.use_aux,
-            n_attributes=args.n_attributes,
-            three_class=args.three_class,
-            connect_CY=args.connect_CY,
-        )
-    
-    return model
-
-
+    model = Multimodel(args)
+    elapsed_epochs = train(model, args)
+    if args.reset_post_models:
+        model.reset_post_models()
+    if args.reset_pre_models:
+        model.reset_pre_models()
+    train(model, args, init_epoch=elapsed_epochs)
 
 def train_old(args):
-    secrets = get_secrets()
-    wandb.login(key=secrets["wandb_key"])
-    model = make_model(args.exp)
+    if args.exp == "Concept_XtoC":
+        model = IndependentModel(args, train_mode="XtoC")
+    elif args.exp == "Independent_CtoY":
+        model = IndependentModel(args, train_mode="CtoY")
+    elif args.exp == "Joint":
+        model = JointModel(args)
     train(model, args)
-    wandb.finish()
 
 
 def _save_CUB_result(train_result):
@@ -528,19 +317,18 @@ def make_configs_list() -> List[Experiment]:
 
 
 if __name__ == "__main__":
-    # default_args = Experiment()
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--attr-sparsity', type=int, default=default_args.attr_sparsity,
-    #                     help='Only use attrs if ndx % sparsity == 0')
-    # parser.add_argument('--attr-loss-weight', type=float, default=default_args.attr_loss_weight,
-    #                     help='Relative weight of attribute loss')
     parser.add_argument('--cfg-index', type=int, default=0, help='Index of config to run')
     args = parser.parse_args()
     configs = make_configs_list()
     args = configs[args.cfg_index]
+
+    secrets = get_secrets()
+    wandb.login(key=secrets["wandb_key"])
+    
     if args.multimodel:
         train_multimodel(args)
     else:
         train_old(args)
-
-    # train_X_to_C(args)
+    
+    wandb.finish()
