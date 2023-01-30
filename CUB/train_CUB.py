@@ -36,12 +36,12 @@ DATETIME_FMT = "%Y%m%d-%H%M%S"
 RESULTS_DIR ="out"
 
 def run_epoch(
-    model,
-    optimizer,
-    loader,
-    meters,
-    is_training,
-):
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    loader: torch.utils.data.DataLoader,
+    meters: Meters,
+    is_training: bool,
+) -> None:
     if is_training:
         model.train()
     else:
@@ -49,33 +49,37 @@ def run_epoch(
 
     for data in loader:
         inputs, class_labels, attr_labels, attr_mask = data
-
-        attr_labels = [i.long() for i in attr_labels]
+        attr_labels = [i.float() for i in attr_labels]
         attr_labels = torch.stack(attr_labels, dim=1)
 
         attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
         attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
-
         attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, attr_mask)
-
         if is_training:
-            loss = model.generate_loss(attr_preds, aux_attr_preds, class_preds, aux_class_preds, attr_labels, class_labels)
+            loss = model.generate_loss(
+                attr_preds=attr_preds, 
+                aux_attr_preds=aux_attr_preds, 
+                class_preds=class_preds,
+                aux_class_preds=aux_class_preds, 
+                attr_labels=attr_labels, 
+                class_labels=class_labels,
+                mask=attr_mask
+            )
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-    
-        attr_pred_sigmoids = torch.nn.Sigmoid()(torch.cat(attr_preds, dim=1))
+            meters.loss.update(loss.item(), inputs.size(0))
 
-        attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels)
-        class_acc = accuracy(class_preds, class_labels, topk=(1,))
-
-        meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
-        meters.label_acc.update(class_acc[0], inputs.size(0))
-        meters.loss.update(loss.item(), inputs.size(0))
-
-    return meters
+        if attr_preds is not None:
+            attr_pred_sigmoids = torch.nn.Sigmoid()(torch.cat(attr_preds, dim=1))
+            attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels)
+            meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
+        
+        if class_preds is not None:
+            class_acc = accuracy(class_preds, class_labels, topk=(1,))
+            meters.label_acc.update(class_acc[0], inputs.size(0))
 
 def train(
     model: torch.nn.Module,
@@ -121,23 +125,27 @@ def train(
     train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
     val_data_path = train_data_path.replace("train.pkl", "val.pkl")
 
-    train_loader = load_data([train_data_path], args, resampling=args.resampling)
-    val_loader = load_data([val_data_path], args)
+    train_loader = load_data([train_data_path], args, no_img=False)
+    val_loader = load_data([val_data_path], args, no_img=False)
 
+    train_meters = Meters()
+    val_meters = Meters()
     val_records = RunRecord()
 
     for epoch_ndx in range(init_epoch, args.epochs + init_epoch):
-        train_meters = run_epoch(
+        run_epoch(
             model,
             optimizer,
             train_loader,
+            train_meters,
             is_training=True
         )
 
-        val_meters = run_epoch(
+        run_epoch(
             model,
             optimizer,
             val_loader,
+            val_meters,
             is_training=False
         )
 

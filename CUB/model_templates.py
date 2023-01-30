@@ -109,7 +109,6 @@ class Inception3(nn.Module):
         if aux_logits:
             self.AuxLogits = InceptionAux(
                 768,
-                num_classes,
                 n_attributes=self.n_attributes,
                 expand_dim=expand_dim,
             )
@@ -175,7 +174,7 @@ class Inception3(nn.Module):
         # N x 768 x 17 x 17
         x = self.Mixed_6e(x)
         # N x 768 x 17 x 17
-        if self.training and self.aux_logits:
+        if self.aux_logits:
             out_aux = self.AuxLogits(x)
         # N x 768 x 17 x 17
         x = self.Mixed_7a(x)
@@ -194,10 +193,8 @@ class Inception3(nn.Module):
         out = []
         for fc in self.all_fc:
             out.append(fc(x))
-        if self.training and self.aux_logits:
+        if self.aux_logits:
             return out, out_aux
-        else:
-            return out
 
     def load_partial_state_dict(self, state_dict):
         """

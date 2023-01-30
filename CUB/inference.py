@@ -82,7 +82,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         inputs, class_labels, attr_labels, attr_mask = data
 
         attr_labels = [i.long() for i in attr_labels]
-        attr_labels = torch.stack(attr_labels).t()
+        attr_labels = torch.stack(attr_labels, dim=1)
 
         attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs

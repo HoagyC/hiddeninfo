@@ -6,6 +6,7 @@ import os
 import pickle
 from pathlib import Path
 from typing import List
+from datetime import datetime
 
 from PIL import Image
 
@@ -59,6 +60,7 @@ class CUBDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
+
         img_data = self.data[idx]
         img_path = img_data["img_path"]
         attr_mask_bin = idx % self.attr_sparsity == 0
@@ -76,7 +78,7 @@ class CUBDataset(Dataset):
             split = "train" if self.is_train else "test"
             img_path = "/".join(img_path_split[:2] + [split] + img_path_split[2:])
             img = Image.open(img_path).convert("RGB")
-
+        
         class_label = img_data["class_label"]
         if self.transform:
             img = self.transform(img)
@@ -143,8 +145,8 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 def load_data(
     pkl_paths: List[str],
     args: BaseConf,
+    no_img=False,
     resol: int = 299,
-    resampling: bool = False,
     uncertain_label: bool = False,
 ) -> DataLoader:
     """
@@ -181,7 +183,7 @@ def load_data(
     dataset = CUBDataset(
         pkl_paths,
         args.use_attr,
-        args.no_img,
+        no_img,
         uncertain_label,
         args.image_dir,
         transform,
@@ -193,18 +195,10 @@ def load_data(
     else:
         drop_last = False
         shuffle = False
-    print(f"is_training: {is_training}")
-    if resampling:
-        sampler = BatchSampler(
-            ImbalancedDatasetSampler(dataset),
-            batch_size=args.batch_size,
-            drop_last=drop_last,
-        )
-        loader = DataLoader(dataset, batch_sampler=sampler)
-    else:
-        loader = DataLoader(
-            dataset, batch_size=args.batch_size, shuffle=shuffle, drop_last=drop_last
-        )
+
+    loader = DataLoader(
+        dataset, batch_size=args.batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=1
+    )
     return loader
 
 
