@@ -44,7 +44,6 @@ class BaseConf:
     use_attr: bool
     no_img: bool
     image_dir: str
-    n_class_attr: int
     attr_sparsity: int
     batch_size: int
 
@@ -124,12 +123,7 @@ class TTI_Config(BaseConf):
     no_img: bool = False  # if included, only use attributes (and not raw imgs) for class prediction
     bottleneck: bool = False
     no_background: bool = False
-    n_class_attr: int = 2
-    use_relu: bool = False
     use_sigmoid: bool = False
-    connect_CY: bool = (
-        False  # Add the c->y fully connected layer into the inception model??
-    )
     attr_sparsity: int = 1
 
     data_dir: str = "CUB_masked_class"  # directory to the data used for evaluation

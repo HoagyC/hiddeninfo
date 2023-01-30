@@ -7,20 +7,36 @@ from typing import Optional, List, Tuple
 import torch
 from torch import nn
 
-from CUB.template_model import MLP, inception_v3
+from CUB.model_templates import MLP, inception_v3
 from CUB.cub_classes import Experiment
 from CUB.dataset import find_class_imbalance
 from CUB.config import BASE_DIR, AUX_LOSS_RATIO
 
+# Create loss criteria for each attribute, upweighting the less common ones
+def make_weighted_criteria(args):
+    attr_criterion = []
+    train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
+    imbalance = find_class_imbalance(train_data_path, True) # assume args.weighted loss is always "multiple" if not ""
+    for ratio in imbalance:
+        attr_criterion.append(
+            torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
+        )
+    return attr_criterion
+
+
 # Basic model for predicting attributes from images
 def ModelXtoC(args: Experiment) -> nn.Module:
+    """
+    Model for predicting attributes from images.
+    Takes in an image and outputs a list of outputs for each attribute, 
+    where the output is a vector of size (batch_size, 1).
+    """
     return inception_v3(
         pretrained=args.pretrained,
         freeze=False,
         aux_logits=True,
         num_classes=args.num_classes,
         n_attributes=args.n_attributes,
-        bottleneck=True,
         expand_dim=args.expand_dim,
     )
 
@@ -42,12 +58,7 @@ class Multimodel(nn.Module):
         self.reset_post_models()
         self.train_mode = "separate"
 
-    def reset_pre_models(self, pretrained: Optional[bool] = None) -> None:
-        if pretrained is None:
-            use_pretrained = self.args.pretrained
-        else:
-            use_pretrained = pretrained
-
+    def reset_pre_models(self) -> None:
         pre_models_list = [
             ModelXtoC(self.args)
             for _ in range(self.args.n_models)
@@ -109,17 +120,6 @@ class Multimodel(nn.Module):
         return loss
     
 
-
-def make_weighted_criteria(args):
-    attr_criterion = []
-    train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
-    imbalance = find_class_imbalance(train_data_path, True) # assume args.weighted loss is always "multiple" if not ""
-    for ratio in imbalance:
-        attr_criterion.append(
-            torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
-        )
-    return attr_criterion
-
 class JointModel(nn.Module):
     def __init__(self, args) -> None:
         super().__init__()
@@ -136,8 +136,13 @@ class JointModel(nn.Module):
 
     def generate_predictions(self, inputs, attr_labels):
         attr_preds, aux_attr_preds = self.model1(inputs)
-        class_preds = self.model2(attr_preds)
-        aux_class_preds = self.model2(aux_attr_preds)
+
+        # Attr preds are list of tensors, need to stack them with batch as d0
+        attr_preds_input = torch.stack(attr_preds, dim=1)
+        aux_attr_preds_input = torch.stack(aux_attr_preds, dim=1)
+    
+        class_preds = self.model2(attr_preds_input)
+        aux_class_preds = self.model2(aux_attr_preds_input)
 
         return attr_preds, aux_attr_preds, class_preds, aux_class_preds
 
@@ -169,7 +174,7 @@ class IndependentModel(nn.Module):
         else:
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
 
-        self.attr_loss_ratio = args.attr_loss_ratio
+        self.attr_loss_ratio = args.attr_loss_weight
         self.train_mode = train_mode
 
     

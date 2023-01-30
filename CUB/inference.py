@@ -5,8 +5,7 @@ import dataclasses
 import os
 import sys
 import torch
-from typing import List, Optional, Tuple, Union
-import argparse
+from typing import List, Tuple, Union
 import numpy as np
 from sklearn.metrics import f1_score
 
@@ -56,48 +55,16 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     """
 
     # Load models
-    if args.model_dir:
-        model = torch.load(args.model_dir)
-    else:
-        model = None
-
-    if args.multimodel:
-        model2 = model.post_models[0]
-        model = model.pre_models[0]
-
-    print(args.model_dir)
-    if not hasattr(model, "use_sigmoid"):
-        if args.use_sigmoid:
-            model.use_sigmoid = True
-        else:
-            model.use_sigmoid = False
-    model.eval()
-
-    if args.model_dir2:
-        model2 = torch.load(args.model_dir2)
-        if not hasattr(model2, "use_sigmoid"):
-            if args.use_sigmoid:
-                model2.use_sigmoid = True
-            else:
-                model2.use_sigmoid = False
-        model2.eval()
-    else:
-        model2 = None
-    
+    model = torch.load(args.model_dir)
 
     # Add meters for the overall attr_acc and (optional) for each attr
     meters: Union[Eval_Meter, Eval_Meter_Acc]
-    if args.use_attr:
-        meters = Eval_Meter_Acc(class_accs=[AverageMeter() for _ in range(len(K))])
-    else:
-        meters = Eval_Meter(class_accs=[AverageMeter() for _ in range(len(K))])
-
-    if args.use_attr:
-        assert type(meters) == Eval_Meter_Acc
-        meters.attr_acc_tot = AverageMeter()
-        # Compute acc for each feature individually in addition to the overall accuracy
-        if args.feature_group_results:
-            meters.attr_accs = [AverageMeter() for _ in range(args.n_attributes)]
+    meters = Eval_Meter_Acc(class_accs=[AverageMeter() for _ in range(len(K))])
+  
+    meters.attr_acc_tot = AverageMeter()
+    # Compute acc for each feature individually in addition to the overall accuracy
+    if args.feature_group_results:
+        meters.attr_accs = [AverageMeter() for _ in range(args.n_attributes)]
 
     data_dir = os.path.join(BASE_DIR, args.data_dir, args.eval_data + ".pkl")
     loader = load_data([data_dir], args)
@@ -124,63 +91,27 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
 
         attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, attr_mask)
 
-        if args.use_attr:
-            assert type(meters) == Eval_Meter_Acc
-            if args.no_img:  # A -> Y
-                class_outputs = outputs
-            else:
-                if args.bottleneck:
-                    if args.use_sigmoid:
-                        attr_outputs = [torch.nn.Sigmoid()(o) for o in outputs]
-                        attr_outputs_sigmoid = attr_outputs
-                    else:
-                        attr_outputs = outputs
-                        attr_outputs_sigmoid = [torch.nn.Sigmoid()(o) for o in outputs]
-                    if model2:
-                        stage2_inputs = torch.cat(attr_outputs, dim=1)
-                        class_outputs = model2(stage2_inputs)
-                    else:  # for debugging bottleneck performance without running stage 2
-                        class_outputs = torch.zeros(
-                            [inputs.size(0), N_CLASSES], dtype=torch.float64
-                        ).cuda()  # ignore this
-                else:  # cotraining, end2end
-                    if args.use_relu:
-                        attr_outputs = [torch.nn.ReLU()(o) for o in outputs[1:]]
-                        attr_outputs_sigmoid = [
-                            torch.nn.Sigmoid()(o) for o in outputs[1:]
-                        ]
-                    elif args.use_sigmoid:
-                        attr_outputs = [torch.nn.Sigmoid()(o) for o in outputs[1:]]
-                        attr_outputs_sigmoid = attr_outputs
-                    else:
-                        attr_outputs = outputs[1:]
-                        attr_outputs_sigmoid = [
-                            torch.nn.Sigmoid()(o) for o in outputs[1:]
-                        ]
 
-                    class_outputs = outputs[0]
-                for i in range(args.n_attributes):
-                    acc = binary_accuracy(
-                        attr_outputs_sigmoid[i].squeeze(), attr_labels[:, i]
-                    )
-                    acc = acc.data.cpu().numpy()
-                    # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
-                    meters.attr_acc_tot.update(acc, inputs.size(0))
-                    # keep track of accuracy of individual attributes
-                    if args.feature_group_results:
-                        meters.attr_accs[i].update(acc, inputs.size(0))
+        for i in range(args.n_attributes):
+            acc = binary_accuracy(
+                attr_outputs_sigmoid[i].squeeze(), attr_labels[:, i]
+            )
+            acc = acc.data.cpu().numpy()
+            # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
+            meters.attr_acc_tot.update(acc, inputs.size(0))
+            # keep track of accuracy of individual attributes
+            if args.feature_group_results:
+                meters.attr_accs[i].update(acc, inputs.size(0))
 
-                attr_outputs = torch.cat([o.unsqueeze(1) for o in attr_outputs], dim=1)
-                attr_outputs_sigmoid = torch.cat(
-                    [o for o in attr_outputs_sigmoid], dim=1
-                )
-                all_attr_outputs.extend(list(attr_outputs.flatten().data.cpu().numpy()))
-                all_attr_outputs_sigmoid.extend(
-                    list(attr_outputs_sigmoid.flatten().data.cpu().numpy())
-                )
-                all_attr_labels.extend(list(attr_labels.flatten().data.cpu().numpy()))
-        else:
-            class_outputs = outputs[0]
+            attr_outputs = torch.cat([o.unsqueeze(1) for o in attr_outputs], dim=1)
+            attr_outputs_sigmoid = torch.cat(
+                [o for o in attr_outputs_sigmoid], dim=1
+            )
+            all_attr_outputs.extend(list(attr_outputs.flatten().data.cpu().numpy()))
+            all_attr_outputs_sigmoid.extend(
+                list(attr_outputs_sigmoid.flatten().data.cpu().numpy())
+            )
+            all_attr_labels.extend(list(attr_labels.flatten().data.cpu().numpy()))
 
         _, topk_preds = class_outputs.topk(max(K), 1, True, True)
         _, preds = class_outputs.topk(1, 1, True, True)
@@ -231,18 +162,6 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
                 all_attr_acc.append(attr_acc)
                 all_attr_f1.append(attr_f1)
 
-            """
-            fig, axs = plt.subplots(1, 2, figsize=(20,10))
-            for plt_id, values in enumerate([all_attr_acc, all_attr_f1]):
-                axs[plt_id].set_xticks(np.arange(0, 1.1, 0.1))
-                if plt_id == 0:
-                    axs[plt_id].hist(np.array(values)/100.0, bins=np.arange(0, 1.1, 0.1), rwidth=0.8)
-                    axs[plt_id].set_title("Attribute accuracies distribution")
-                else:
-                    axs[plt_id].hist(values, bins=np.arange(0, 1.1, 0.1), rwidth=0.8)
-                    axs[plt_id].set_title("Attribute F1 scores distribution")
-            plt.savefig('/'.join(args.model_dir.split('/')[:-1]) + '.png')
-            """
             bins = np.arange(0, 1.01, 0.1)
             acc_bin_ids = np.digitize(np.array(all_attr_acc) / 100.0, bins)
             acc_counts_per_bin = [
@@ -282,32 +201,3 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     import pdb; pdb.set_trace()
 
     return meters, output
-
-
-if __name__ == "__main__":
-    torch.backends.cudnn.benchmark = True
-    args = parser.parse_args()
-    args.batch_size = 16
-
-    print(args)
-    y_results, c_results = [], []
-    for i, model_dir in enumerate(args.model_dirs):
-        args.model_dir = model_dir
-        args.model_dir2 = args.model_dirs2[i] if args.model_dirs2 else None
-        meters, output = eval(args)
-        y_results.append(1 - meters.class_accs[0].avg[0].item() / 100.0)
-        if type(meters) == Eval_Meter_Acc:
-            c_results.append(1 - meters.attr_accs[0].avg.item() / 100.0)
-        else:
-            c_results.append(-1)
-    values = (
-        np.mean(y_results),  #
-        np.std(y_results),
-        np.mean(c_results),
-        np.std(c_results),
-    )
-    output_string = "%.4f %.4f %.4f %.4f" % values
-    print_string = "Error of y: %.4f +- %.4f, Error of C: %.4f +- %.4f" % values
-    print(print_string)
-    with open(os.path.join(args.log_dir, "results.txt"), "w") as out_file:
-        out_file.write(output_string)

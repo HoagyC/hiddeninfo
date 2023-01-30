@@ -15,7 +15,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader, BatchSampler
 
 from CUB.cub_classes import Experiment, BaseConf
-from CUB.config import BASE_DIR
+from CUB.config import BASE_DIR, N_ATTRIBUTES, N_CLASSES
 
 
 class CUBDataset(Dataset):
@@ -30,7 +30,6 @@ class CUBDataset(Dataset):
         no_img,
         uncertain_label,
         image_dir,
-        n_class_attr,
         transform=None,
         attr_sparsity: int = 1,
     ):
@@ -41,7 +40,6 @@ class CUBDataset(Dataset):
         no_img: whether to load the images (e.g. False for A -> Y model)
         uncertain_label: if True, use 'uncertain_attribute_label' field (i.e. label weighted by uncertainty score, e.g. 1 & 3(probably) -> 0.75)
         image_dir: default = 'images'. Will be append to the parent dir
-        n_class_attr: number of classes to predict for each attribute. If 3, then make a separate class for not visible
         transform: whether to apply any special transformation. Default = None, i.e. use standard ImageNet preprocessing
         """
         self.data = []
@@ -55,7 +53,6 @@ class CUBDataset(Dataset):
         self.no_img = no_img
         self.uncertain_label = uncertain_label
         self.image_dir = image_dir
-        self.n_class_attr = n_class_attr
         self.attr_sparsity = attr_sparsity
 
     def __len__(self):
@@ -91,12 +88,7 @@ class CUBDataset(Dataset):
                 attr_label = img_data["attribute_label"]
 
             if self.no_img:
-                if self.n_class_attr == 3:
-                    one_hot_attr_label = np.zeros((N_ATTRIBUTES, self.n_class_attr))
-                    one_hot_attr_label[np.arange(N_ATTRIBUTES), attr_label] = 1
-                    return one_hot_attr_label, class_label, attr_mask_bin
-                else:
-                    return attr_label, class_label, attr_mask_bin
+                return attr_label, class_label, attr_mask_bin
             else:
                 return img, class_label, attr_label, attr_mask_bin
         else:
@@ -183,7 +175,6 @@ def load_data(
                 transforms.CenterCrop(resol),
                 transforms.ToTensor(),  # implicitly divides by 255
                 transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
-                # transforms.Normalize(mean = [ 0.485, 0.456, 0.406 ], std = [ 0.229, 0.224, 0.225 ]),
             ]
         )
 
@@ -193,7 +184,6 @@ def load_data(
         args.no_img,
         uncertain_label,
         args.image_dir,
-        args.n_class_attr,
         transform,
         args.attr_sparsity,
     )

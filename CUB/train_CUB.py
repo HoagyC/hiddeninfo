@@ -51,7 +51,7 @@ def run_epoch(
         inputs, class_labels, attr_labels, attr_mask = data
 
         attr_labels = [i.long() for i in attr_labels]
-        attr_labels = torch.stack(attr_labels).t()
+        attr_labels = torch.stack(attr_labels, dim=1)
 
         attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
@@ -325,7 +325,7 @@ if __name__ == "__main__":
 
     secrets = get_secrets()
     wandb.login(key=secrets["wandb_key"])
-    
+
     if args.multimodel:
         train_multimodel(args)
     else:
