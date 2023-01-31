@@ -14,8 +14,6 @@ import torch
 import torchvision.transforms as transforms
 
 from torch.utils.data import Dataset, DataLoader, BatchSampler
-
-from CUB.cub_classes import Experiment, BaseConf
 from CUB.config import BASE_DIR, N_ATTRIBUTES, N_CLASSES
 
 
@@ -27,8 +25,6 @@ class CUBDataset(Dataset):
     def __init__(
         self,
         pkl_file_paths,
-        use_attr,
-        no_img,
         uncertain_label,
         image_dir,
         transform=None,
@@ -50,8 +46,6 @@ class CUBDataset(Dataset):
         for file_path in pkl_file_paths:
             self.data.extend(pickle.load(open(file_path, "rb")))
         self.transform = transform
-        self.use_attr = use_attr
-        self.no_img = no_img
         self.uncertain_label = uncertain_label
         self.image_dir = image_dir
         self.attr_sparsity = attr_sparsity
@@ -83,18 +77,13 @@ class CUBDataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        if self.use_attr:
-            if self.uncertain_label:
-                attr_label = img_data["uncertain_attribute_label"]
-            else:
-                attr_label = img_data["attribute_label"]
-
-            if self.no_img:
-                return attr_label, class_label, attr_mask_bin
-            else:
-                return img, class_label, attr_label, attr_mask_bin
+        if self.uncertain_label:
+            attr_label = img_data["uncertain_attribute_label"]
         else:
-            return img, class_label
+            attr_label = img_data["attribute_label"]
+
+        return img, class_label, attr_label, attr_mask_bin
+
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
@@ -144,8 +133,7 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
 def load_data(
     pkl_paths: List[str],
-    args: BaseConf,
-    no_img=False,
+    args,
     resol: int = 299,
     uncertain_label: bool = False,
 ) -> DataLoader:
@@ -155,7 +143,6 @@ def load_data(
     NOTE: resampling is customized for first attribute only, so change sampler.py if necessary
     """
 
-    resized_resol = int(resol * 256 / 224)
     is_training = any(["train.pkl" in f for f in pkl_paths])
     if is_training:
         transform = transforms.Compose(
@@ -182,8 +169,6 @@ def load_data(
 
     dataset = CUBDataset(
         pkl_paths,
-        args.use_attr,
-        no_img,
         uncertain_label,
         args.image_dir,
         transform,

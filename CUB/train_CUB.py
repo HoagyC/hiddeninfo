@@ -27,7 +27,7 @@ from CUB.models import (
     Multimodel,
 )
 from CUB.cub_classes import Experiment, Meters, RunRecord
-from CUB.cub_classes import ind_XtoC_cfg, ind_CtoY_cfg, joint_cfg
+from CUB.cub_classes import ind_XtoC_cfg, ind_CtoY_cfg, joint_cfg, multiple_cfg
 
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
@@ -57,6 +57,7 @@ def run_epoch(
         class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
         attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
         attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, attr_mask)
+
         if is_training:
             loss = model.generate_loss(
                 attr_preds=attr_preds, 
@@ -73,13 +74,26 @@ def run_epoch(
             meters.loss.update(loss.item(), inputs.size(0))
 
         if attr_preds is not None:
-            attr_pred_sigmoids = torch.nn.Sigmoid()(torch.cat(attr_preds, dim=1))
+            # Multimodel preds are a list of tensors, one for each model
+            # so we concatenate them as if they were a larger batch
+            if args.multimodel:
+                attr_preds_t = torch.cat([torch.cat(a, dim=1) for a in attr_preds], dim=0)
+                attr_labels = attr_labels.repeat(args.n_models, 1)
+            else:
+                attr_preds_t = torch.cat(attr_preds, dim=1)
+            
+            attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds_t)
             attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels)
             meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
         
         if class_preds is not None:
+            if args.multimodel:
+                class_preds = torch.cat(class_preds, dim=0)
+                class_labels = class_labels.repeat(args.n_models)
+            
             class_acc = accuracy(class_preds, class_labels, topk=(1,))
             meters.label_acc.update(class_acc[0], inputs.size(0))
+
 
 def train(
     model: torch.nn.Module,
@@ -104,13 +118,6 @@ def train(
     for param in model.parameters():
         param.requires_grad = True
 
-    if args.freeze_pre_models:
-        for param in model.pre_models.parameters():
-            param.requires_grad = False
-    if args.freeze_post_models:
-        for param in model.post_models.parameters():
-            param.requires_grad = False
-
     params = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = make_optimizer(params, args)
     scheduler = torch.optim.lr_scheduler.StepLR(
@@ -125,8 +132,8 @@ def train(
     train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
     val_data_path = train_data_path.replace("train.pkl", "val.pkl")
 
-    train_loader = load_data([train_data_path], args, no_img=False)
-    val_loader = load_data([val_data_path], args, no_img=False)
+    train_loader = load_data([train_data_path], args)
+    val_loader = load_data([val_data_path], args)
 
     train_meters = Meters()
     val_meters = Meters()
@@ -286,16 +293,29 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
     return optimizer
 
 
-def train_multimodel(args) -> None:
+def train_multi(args: Experiment) -> None:
     model = Multimodel(args)
     elapsed_epochs = train(model, args)
+
     if args.reset_post_models:
         model.reset_post_models()
     if args.reset_pre_models:
         model.reset_pre_models()
+    
+    args.shuffle_models = False
+
+    if args.freeze_pre_models:
+        for param in model.pre_models.parameters():
+            param.requires_grad = False
+    
+    if args.freeze_post_models:
+        for param in model.post_models.parameters():
+            param.requires_grad = False
+
+    # Train again with shuffling and freezing
     train(model, args, init_epoch=elapsed_epochs)
 
-def train_old(args):
+def train_single(args):
     if args.exp == "Concept_XtoC":
         model = IndependentModel(args, train_mode="XtoC")
     elif args.exp == "Independent_CtoY":
@@ -320,6 +340,7 @@ def make_configs_list() -> List[Experiment]:
         ind_XtoC_cfg,
         ind_CtoY_cfg,
         joint_cfg,
+        multiple_cfg
     ]
     return configs
 
@@ -335,8 +356,8 @@ if __name__ == "__main__":
     wandb.login(key=secrets["wandb_key"])
 
     if args.multimodel:
-        train_multimodel(args)
+        train_multi(args)
     else:
-        train_old(args)
+        train_single(args)
     
     wandb.finish()

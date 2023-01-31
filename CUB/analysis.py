@@ -353,7 +353,6 @@ def accuracy(output, target, topk=(1,)):
     temp = target.view(1, -1).expand_as(pred)
     temp = temp.cuda()
     correct = pred.eq(temp)
-
     res = []
     for k in topk:
         correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)

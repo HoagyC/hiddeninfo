@@ -11,6 +11,7 @@ wandb/
 
 secrets.json
 
+CLIP_CUB/
 
 CUB_processed/
 CUB_200_2011/

@@ -18,7 +18,6 @@ from analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
 
 K = [1, 3, 5]  # top k class accuracies to compute
 
-
 @dataclasses.dataclass
 class Eval_Meter:
     class_accs: List[AverageMeter]
@@ -90,6 +89,8 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
 
         attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, attr_mask)
+        if args.multimodel:
+            attr_preds
 
 
         for i in range(args.n_attributes):

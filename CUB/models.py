@@ -79,7 +79,7 @@ class Multimodel(nn.Module):
 
         self.post_models = nn.ModuleList(post_models_list)
 
-    def generate_predictions(self, inputs, attr_labels, mask):
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor):
         attr_preds = []
         aux_attr_preds = []
         class_preds = []
@@ -89,8 +89,13 @@ class Multimodel(nn.Module):
         if self.train_mode == "separate":
             for i in range(self.args.n_models):
                 attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-                class_pred = self.post_models[i](attr_pred)
-                aux_class_pred = self.post_models[i](aux_attr_pred)
+
+                attr_pred_input = torch.cat(attr_pred, dim=1)
+                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
+
+                class_pred = self.post_models[i](attr_pred_input)
+                aux_class_pred = self.post_models[i](aux_attr_pred_input)
+
                 attr_preds.append(attr_pred)
                 aux_attr_preds.append(aux_attr_pred)
                 class_preds.append(class_pred)
@@ -101,12 +106,20 @@ class Multimodel(nn.Module):
             post_model_indices = torch.randperm(self.args.n_models)
             for i, j in enumerate(post_model_indices):
                 attr_pred, aux_attr_pred = self.pre_models[i](inputs)
+
+                attr_pred_input = torch.cat(attr_pred, dim=1)
+                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
+
                 class_pred = self.post_models[j](attr_pred)
                 aux_class_pred = self.post_models[j](aux_attr_pred)
+        
                 attr_preds.append(attr_pred)
                 aux_attr_preds.append(aux_attr_pred)
                 class_preds.append(class_pred)
                 aux_class_preds.append(aux_class_pred)
+            
+        else:
+            raise ValueError(f"Invalid train mode {self.train_mode}")
 
         return attr_preds, aux_attr_preds, class_preds, aux_class_preds
     
@@ -120,23 +133,31 @@ class Multimodel(nn.Module):
         aux_attr_preds: torch.Tensor,
         mask: torch.Tensor,
     ):
-        class_loss = self.criterion(class_preds, class_labels)
-        aux_class_loss = self.criterion(aux_class_preds, class_labels)
-        class_loss += aux_class_loss * AUX_LOSS_RATIO
+        total_class_loss = 0.
+        total_attr_loss = 0.
         
-        attr_loss = 0.
-        for i in range(len(self.attr_criterion)):
-            attr_loss += self.attr_criterion[i](
-                attr_preds[i].squeeze(), attr_labels[mask, i] # Masking attr losses
-            )
+        assert len(attr_preds) == len(aux_attr_preds) == len(class_preds) == len(aux_class_preds) == len(self.pre_models)
+        for ndx in range(len(self.pre_models)):
+            class_loss = self.criterion(class_preds[ndx], class_labels)
+            aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
+            class_loss += aux_class_loss * AUX_LOSS_RATIO
+            total_class_loss += class_loss
+            
+            attr_loss = 0.
+            for i in range(len(self.attr_criterion)):
+                attr_loss += self.attr_criterion[i](
+                    attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                )
 
-            aux_attr_loss = self.attr_criterion[i](
-                aux_attr_preds[i].squeeze(), attr_labels[mask, i] # Masking attr losses
-            )
-            attr_loss += aux_attr_loss * AUX_LOSS_RATIO
-        
-        attr_loss /= len(self.attr_criterion)
-        loss = (attr_loss * self.args.attr_loss_weight) + class_loss
+                aux_attr_loss = self.attr_criterion[i](
+                    aux_attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                )
+                attr_loss += aux_attr_loss * AUX_LOSS_RATIO
+            
+            attr_loss /= len(self.attr_criterion)
+            total_attr_loss += attr_loss
+    
+        loss = (total_attr_loss * self.args.attr_loss_weight) + total_class_loss
         return loss
     
 
@@ -157,7 +178,7 @@ class JointModel(nn.Module):
     def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor):
         attr_preds, aux_attr_preds = self.first_model(inputs)
 
-        # Attr preds are list of tensors, need to stack them with batch as d0
+        # Attr preds are list of tensors, need to concat them with batch as d0
         attr_preds_input = torch.cat(attr_preds, dim=1)
         aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1)
     
@@ -230,7 +251,7 @@ class IndependentModel(nn.Module):
     
     def generate_loss(
         self,
-        attr_preds: torch.Tensor, 
+        attr_preds: torch.Tensor,
         attr_labels: torch.Tensor, 
         class_preds: torch.Tensor, 
         class_labels: torch.Tensor, 

@@ -40,19 +40,10 @@ class Meters:
 
 
 @dataclasses.dataclass
-class BaseConf:
-    use_attr: bool
-    no_img: bool
-    image_dir: str
-    attr_sparsity: int
-    batch_size: int
-
-
-@dataclasses.dataclass
-class Experiment(BaseConf):
+class Experiment:
     tag: str = "basic"
     exp: str = "multimodel"
-    seed: int = 0
+    seed: int = 1
 
     # Data
     log_dir: str = "out"
@@ -67,30 +58,25 @@ class Experiment(BaseConf):
     expand_dim: int = 500
     use_relu: bool = False
     use_sigmoid: bool = False
-    pretrained: bool = False
-    use_aux: bool = False
+    pretrained: bool = True
+    use_aux: bool = True
 
     # Training
     epochs: int = 100
-    end2end: bool = True
     optimizer: str = "SGD"
     scheduler_step: int = 1000
     attr_loss_weight: float = 1.0
     lr: float = 1e-03
-    weight_decay: float = 5e-5
+    weight_decay: float = 2e-4
     attr_sparsity: int = 1
 
-    batch_size: int = 32
+    batch_size: int = 64
 
     freeze: bool = False
-    use_attr: bool = False
-    no_img: bool = False
-    bottleneck: bool = True # Passed to inception_v3, if True doesn't predict output class.
     weighted_loss: str = ""
     uncertain_labels: bool = False
-    normalize_loss: bool = False
 
-    # Shuffling
+    # Multi-model specific parameters
     shuffle_models: bool = False
     freeze_post_models: bool = False
     freeze_pre_models: bool = False
@@ -102,7 +88,7 @@ class Experiment(BaseConf):
 
 
 @dataclasses.dataclass
-class TTI_Config(BaseConf):
+class TTI_Config:
     log_dir: str = "."  # where results are stored
     # where the trained model is saved
     model_dirs: List[str] = dataclasses.field(default_factory=lambda: [])
@@ -116,10 +102,6 @@ class TTI_Config(BaseConf):
     eval_data: str = "test"  # whether to use test or val data
     batch_size: int = 16
 
-    # How relevant for tti?? - because they're used to load up the dataset
-    use_attr: bool = (
-        False  # whether to use attributes (FOR COTRAINING ARCHITECTURE ONLY)
-    )
     no_img: bool = False  # if included, only use attributes (and not raw imgs) for class prediction
     bottleneck: bool = False
     no_background: bool = False
@@ -146,7 +128,6 @@ class TTI_Config(BaseConf):
 
 
 base_ind_tti_cfg = TTI_Config(
-    use_attr=True,
     bottleneck=True,
     n_trials=5,
     use_invisible=True,
@@ -163,45 +144,11 @@ class TTI_Output:
     result: List[Tuple[int, float]]
     model_name: Optional[str] = None
 
-
-
-"""
-Experiment for independent models
-
-
-Training an XtoC Model
-
-python3 src/experiments.py cub Concept_XtoC --seed 1 -ckpt 1 -log_dir ConceptModel__Seed1/outputs/ -e 1000 \
- -optimizer sgd -pretrained -use_aux -use_attr -weighted_loss multiple -data_dir CUB_processed/class_attr_data_10 \
--n_attributes 112 -normalize_loss -b 64 -weight_decay 0.00004 -lr 0.01 -scheduler_step 1000 -bottleneck
-
-Getting predicted C logits
-
-python3 src/CUB/generate_new_data.py ExtractConcepts --model_path ConceptModel__Seed1/outputs/best_model_1.pth \
---data_dir CUB_processed/class_attr_data_10 --out_dir ConceptModel1__PredConcepts
-
-Training C to Y
-
-python3 src/experiments.py cub Independent_CtoY --seed 1 -log_dir IndependentModel_WithVal___Seed1/outputs/ -e 500 \
--optimizer sgd -use_attr -data_dir CUB_processed/class_attr_data_10 -n_attributes 112 -no_img -b 64 \
--weight_decay 0.00005 -lr 0.001 -scheduler_step 1000 
-"""
-
 ind_XtoC_cfg = Experiment(
     tag="ind_XtoC",
-    seed=1,
     exp="Concept_XtoC",
     epochs=1000,
-    optimizer="SGD",
-    pretrained=True,
-    use_attr=True,
-    n_attributes=109,
-    batch_size=64,
-    weight_decay=4e-5,
     lr=0.01,
-    scheduler_step=1000,
-    use_aux=True,
-    bottleneck=True,
     data_dir="CUB_masked_class",
     weighted_loss="multiple"
 )
@@ -209,158 +156,37 @@ ind_XtoC_cfg = Experiment(
 ind_CtoY_cfg = Experiment(
     tag="ind_CtoY",
     exp="Independent_CtoY",
-    seed=1,
     epochs=500,
-    optimizer="SGD",
-    use_attr=True,
-    n_attributes=109,
-    no_img=True,
-    batch_size=64,
-    weight_decay=5e-5,
     lr=0.001,
-    scheduler_step=1000,
 )
-
-
-"""
-Sequential models
-
-python3 src/experiments.py cub Sequential_CtoY --seed 1 -log_dir SequentialModel_WithVal__Seed1/outputs/ \
--e 1000 -optimizer sgd -pretrained -use_aux -use_attr -data_dir ConceptModel1__PredConcepts -n_attributes 112 \
--no_img -b 64 -weight_decay 0.00004 -lr 0.001 -scheduler_step 1000 
-
-
-"""
 
 seq_CtoY_cfg = Experiment(
     tag="seq_CtoY",
     exp="Sequential_CtoY",
-    seed=1,
     epochs=1000,
-    optimizer="SGD",
-    pretrained=True,
-    use_aux=True,
-    use_attr=True,
-    n_attributes=109,
-    no_img=True,
-    batch_size=64,
-    weight_decay=4e-5,
     lr=0.001,
-    scheduler_step=1000,
     data_dir = "ConceptModel1__PredConcepts",
 )
-
-"""
-Joint training
-
-python3 src/experiments.py cub Joint --seed 1 -ckpt 1 -log_dir Joint0.01Model__Seed1/outputs/ \
--e 1000 -optimizer sgd -pretrained -use_aux -use_attr -weighted_loss multiple \
--data_dir CUB_processed/class_attr_data_10 -n_attributes 112 -attr_loss_weight 0.01 \
--normalize_loss -b 64 -weight_decay 0.0004 -lr 0.001 -scheduler_step 1000 -end2end
-
-"""
 
 joint_cfg = Experiment(
     tag="joint",
     exp="Joint",
-    seed=1,
     epochs=1000,
-    optimizer="SGD",
-    pretrained=True,
-    use_aux=True,
-    use_attr=True,
     weighted_loss="multiple",
-    n_attributes=109,
     attr_loss_weight=0.01,
-    normalize_loss=True,
-    batch_size=64,
-    weight_decay=4e-4,
     lr=0.001,
-    scheduler_step=1000,
-    end2end=True,
-    bottleneck=False
 )
 
-"""
-'Standard' experiment
-
-python3 src/experiments.py cub Joint --seed 1 -ckpt 1 -log_dir Joint0Model_Seed1/outputs/ \
--e 1000 -optimizer sgd -pretrained -use_aux -use_attr -weighted_loss multiple \
--data_dir CUB_processed/class_attr_data_10 -n_attributes 112 -attr_loss_weight 0 \
--normalize_loss -b 64 -weight_decay 0.00004 -lr 0.01 -scheduler_step 20 -end2end
-
-"""
-
-standard_orig_cfg = Experiment(
-    tag="standard_orig",
-    exp="Joint",
-    seed=1,
+multiple_cfg = Experiment(
+    multimodel=True,
+    exp="Multimodel",
     epochs=1000,
-    optimizer="SGD",
-    pretrained=True,
-    use_aux=True,
-    use_attr=True,
     weighted_loss="multiple",
-    n_attributes=109,
-    attr_loss_weight=0.0,
-    normalize_loss=True,
-    batch_size=64,
-    weight_decay=4e-4,
-    lr=0.01,
-    scheduler_step=20,
-    end2end=True
-)
-
-
-"""
-Standard no bottleneck
-
-python3 src/experiments.py cub Standard --seed 1 -ckpt 1 -log_dir StandardNoBNModel_Seed1/outputs/ \
--e 1000 -optimizer sgd -pretrained -use_aux -data_dir CUB_processed/class_attr_data_10 -b 64 \
--weight_decay 0.0004 -lr 0.01 -scheduler_step 20
-
-"""
-
-standard_nobottle_cfg = Experiment(
-    tag="standard_nobottle",
-    exp="Standard",
-    use_attr=False,
-    seed=1,
-    epochs=1000,
-    optimizer="SGD",
-    pretrained=True,
-    use_aux=True,
-    batch_size=64,
-    weight_decay=4e-4,
-    lr=0.01,
-    scheduler_step=20,
-)
-
-
-"""
-Multitask
-
-python3 src/experiments.py cub Multitask --seed 1 -ckpt 1 -log_dir MultitaskModel_Seed1/outputs/ \
--e 1000 -optimizer sgd -pretrained -use_aux -use_attr -weighted_loss multiple \
--data_dir CUB_processed/class_attr_data_10 -n_attributes 112 -attr_loss_weight 0.01 \
--normalize_loss -b 64 -weight_decay 0.00004 -lr 0.01 -scheduler_step 20
-
-"""
-
-multitask_cfg = Experiment(
-    tag="multitask",
-    exp="Multitask",
-    seed=1,
-    epochs=1000,
-    pretrained=True,
-    use_aux=True,
-    use_attr=True,
-    weighted_loss="multiple",
-    n_attributes=109,
+    lr=0.001,
+    batch_size=32,
     attr_loss_weight=0.01,
-    normalize_loss=True,
-    batch_size=64,
-    weight_decay=4e-5,
-    lr=0.01,
-    scheduler_step=20,
+    # multimodel specific
+    n_models=3,
+    freeze_post_models=True,
+    reset_pre_models=True,
 )
