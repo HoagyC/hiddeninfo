@@ -135,11 +135,13 @@ def train(
     train_loader = load_data([train_data_path], args)
     val_loader = load_data([val_data_path], args)
 
-    train_meters = Meters()
-    val_meters = Meters()
     val_records = RunRecord()
 
     for epoch_ndx in range(init_epoch, args.epochs + init_epoch):
+    
+        train_meters = Meters()
+        val_meters = Meters()
+        
         run_epoch(
             model,
             optimizer,

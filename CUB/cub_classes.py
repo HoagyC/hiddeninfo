@@ -102,14 +102,12 @@ class TTI_Config:
     eval_data: str = "test"  # whether to use test or val data
     batch_size: int = 16
 
-    no_img: bool = False  # if included, only use attributes (and not raw imgs) for class prediction
-    bottleneck: bool = False
     no_background: bool = False
     use_sigmoid: bool = False
     attr_sparsity: int = 1
 
     data_dir: str = "CUB_masked_class"  # directory to the data used for evaluation
-    data_dir2: str = "CUB_processed"  # directory to the raw data
+    data_dir_raw: str = "CUB_processed"  # directory to the raw data
     n_attributes: int = 109
     image_dir: str = "images"  # test image folder to run inference on
     # file listing the (trained) model directory for each attribute group
@@ -118,7 +116,6 @@ class TTI_Config:
     feature_group_results: bool = False
     # Whether to correct with class- (if set) or instance- (if not set) level values
     class_level: bool = False
-    use_invisible: bool = False
 
     # Which mode to use for correction. Only random actually implemented in original code
     mode: str = "random"
@@ -128,11 +125,8 @@ class TTI_Config:
 
 
 base_ind_tti_cfg = TTI_Config(
-    bottleneck=True,
     n_trials=5,
-    use_invisible=True,
     class_level=True,
-    data_dir2="CUB_processed",
     use_sigmoid=True,
     log_dir="TTI_ind",
 )

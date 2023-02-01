@@ -103,20 +103,20 @@ def run_tti(args) -> List[Tuple[int, float]]:
     and score is the accuracy when n attributes are intervened on
     """
 
-    train_data = pickle.load(open(os.path.join(args.data_dir2, "train.pkl"), "rb"))
+    train_data = pickle.load(open(os.path.join(args.data_dir_raw, "train.pkl"), "rb"))
 
     # Make a filter for attributes that are not common enough, as list of IDs to keep
     attr_mask = build_mask(train_data, min_count=10) 
 
-    test_data = pickle.load(open(os.path.join(args.data_dir2, "test.pkl"), "rb"))
+    test_data = pickle.load(open(os.path.join(args.data_dir_raw, "test.pkl"), "rb"))
 
     # Build numpy arrays of the labels for the attributes we are using
-    test_instance_attr_labels = np.zeros(len(test_data), sum(attr_mask))
-    test_uncertainty_attr_labels = np.zeros(len(test_data), sum(attr_mask))
+    raw_attr_labels = np.zeros(len(test_data), sum(attr_mask))
+    raw_attr_uncertanties = np.zeros(len(test_data), sum(attr_mask))
 
     for ndx, d in enumerate(test_data):
-        test_instance_attr_labels[ndx] = np.array(d["attribute_label"])[attr_mask]
-        test_uncertainty_attr_labels[ndx] = np.array(d["attribute_certainty"])[attr_mask]
+        raw_attr_labels[ndx] = np.array(d["attribute_label"])[attr_mask]
+        raw_attr_uncertanties[ndx] = np.array(d["attribute_certainty"])[attr_mask]
     
     # Build a dict which contains the groups of attributes and the attr_ids which they contain after masking
     attr_group_dict = build_dict_from_mask(attr_mask=attr_mask)
@@ -128,25 +128,38 @@ def run_tti(args) -> List[Tuple[int, float]]:
     
     # Get 5, 95 percentiles for how much each attribute was predicted to be true [0,1]
     ptl_5, ptl_95 = dict(), dict()
-
+    
     for attr_idx in range(args.n_attributes):
         ptl_5[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 5)
         ptl_95[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 95)
+    
+    # Creating the correct output array, where 'correct' is the 5th percentile of the attribute if false, and 95th percentile if true
+    correct_attr_outputs = np.zeros_like(eval_output.attr_pred_outputs)
+    if replace_val == "class_level":
+        for attr_idx in range(args.n_attributes):
+            correct_attr_outputs[:, attr_idx] = np.where(
+                eval_output.attr_true_labels[:, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
+            )
+    else:
+        for attr_idx in range(args.n_attributes):
+            correct_attr_outputs[:, attr_idx] = np.where(
+                raw_attr_labels[:, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
+            )
 
     # Get main model and attr -> label model
     model = torch.load(args.model_dir)
 
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
-    assert len(test_instance_attr_labels) == len(
+    assert len(raw_attr_labels) == len(
         eval_output.attr_true_labels
     ), "len(instance_attr_labels): %d, len(eval_output.attr_labels): %d" % (
-        len(test_instance_attr_labels),
+        len(raw_attr_labels),
         len(eval_output.attr_true_labels),
     )
-    assert len(test_uncertainty_attr_labels) == len(
+    assert len(raw_attr_uncertanties) == len(
         eval_output.attr_true_labels
     ), "len(uncertainty_attr_labels): %d, len(eval_output.attr_labels): %d" % (
-        len(test_uncertainty_attr_labels),
+        len(raw_attr_uncertanties),
         len(eval_output.attr_true_labels),
     )
 
@@ -180,42 +193,16 @@ def run_tti(args) -> List[Tuple[int, float]]:
                 for i in group_replace_idx:
                     replace_idxs.extend(attr_group_dict[i])
 
-                # instance has the original attrs whereas eval_output has attrs averaged at the class level
-                if replace_val == "class_level":
-                    updated_attrs[img_id, attr_replace_idxs] = eval_output.attr_true_labels[img_id, attr_replace_idxs]
-                else:
-                    updated_attrs[attr_replace_idxs] = test_instance_attr_labels[img_id, attr_replace_idxs]
-
-            # Zeroing out invisible attrs in the new attr array
-            if args.use_invisible:
-                # [0] because np.where returns a tuple with one element for each dimension in the array
-                not_visible_idx = np.where(np.array(test_uncertainty_attr_labels) == 1)[0]
-                for idx in attr_replace_idxs:
-                    if idx in not_visible_idx:
-                        updated_attrs[idx] = 0
-
-            # At this point b_attr_new is 0s and 1s in those places where we want to change the attributes
-            # but activations to go into CrossEntropyLoss at the other positions. We need to convert the 0s 
-            # and 1s to percentiles of activations to get the same effect as changing the attributes.
-
-            # TODO: Figure out why we don't do this if sigmoid is used (never used in our experiments)
-            # Odd because sigmoid is applied at the beginning of the second model so it should be the same
-            if args.use_relu or not args.use_sigmoid:
-                for replace_idx in attr_replace_idxs:
-                    attr_idx = replace_idx % args.n_attributes
-                    updated_attrs[replace_idx] = (1 - updated_attrs[replace_idx]) * ptl_5[
-                        attr_idx
-                    ] + updated_attrs[replace_idx] * ptl_95[attr_idx]
+                updated_attrs[attr_replace_idxs] = correct_attr_outputs[img_id, attr_replace_idxs]
 
             # Evaluate the model on the new attributes
             if args.multimodel:
-                model_use = model2[ndx % n_trials]
+                model_use = model.post_models[ndx % n_trials]
             else:
-                model_use = model2
+                model_use = model.second_model
             model_use.eval()
 
-            updated_attrs = updated_attrs.reshape(-1, args.n_attributes)
-            stage2_inputs = torch.from_numpy(np.array(updated_attrs)).cuda()
+            stage2_inputs = torch.from_numpy(updated_attrs).cuda()
             class_outputs = model_use(stage2_inputs)
 
             _, predictions = class_outputs.topk(k=1, dim=1) # topk returns a tuple of (values, indices)
@@ -225,7 +212,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
             )
             all_class_acc.append(class_acc * 100) # convert to percent
 
-        # changing from max to sum - not sure why max would be appropriate
+        # changed from max to sum - not sure why max would be appropriate
         acc = sum(all_class_acc) / len(all_class_acc)
 
         print(n_replace, acc)
