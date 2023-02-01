@@ -1,14 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
-import argparse
-import dataclasses
 import os
 import sys
 import torch
 import pickle
 import random
-
-from collections import defaultdict
 
 from typing import List, Tuple, Dict, Optional
 
@@ -16,12 +12,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 
-
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# from CUB.inference import *
 from CUB.config import N_CLASSES, N_ATTRIBUTES
-from CUB.cub_utils import make_attr_id_to_name_dict, make_class_id_to_folder_dict
 from CUB.cub_classes import TTI_Config, TTI_Output
 from CUB.inference import eval
 
@@ -106,51 +99,42 @@ def build_dict_from_mask(attr_mask: np.ndarray) -> Dict:
 
 def run_tti(args) -> List[Tuple[int, float]]:
     """
-    Returns pairs of (n, score) where n is a number of attribute
+    Returns pairs of (n, score) where n is a number of attributes
     and score is the accuracy when n attributes are intervened on
     """
+
     train_data = pickle.load(open(os.path.join(args.data_dir2, "train.pkl"), "rb"))
 
     # Make a filter for attributes that are not common enough, as list of IDs to keep
     attr_mask = build_mask(train_data, min_count=10) 
 
-    # Build 2D lists of attributes and certainties
-    test_instance_attr_labels, test_uncertainty_attr_labels = [], []
     test_data = pickle.load(open(os.path.join(args.data_dir2, "test.pkl"), "rb"))
-    for d in test_data:
-        test_instance_attr_labels.extend(list(np.array(d["attribute_label"])[attr_mask]))
-        test_uncertainty_attr_labels.extend(list(np.array(d["attribute_certainty"])[attr_mask]))
+
+    # Build numpy arrays of the labels for the attributes we are using
+    test_instance_attr_labels = np.zeros(len(test_data), sum(attr_mask))
+    test_uncertainty_attr_labels = np.zeros(len(test_data), sum(attr_mask))
+
+    for ndx, d in enumerate(test_data):
+        test_instance_attr_labels[ndx] = np.array(d["attribute_label"])[attr_mask]
+        test_uncertainty_attr_labels[ndx] = np.array(d["attribute_certainty"])[attr_mask]
     
     # Build a dict which contains the groups of attributes and the attr_ids which they contain after masking
     attr_group_dict = build_dict_from_mask(attr_mask=attr_mask)
 
     # Run one epoch, get lots of detail about performance
-    _, eval_output = eval(args)
+    eval_output = eval(args)
     class_outputs = eval_output.topk_classes[:, 0]
     attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoids).astype(int)  # RoundINT
-
+    
     # Get 5, 95 percentiles for how much each attribute was predicted to be true [0,1]
-    preds_by_attr = defaultdict(list)
     ptl_5, ptl_95 = dict(), dict()
-    for i, val in enumerate(eval_output.attr_pred_outputs):
-        attr_idx = i % args.n_attributes
-        preds_by_attr[attr_idx].append(val)
 
     for attr_idx in range(args.n_attributes):
-        preds = preds_by_attr[attr_idx]
-        ptl_5[attr_idx] = np.percentile(preds, 5)
-        ptl_95[attr_idx] = np.percentile(preds, 95)
+        ptl_5[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 5)
+        ptl_95[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 95)
 
     # Get main model and attr -> label model
     model = torch.load(args.model_dir)
-    if args.model_dir2:
-        model2 = torch.load(args.model_dir2)
-    elif args.multimodel:
-        model2 = model.post_models
-    else:  
-        # end2end, get the second poart 
-        # TODO: deal with relu and sigmoid = True
-        model2=model.sec_model
 
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
     assert len(test_instance_attr_labels) == len(
@@ -176,7 +160,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
 
         all_class_acc = []
         if args.multimodel:
-            n_trials = args.n_trials * len(model2)
+            n_trials = args.n_trials * len(model.post_models)
         else:
             n_trials = args.n_trials
 
@@ -189,24 +173,18 @@ def run_tti(args) -> List[Tuple[int, float]]:
 
             for img_id in range(len(eval_output.class_labels)):
                 # Get a list of all attrs (in the flattened list) that we will intervene on for this img
-                replace_idx = []
+                replace_idxs = []
                 group_replace_idx = list(
                     random.sample(list(range(args.n_groups)), n_replace)
                 )
                 for i in group_replace_idx:
-                    replace_idx.extend(attr_group_dict[i])
+                    replace_idxs.extend(attr_group_dict[i])
 
-                attr_replace_idxs.extend(np.array(replace_idx) + img_id * args.n_attributes)
-
-            # instance has the original attrs whereas eval_output has attrs averaged at the class level
-            if replace_val == "class_level":
-                updated_attrs[attr_replace_idxs] = np.array(eval_output.attr_true_labels)[
-                    attr_replace_idxs
-                ]
-            else:
-                updated_attrs[attr_replace_idxs] = np.array(test_instance_attr_labels)[
-                    attr_replace_idxs
-                ]
+                # instance has the original attrs whereas eval_output has attrs averaged at the class level
+                if replace_val == "class_level":
+                    updated_attrs[img_id, attr_replace_idxs] = eval_output.attr_true_labels[img_id, attr_replace_idxs]
+                else:
+                    updated_attrs[attr_replace_idxs] = test_instance_attr_labels[img_id, attr_replace_idxs]
 
             # Zeroing out invisible attrs in the new attr array
             if args.use_invisible:
@@ -258,7 +236,6 @@ def run_tti(args) -> List[Tuple[int, float]]:
 ind_tti_args = TTI_Config(
     model_dirs=["out/ind_XtoC/20221130-150657/final_model.pth"],
     model_dirs2=["out/ind_CtoY/20221130-194327/final_model.pth"],
-    use_attr=True,
     bottleneck=True,
     n_trials=5,
     use_invisible=True,
@@ -308,12 +285,6 @@ if __name__ == "__main__":
     args = ind_tti_args  # Set config for how to run TTI
 
     all_values = []
-    values: List
-    for i, model_dir in enumerate(args.model_dirs):
-        print("----------")
-        args.model_dir = model_dir
-        args.model_dir2 = args.model_dirs2[i] if args.model_dirs2 else None
-        all_values.append(run_tti(args))
 
     output_string = ""
     no_intervention_groups = np.array(all_values[0])[:, 0]

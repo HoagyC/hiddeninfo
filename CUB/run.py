@@ -11,9 +11,6 @@ from CUB.train_CUB import train_multimodel
 from CUB.cub_classes import Experiment, TTI_Config
 from CUB.tti import run_tti
 
-from CUB.original_experiments import ind_XtoC_cfg, ind_CtoY_cfg, orig_run_fn
-
-
 
 basic_tti_args = TTI_Config(
     use_attr=True,

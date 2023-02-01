@@ -9,9 +9,6 @@ from cub_utils import download_from_aws, list_aws_files, upload_to_aws
 from cub_classes import TTI_Config, TTI_Output
 from tti import run_tti, graph_tti_output, graph_multi_tti_output
 
-# Location of the XtoC model to be used for independent and sequential runs
-IND_XTOC_MODEL = "out/ind_XtoC/20230118-154035/final_model.pth"
-
 def get_most_recent(run_name: str) -> str:
     """Get the most recent run folder for a given run name."""
     run_files = list_aws_files(run_name, get_folders=True)
@@ -40,30 +37,14 @@ def create_tti_cfg(model_file: str, model_folder: str) -> Optional[TTI_Config]:
             log_dir=model_folder,
             model_dir=model_file,
             multimodel=True,
-            use_attr=True,
-            bottleneck=True
         )
-    elif "CtoY" in model_folder:
-        tti_config = TTI_Config(
-            model_dir=IND_XTOC_MODEL,
-            log_dir=model_folder,
-            model_dir2=model_file,
-            multimodel=False,
-            use_attr=True,
-            bottleneck=True
-        )
-    elif "joint" in model_folder:
+    else:
         tti_config = TTI_Config(
             log_dir=model_folder,
             model_dir=model_file,
             multimodel=False,
-            use_attr=True,
-            bottleneck=False
         )
-    else:
-        print(f"Unknown model type: {model_folder}, can't create TTI config")
-        tti_config = None
-    
+        
     return tti_config
 
 def process_results(runs_list: List[str], process_all: bool = False, reprocess: bool = False) -> None:
@@ -96,9 +77,6 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
         tti_config = create_tti_cfg(model_file, model_folder)
 
         download_from_aws([model_file])
-        # Also get the XtoC model if needed
-        if tti_config.model_dir2 is not None:
-            download_from_aws([tti_config.model_dir])
 
         # Run TTI and graph results
         results = run_tti(tti_config)
@@ -142,12 +120,7 @@ def get_results_pkls(runs_list: List[str], use_all: bool = False) -> List[TTI_Ou
 if __name__ == "__main__":
     # List of models to download from AWS (getting the most recent one in each case
     runs_list = [
-        # "out/ind_CtoY",
-        "out/joint",
-        # "out/seq_CtoY",
+        "out/ind_XtoC",
     ]
 
     process_results(runs_list, process_all=False, reprocess=True)
-    # results = get_results_pkls(runs_list, use_all=False)
-    # print(len(results))
-    # graph_multi_tti_output(results)

@@ -293,9 +293,22 @@ class IndependentModel(nn.Module):
 
         self.attr_loss_weight = args.attr_loss_weight
         self.train_mode = train_mode
+        self.train()
 
     
     def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor):
+        if not self.training:
+            attr_preds, aux_attr_preds = self.first_model(inputs)
+
+            # Attr preds are list of tensors, need to concat them with batch as d0
+            attr_preds_input = torch.cat(attr_preds, dim=1)
+            aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1)
+
+            class_preds = self.second_model(attr_preds_input)
+            aux_class_preds = self.second_model(aux_attr_preds_input)
+
+            return attr_preds, aux_attr_preds, class_preds, aux_class_preds
+
         if self.train_mode == "XtoC":
             attr_preds, aux_attr_preds = self.first_model(inputs[mask])
         else:

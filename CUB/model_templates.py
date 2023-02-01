@@ -21,19 +21,19 @@ model_urls = {
 }
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, num_classes, expand_dim: int = 800):
+    def __init__(self, input_dim, num_classes, expand_dim):
         super(MLP, self).__init__()
         self.linear = nn.Linear(input_dim, expand_dim)
         self.activation = torch.nn.ReLU()
         self.linear2 = nn.Linear(
             expand_dim, num_classes
-        )  # softmax is automatically handled by loss function
+        )  # softmax is handled by loss function
+        self.expand_dim = expand_dim
 
     def forward(self, x):
         x = self.linear(x)
-        if hasattr(self, "expand_dim") and self.expand_dim:
-            x = self.activation(x)
-            x = self.linear2(x)
+        x = self.activation(x)
+        x = self.linear2(x)
         return x
 
 
