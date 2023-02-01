@@ -62,7 +62,7 @@ class Experiment:
     use_aux: bool = True
 
     # Training
-    epochs: int = 100
+    epochs: int = 1000
     optimizer: str = "SGD"
     scheduler_step: int = 1000
     attr_loss_weight: float = 1.0
@@ -144,20 +144,12 @@ class TTI_Output:
     result: List[Tuple[int, float]]
     model_name: Optional[str] = None
 
-ind_XtoC_cfg = Experiment(
+ind_cfg = Experiment(
     tag="ind_XtoC",
-    exp="Concept_XtoC",
+    exp="Independent",
     epochs=1000,
     lr=0.01,
-    data_dir="CUB_masked_class",
     weighted_loss="multiple"
-)
-
-ind_CtoY_cfg = Experiment(
-    tag="ind_CtoY",
-    exp="Independent_CtoY",
-    epochs=500,
-    lr=0.001,
 )
 
 seq_CtoY_cfg = Experiment(
@@ -183,7 +175,7 @@ multiple_cfg = Experiment(
     epochs=1000,
     weighted_loss="multiple",
     lr=0.001,
-    batch_size=32,
+    batch_size=24,
     attr_loss_weight=0.01,
     # multimodel specific
     n_models=3,

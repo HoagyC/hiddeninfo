@@ -161,6 +161,67 @@ class Multimodel(nn.Module):
         return loss
     
 
+class SequentialModel(nn.Module):
+    def __init__(self, args: Experiment, train_mode: str) -> None:
+        super().__init__()
+        self.args = args
+        self.first_model = ModelXtoC(self.args)
+        self.second_model = ModelCtoY(self.args)
+        self.criterion = nn.CrossEntropyLoss()
+        if self.args.weighted_loss:
+            self.attr_criterion = make_weighted_criteria(args)
+        else:
+            self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
+
+        self.attr_loss_weight = args.attr_loss_weight
+        self.train_mode = train_mode
+
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor):
+        attr_preds, aux_attr_preds = self.first_model(inputs[mask])
+
+        if self.train_mode == "CtoY":
+            # Attr preds are list of tensors, need to concat them with batch as d0
+            # Detach to prevent gradients from flowing back to first model
+            attr_preds_input = torch.cat(attr_preds, dim=1).detach()
+            aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1).detach()
+    
+            class_preds = self.second_model(attr_preds_input)
+            aux_class_preds = self.second_model(aux_attr_preds_input)
+            
+            return None, None, class_preds, aux_class_preds
+        else:
+            return attr_preds, aux_attr_preds, None, None
+
+    def generate_loss(
+        self, 
+        attr_preds: torch.Tensor,
+        attr_labels: torch.Tensor,
+        class_preds: torch.Tensor, 
+        class_labels: torch.Tensor, 
+        aux_class_preds: torch.Tensor, 
+        aux_attr_preds: torch.Tensor, 
+        mask: torch.Tensor):
+
+        class_loss = self.criterion(class_preds, class_labels)
+        aux_class_loss = self.criterion(aux_class_preds, class_labels)
+        class_loss += aux_class_loss * AUX_LOSS_RATIO
+        
+        attr_loss = 0.
+        for i in range(len(self.attr_criterion)):
+            attr_loss += self.attr_criterion[i](
+                attr_preds[i].squeeze(), attr_labels[mask, i] # Masking attr losses
+            )
+
+            aux_attr_loss = self.attr_criterion[i](
+                aux_attr_preds[i].squeeze(), attr_labels[mask, i] # Masking attr losses
+            )
+            attr_loss += aux_attr_loss * AUX_LOSS_RATIO
+
+        
+        attr_loss /= len(self.attr_criterion)
+        loss = (attr_loss * self.attr_loss_weight) + class_loss
+        return loss
+
 class JointModel(nn.Module):
     def __init__(self, args: Experiment) -> None:
         super().__init__()
@@ -216,6 +277,7 @@ class JointModel(nn.Module):
         attr_loss /= len(self.attr_criterion)
         loss = (attr_loss * self.attr_loss_weight) + class_loss
         return loss
+
 
 class IndependentModel(nn.Module):
     def __init__(self, args: Experiment, train_mode: str) -> None:

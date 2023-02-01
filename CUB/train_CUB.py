@@ -27,7 +27,7 @@ from CUB.models import (
     Multimodel,
 )
 from CUB.cub_classes import Experiment, Meters, RunRecord
-from CUB.cub_classes import ind_XtoC_cfg, ind_CtoY_cfg, joint_cfg, multiple_cfg
+from CUB.cub_classes import ind_cfg, joint_cfg, multiple_cfg
 
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
@@ -232,7 +232,7 @@ def write_metrics(
     save_path: Path,
 ) -> None:
     # If training independent models, use concept accuracy as key metric since we don't have labels
-    if args.exp == "Independent_XtoC":
+    if args.exp in ["Independent", "Sequential"] and model.train_mode=="XtoC":
         is_record = val_meters.concept_acc.avg > val_records.concept_acc
         if is_record:
             val_records.concept_acc = val_meters.concept_acc.avg
@@ -315,13 +315,20 @@ def train_multi(args: Experiment) -> None:
     # Train again with shuffling and freezing
     train(model, args, init_epoch=elapsed_epochs)
 
-def train_single(args):
-    if args.exp == "Concept_XtoC":
-        model = IndependentModel(args, train_mode="XtoC")
-    elif args.exp == "Independent_CtoY":
-        model = IndependentModel(args, train_mode="CtoY")
+def train_switch(args):
+    if args.exp == "Independent":
+        train_independent(args)
     elif args.exp == "Joint":
         model = JointModel(args)
+        train(model, args)
+    elif args.exp == "Multimodel":
+        train_multi(args)
+
+def train_independent(args):
+    model = IndependentModel(args, train_mode="XtoC")
+    train(model, args)
+    args.lr=0.001
+    model.train_mode = "CtoY"
     train(model, args)
 
 
@@ -337,8 +344,7 @@ def _save_CUB_result(train_result):
 
 def make_configs_list() -> List[Experiment]:
     configs = [
-        ind_XtoC_cfg,
-        ind_CtoY_cfg,
+        ind_cfg,
         joint_cfg,
         multiple_cfg
     ]
@@ -355,9 +361,6 @@ if __name__ == "__main__":
     secrets = get_secrets()
     wandb.login(key=secrets["wandb_key"])
 
-    if args.multimodel:
-        train_multi(args)
-    else:
-        train_single(args)
+    train_switch(args)
     
     wandb.finish()
