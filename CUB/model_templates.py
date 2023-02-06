@@ -137,7 +137,7 @@ class Inception3(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x):
+    def forward(self, x, partial=False):
         if self.transform_input:
             x_ch0 = torch.unsqueeze(x[:, 0], 1) * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
             x_ch1 = torch.unsqueeze(x[:, 1], 1) * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
@@ -174,6 +174,7 @@ class Inception3(nn.Module):
         # N x 768 x 17 x 17
         x = self.Mixed_6e(x)
         # N x 768 x 17 x 17
+        x_aix = x
         if self.aux_logits:
             out_aux = self.AuxLogits(x)
         # N x 768 x 17 x 17
@@ -190,6 +191,8 @@ class Inception3(nn.Module):
         # N x 2048 x 1 x 1
         x = x.view(x.size(0), -1)
         # N x 2048
+        if partial:
+            return x
         out = []
         for fc in self.all_fc:
             out.append(fc(x))

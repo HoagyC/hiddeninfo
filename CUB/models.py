@@ -28,7 +28,7 @@ def make_weighted_criteria(args):
 def ModelXtoC(args: Experiment) -> nn.Module:
     """
     Model for predicting attributes from images.
-    Takes in an image and outputs a list of outputs for each attribute, 
+    Takes in an image and outputs a list of outputs for each attribute,
     where the output is a vector of size (batch_size, 1).
     """
     return inception_v3(
@@ -79,7 +79,7 @@ class Multimodel(nn.Module):
 
         self.post_models = nn.ModuleList(post_models_list)
 
-    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor):
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None):
         attr_preds = []
         aux_attr_preds = []
         class_preds = []
@@ -176,7 +176,7 @@ class SequentialModel(nn.Module):
         self.attr_loss_weight = args.attr_loss_weight
         self.train_mode = train_mode
 
-    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor):
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None):
         attr_preds, aux_attr_preds = self.first_model(inputs[mask])
 
         if self.train_mode == "CtoY":
@@ -184,41 +184,42 @@ class SequentialModel(nn.Module):
             # Detach to prevent gradients from flowing back to first model
             attr_preds_input = torch.cat(attr_preds, dim=1).detach()
             aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1).detach()
+
+            # Apply a sigmoid to the input tensors
+            attr_preds_input = torch.sigmoid(attr_preds_input)
+            aux_attr_preds_input = torch.sigmoid(aux_attr_preds_input)
     
             class_preds = self.second_model(attr_preds_input)
             aux_class_preds = self.second_model(aux_attr_preds_input)
             
-            return None, None, class_preds, aux_class_preds
+            return attr_preds, aux_attr_preds, class_preds, aux_class_preds
         else:
             return attr_preds, aux_attr_preds, None, None
 
     def generate_loss(
-        self, 
+        self,
         attr_preds: torch.Tensor,
-        attr_labels: torch.Tensor,
+        attr_labels: torch.Tensor, 
         class_preds: torch.Tensor, 
         class_labels: torch.Tensor, 
-        aux_class_preds: torch.Tensor, 
-        aux_attr_preds: torch.Tensor, 
-        mask: torch.Tensor):
-
-        class_loss = self.criterion(class_preds, class_labels)
-        aux_class_loss = self.criterion(aux_class_preds, class_labels)
-        class_loss += aux_class_loss * AUX_LOSS_RATIO
-        
+        aux_class_preds: torch.Tensor,
+        aux_attr_preds: torch.Tensor,
+        mask: torch.Tensor,
+    ):
         attr_loss = 0.
-        for i in range(len(self.attr_criterion)):
-            attr_loss += self.attr_criterion[i](
-                attr_preds[i].squeeze(), attr_labels[mask, i] # Masking attr losses
-            )
-
-            aux_attr_loss = self.attr_criterion[i](
-                aux_attr_preds[i].squeeze(), attr_labels[mask, i] # Masking attr losses
-            )
-            attr_loss += aux_attr_loss * AUX_LOSS_RATIO
-
+        if self.train_mode == "XtoC":
+            for i in range(len(self.attr_criterion)):
+                attr_loss += self.attr_criterion[i](
+                    attr_preds[i].squeeze(), attr_labels[mask, i]
+                )
         
-        attr_loss /= len(self.attr_criterion)
+            attr_loss /= len(self.attr_criterion)
+
+        if self.train_mode == "CtoY":
+            class_loss = self.criterion(class_preds, class_labels[mask])
+        else:
+            class_loss = 0
+
         loss = (attr_loss * self.attr_loss_weight) + class_loss
         return loss
 
@@ -236,12 +237,16 @@ class JointModel(nn.Module):
 
         self.attr_loss_weight = args.attr_loss_weight
 
-    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor):
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None):
         attr_preds, aux_attr_preds = self.first_model(inputs)
 
         # Attr preds are list of tensors, need to concat them with batch as d0
         attr_preds_input = torch.cat(attr_preds, dim=1)
         aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1)
+
+        # Apply a sigmoid to the input tensors
+        attr_preds_input = torch.sigmoid(attr_preds_input)
+        aux_attr_preds_input = torch.sigmoid(aux_attr_preds_input)
     
         class_preds = self.second_model(attr_preds_input)
         aux_class_preds = self.second_model(aux_attr_preds_input)
@@ -265,11 +270,11 @@ class JointModel(nn.Module):
         attr_loss = 0.
         for i in range(len(self.attr_criterion)):
             attr_loss += self.attr_criterion[i](
-                attr_preds[i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                attr_preds[i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
             )
 
             aux_attr_loss = self.attr_criterion[i](
-                aux_attr_preds[i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                aux_attr_preds[i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
             )
             attr_loss += aux_attr_loss * AUX_LOSS_RATIO
 
@@ -296,13 +301,17 @@ class IndependentModel(nn.Module):
         self.train()
 
     
-    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor):
-        if not self.training:
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through: bool = False):
+        if straight_through:
             attr_preds, aux_attr_preds = self.first_model(inputs)
 
             # Attr preds are list of tensors, need to concat them with batch as d0
             attr_preds_input = torch.cat(attr_preds, dim=1)
             aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1)
+
+            # Apply a sigmoid to the input tensors
+            attr_preds_input = torch.sigmoid(attr_preds_input)
+            aux_attr_preds_input = torch.sigmoid(aux_attr_preds_input)
 
             class_preds = self.second_model(attr_preds_input)
             aux_class_preds = self.second_model(aux_attr_preds_input)
@@ -338,16 +347,127 @@ class IndependentModel(nn.Module):
         if self.train_mode == "XtoC":
             for i in range(len(self.attr_criterion)):
                 attr_loss += self.attr_criterion[i](
-                    attr_preds[i].squeeze(), attr_labels[:, i]
+                    attr_preds[i].squeeze(), attr_labels[mask, i]
                 )
         
             attr_loss /= len(self.attr_criterion)
         
         if self.train_mode == "CtoY":
-            class_loss = self.criterion(class_preds, class_labels)
+            class_loss = self.criterion(class_preds, class_labels[mask])
         else:
             class_loss = 0
 
         loss = (attr_loss * self.attr_loss_weight) + class_loss
         return loss
 
+class ThinMultimodel(nn.Module):
+    def __init__(self, args: Experiment):
+        super().__init__()
+        self.args = args
+        self.pre_models: nn.ModuleList
+        self.post_models: nn.ModuleList
+        self.reset_pre_models()
+        self.reset_post_models()
+        self.train_mode = "separate"
+        self.criterion = nn.CrossEntropyLoss()
+        if self.args.weighted_loss:
+            self.attr_criterion = make_weighted_criteria(args)
+        else:
+            self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
+
+
+    def reset_pre_models(self) -> None:
+        pre_models_list = [
+            ModelXtoC(self.args)
+            for _ in range(self.args.n_models)
+        ]
+        self.pre_models = nn.ModuleList(pre_models_list)
+
+    def reset_post_models(self) -> None:
+        post_models_list = [
+            ModelCtoY(self.args)
+            for _ in range(self.args.n_models)
+        ]
+
+        self.post_models = nn.ModuleList(post_models_list)
+
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through):
+        attr_preds = []
+        aux_attr_preds = []
+        class_preds = []
+        aux_class_preds = []
+
+        # Train each pre model with its own post model
+        if self.train_mode == "separate":
+            for i in range(self.args.n_models):
+                attr_pred, aux_attr_pred = self.pre_models[i](inputs)
+
+                attr_pred_input = torch.cat(attr_pred, dim=1)
+                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
+
+                class_pred = self.post_models[i](attr_pred_input)
+                aux_class_pred = self.post_models[i](aux_attr_pred_input)
+
+                attr_preds.append(attr_pred)
+                aux_attr_preds.append(aux_attr_pred)
+                class_preds.append(class_pred)
+                aux_class_preds.append(aux_class_pred)
+        
+        # Randomly shuffle which post model is used for each pre model
+        elif self.train_mode == "shuffle":
+            post_model_indices = torch.randperm(self.args.n_models)
+            for i, j in enumerate(post_model_indices):
+                attr_pred, aux_attr_pred = self.pre_models[i](inputs)
+
+                attr_pred_input = torch.cat(attr_pred, dim=1)
+                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
+
+                class_pred = self.post_models[j](attr_pred)
+                aux_class_pred = self.post_models[j](aux_attr_pred)
+        
+                attr_preds.append(attr_pred)
+                aux_attr_preds.append(aux_attr_pred)
+                class_preds.append(class_pred)
+                aux_class_preds.append(aux_class_pred)
+            
+        else:
+            raise ValueError(f"Invalid train mode {self.train_mode}")
+
+        return attr_preds, aux_attr_preds, class_preds, aux_class_preds
+    
+    def generate_loss(
+        self, 
+        attr_preds: torch.Tensor,
+        attr_labels: torch.Tensor,
+        class_preds: torch.Tensor, 
+        class_labels: torch.Tensor, 
+        aux_class_preds: torch.Tensor, 
+        aux_attr_preds: torch.Tensor,
+        mask: torch.Tensor,
+    ):
+        total_class_loss = 0.
+        total_attr_loss = 0.
+        
+        assert len(attr_preds) == len(aux_attr_preds) == len(class_preds) == len(aux_class_preds) == len(self.pre_models)
+        for ndx in range(len(self.pre_models)):
+            class_loss = self.criterion(class_preds[ndx], class_labels)
+            aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
+            class_loss += aux_class_loss * AUX_LOSS_RATIO
+            total_class_loss += class_loss
+            
+            attr_loss = 0.
+            for i in range(len(self.attr_criterion)):
+                attr_loss += self.attr_criterion[i](
+                    attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                )
+
+                aux_attr_loss = self.attr_criterion[i](
+                    aux_attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                )
+                attr_loss += aux_attr_loss * AUX_LOSS_RATIO
+            
+            attr_loss /= len(self.attr_criterion)
+            total_attr_loss += attr_loss
+    
+        loss = (total_attr_loss * self.args.attr_loss_weight) + total_class_loss
+        return loss

@@ -25,9 +25,12 @@ from CUB.models import (
     IndependentModel,
     JointModel,
     Multimodel,
+    SequentialModel,
 )
 from CUB.cub_classes import Experiment, Meters, RunRecord
-from CUB.cub_classes import ind_cfg, joint_cfg, multiple_cfg
+from CUB.cub_classes import ind_cfg, joint_cfg, seq_cfg
+from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3
+from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg
 
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
@@ -82,6 +85,8 @@ def run_epoch(
             else:
                 attr_preds_t = torch.cat(attr_preds, dim=1)
             
+            if attr_preds_t.shape[0] != attr_labels.shape[0]:
+                attr_labels=attr_labels[attr_mask]
             attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds_t)
             attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels)
             meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
@@ -91,6 +96,8 @@ def run_epoch(
                 class_preds = torch.cat(class_preds, dim=0)
                 class_labels = class_labels.repeat(args.n_models)
             
+            if class_preds.shape[0] != class_labels.shape[0]:
+                class_labels=class_labels[attr_mask]
             class_acc = accuracy(class_preds, class_labels, topk=(1,))
             meters.label_acc.update(class_acc[0], inputs.size(0))
 
@@ -103,6 +110,7 @@ def train(
     print(f"Running {args.tag}")
     now_str = datetime.now().strftime(DATETIME_FMT)
     run_save_path = Path(args.log_dir) / args.tag / now_str
+
     if not run_save_path.is_dir():
         run_save_path.mkdir(parents=True)
     wandb.init(project="distill_CUB", config=args.__dict__)
@@ -112,7 +120,8 @@ def train(
             model.reset_pre_models()
         if args.reset_post_models:
             model.reset_post_models()
-
+        
+    model.train()
     model = model.cuda()
 
     for param in model.parameters():
@@ -141,7 +150,7 @@ def train(
     
         train_meters = Meters()
         val_meters = Meters()
-        
+
         run_epoch(
             model,
             optimizer,
@@ -178,9 +187,10 @@ def train(
             now_str = datetime.now().strftime(DATETIME_FMT)
             torch.save(model, run_save_path / f"{epoch_ndx}_model.pth")
 
-        if epoch_ndx >= 100 and val_meters.label_acc.avg < 3:
-            print("Early stopping because of low accuracy")
-            break
+        # if epoch_ndx >= 100 and val_meters.label_acc.avg and  < 3:
+        #     print("Early stopping because of low accuracy")
+        #     break
+
         if epoch_ndx - val_records.epoch >= 100:
             print("Early stopping because acc hasn't improved for a long time")
             break
@@ -235,9 +245,9 @@ def write_metrics(
 ) -> None:
     # If training independent models, use concept accuracy as key metric since we don't have labels
     if args.exp in ["Independent", "Sequential"] and model.train_mode=="XtoC":
-        is_record = val_meters.concept_acc.avg > val_records.concept_acc
+        is_record = val_meters.concept_acc.avg > val_records.acc
         if is_record:
-            val_records.concept_acc = val_meters.concept_acc.avg
+            val_records.acc = val_meters.concept_acc.avg
     else:
         is_record = val_meters.label_acc.avg > val_records.acc
         if is_record:
@@ -297,6 +307,7 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 
 def train_multi(args: Experiment) -> None:
     model = Multimodel(args)
+    args.epochs=2
     elapsed_epochs = train(model, args)
 
     if args.reset_post_models:
@@ -325,9 +336,18 @@ def train_switch(args):
         train(model, args)
     elif args.exp == "Multimodel":
         train_multi(args)
+    elif args.exp == "Sequential":
+        train_sequential(args)
 
 def train_independent(args):
     model = IndependentModel(args, train_mode="XtoC")
+    train(model, args)
+    args.lr=0.001
+    model.train_mode = "CtoY"
+    train(model, args)
+
+def train_sequential(args):
+    model = SequentialModel(args, train_mode="XtoC")
     train(model, args)
     args.lr=0.001
     model.train_mode = "CtoY"
@@ -346,9 +366,16 @@ def _save_CUB_result(train_result):
 
 def make_configs_list() -> List[Experiment]:
     configs = [
-        ind_cfg,
+        ind_cfg, # 0 
+        seq_cfg,
         joint_cfg,
-        multiple_cfg
+        multiple_cfg1, # 3
+        multiple_cfg2,
+        multiple_cfg3,
+        ind_sparse_cfg, # 6
+        seq_sparse_cfg,
+        joint_sparse_cfg,
+
     ]
     return configs
 

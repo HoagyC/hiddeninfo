@@ -97,7 +97,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
         attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
 
-        attr_preds, _, class_preds, _ = model.generate_predictions(inputs, attr_labels, attr_mask)
+        attr_preds, _, class_preds, _ = model.generate_predictions(inputs, attr_labels, attr_mask, straight_through=True)
 
         class_acc = accuracy(class_preds, class_labels, topk=K)
 
@@ -209,7 +209,5 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         attr_pred_sigmoids=all_attr_preds_sigmoid,
         wrong_idx=wrong_idx,
     )
-
-    import pdb; pdb.set_trace()
 
     return output

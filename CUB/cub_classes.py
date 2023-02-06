@@ -90,19 +90,11 @@ class Experiment:
 @dataclasses.dataclass
 class TTI_Config:
     log_dir: str = "."  # where results are stored
-    # where the trained model is saved
-    model_dirs: List[str] = dataclasses.field(default_factory=lambda: [])
-    # where the second half of the model is saved.
-    # If empty, the final FC layer of the first model is used.
-    model_dirs2: List[str] = dataclasses.field(default_factory=lambda: [])
-
     model_dir: str = ""
-    model_dir2: Optional[str] = ""
 
     eval_data: str = "test"  # whether to use test or val data
     batch_size: int = 16
 
-    no_background: bool = False
     use_sigmoid: bool = False
     attr_sparsity: int = 1
 
@@ -110,12 +102,11 @@ class TTI_Config:
     data_dir_raw: str = "CUB_processed"  # directory to the raw data
     n_attributes: int = 109
     image_dir: str = "images"  # test image folder to run inference on
-    # file listing the (trained) model directory for each attribute group
-    attribute_group: Optional[str] = None
+
     # whether to print out performance of individual atttributes
     feature_group_results: bool = False
-    # Whether to correct with class- (if set) or instance- (if not set) level values
-    class_level: bool = False
+    # Whether to correct with class or instance level values
+    replace_class: bool = True
 
     # Which mode to use for correction. Only random actually implemented in original code
     mode: str = "random"
@@ -126,7 +117,7 @@ class TTI_Config:
 
 base_ind_tti_cfg = TTI_Config(
     n_trials=5,
-    class_level=True,
+    replace_class=True,
     use_sigmoid=True,
     log_dir="TTI_ind",
 )
@@ -146,12 +137,13 @@ ind_cfg = Experiment(
     weighted_loss="multiple"
 )
 
-seq_CtoY_cfg = Experiment(
+
+seq_cfg = Experiment(
     tag="seq_CtoY",
-    exp="Sequential_CtoY",
+    exp="Sequential",
     epochs=1000,
     lr=0.001,
-    data_dir = "ConceptModel1__PredConcepts",
+    weighted_loss="multiple",
 )
 
 joint_cfg = Experiment(
@@ -163,10 +155,11 @@ joint_cfg = Experiment(
     lr=0.001,
 )
 
-multiple_cfg = Experiment(
+multiple_cfg1 = Experiment(
     multimodel=True,
+    tag='multimodel0.01',
     exp="Multimodel",
-    epochs=1000,
+    epochs=150,
     weighted_loss="multiple",
     lr=0.001,
     batch_size=24,
@@ -175,4 +168,34 @@ multiple_cfg = Experiment(
     n_models=3,
     freeze_post_models=True,
     reset_pre_models=True,
+)
+
+multiple_cfg2 = dataclasses.replace(
+    multiple_cfg1,
+    tag='multimodel0.1',
+    attr_loss_weight=0.1,
+)
+
+multiple_cfg3 = dataclasses.replace(
+    multiple_cfg1,
+    tag='multimodel1.0',
+    attr_loss_weight=1.0,
+)
+
+ind_sparse_cfg = dataclasses.replace(
+    ind_cfg,
+    tag="ind_XtoC_sparse",
+    attr_sparsity=2,
+)
+
+seq_sparse_cfg = dataclasses.replace(
+    seq_cfg,
+    tag="seq_CtoY_sparse",
+    attr_sparsity=2,
+)
+
+joint_sparse_cfg = dataclasses.replace(
+    joint_cfg,
+    tag="joint_sparse",
+    attr_sparsity=2,
 )

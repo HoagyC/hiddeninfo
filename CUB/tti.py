@@ -111,8 +111,8 @@ def run_tti(args) -> List[Tuple[int, float]]:
     test_data = pickle.load(open(os.path.join(args.data_dir_raw, "test.pkl"), "rb"))
 
     # Build numpy arrays of the labels for the attributes we are using
-    raw_attr_labels = np.zeros(len(test_data), sum(attr_mask))
-    raw_attr_uncertanties = np.zeros(len(test_data), sum(attr_mask))
+    raw_attr_labels = np.zeros((len(test_data), len(attr_mask)))
+    raw_attr_uncertanties = np.zeros((len(test_data), len(attr_mask)))
 
     for ndx, d in enumerate(test_data):
         raw_attr_labels[ndx] = np.array(d["attribute_label"])[attr_mask]
@@ -135,7 +135,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
     
     # Creating the correct output array, where 'correct' is the 5th percentile of the attribute if false, and 95th percentile if true
     correct_attr_outputs = np.zeros_like(eval_output.attr_pred_outputs)
-    if replace_val == "class_level":
+    if args.replace_class:
         for attr_idx in range(args.n_attributes):
             correct_attr_outputs[:, attr_idx] = np.where(
                 eval_output.attr_true_labels[:, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
@@ -164,13 +164,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
     )
 
     results = []
-    for n_replace in list(range(args.n_groups + 1)):
-
-        if args.class_level:
-            replace_val = "class_level"
-        else:
-            replace_val = "instance_level"
-
+    for n_replace in range(args.n_groups + 1):
         all_class_acc = []
         if args.multimodel:
             n_trials = args.n_trials * len(model.post_models)
@@ -180,26 +174,24 @@ def run_tti(args) -> List[Tuple[int, float]]:
         for ndx in range(n_trials):
             # Array of attr predictions, will be modified towards ground truth
             updated_attrs = np.array(eval_output.attr_pred_outputs[:])
-
-            # List of attr_ids that have been changed in terms of the big 1D list
-            attr_replace_idxs: List = []
-
-            for img_id in range(len(eval_output.class_labels)):
-                # Get a list of all attrs (in the flattened list) that we will intervene on for this img
-                replace_idxs = []
-                group_replace_idx = list(
-                    random.sample(list(range(args.n_groups)), n_replace)
-                )
-                for i in group_replace_idx:
-                    replace_idxs.extend(attr_group_dict[i])
-
-                updated_attrs[attr_replace_idxs] = correct_attr_outputs[img_id, attr_replace_idxs]
+            
+            if n_replace > 0:
+                for img_id in range(len(eval_output.class_labels)):
+                    # Get a list of all attrs (in the flattened list) that we will intervene on for this img
+                    replace_idxs = []
+                    group_replace_idx = list(
+                        random.sample(list(range(args.n_groups)), n_replace)
+                    )
+                    for i in group_replace_idx:
+                        replace_idxs.extend(attr_group_dict[i])
+                    updated_attrs[img_id, replace_idxs] = correct_attr_outputs[img_id, replace_idxs]
 
             # Evaluate the model on the new attributes
             if args.multimodel:
                 model_use = model.post_models[ndx % n_trials]
             else:
                 model_use = model.second_model
+
             model_use.eval()
 
             stage2_inputs = torch.from_numpy(updated_attrs).cuda()
@@ -219,18 +211,6 @@ def run_tti(args) -> List[Tuple[int, float]]:
         results.append((n_replace, acc))
     return results
 
-
-ind_tti_args = TTI_Config(
-    model_dirs=["out/ind_XtoC/20221130-150657/final_model.pth"],
-    model_dirs2=["out/ind_CtoY/20221130-194327/final_model.pth"],
-    bottleneck=True,
-    n_trials=5,
-    use_invisible=True,
-    class_level=True,
-    data_dir2="CUB_processed",
-    use_sigmoid=True,
-    log_dir="TTI_ind",
-)
 
 def graph_tti_output(
     tti_output: List[Tuple[int, float]], 
@@ -264,23 +244,3 @@ def graph_multi_tti_output(tti_outputs: List[TTI_Output], save_dir: Optional[str
     if not os.path.exists("images"):
         os.mkdir("images")
     plt.savefig("images/tti_results.png")
-
-
-if __name__ == "__main__":
-    torch.backends.cudnn.benchmark = True
-
-    args = ind_tti_args  # Set config for how to run TTI
-
-    all_values = []
-
-    output_string = ""
-    no_intervention_groups = np.array(all_values[0])[:, 0]
-    values = [sum(np.array(values)[:, 1]) / len(all_values) for value in all_values]
-    for no_intervention_group, value in zip(no_intervention_groups, values):
-        output_string += "%.4f %.4f\n" % (no_intervention_group, value)
-    print(output_string)
-    if not os.path.exists(args.log_dir):
-        os.mkdir(args.log_dir)
-    output = open(os.path.join(args.log_dir, "results.txt"), "w")
-    output.write(output_string)
-

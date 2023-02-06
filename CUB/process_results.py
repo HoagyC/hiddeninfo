@@ -44,7 +44,7 @@ def create_tti_cfg(model_file: str, model_folder: str) -> Optional[TTI_Config]:
             model_dir=model_file,
             multimodel=False,
         )
-        
+
     return tti_config
 
 def process_results(runs_list: List[str], process_all: bool = False, reprocess: bool = False) -> None:
@@ -121,6 +121,8 @@ if __name__ == "__main__":
     # List of models to download from AWS (getting the most recent one in each case
     runs_list = [
         "out/ind_XtoC",
+        "out/seq_CtoY",
+        "out/joint"
     ]
 
     process_results(runs_list, process_all=False, reprocess=True)

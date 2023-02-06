@@ -2,7 +2,7 @@ import subprocess
 import sys
 from itertools import product
 
-VAST_AI_SERVERS = [(19952, 6)]
+VAST_AI_SERVERS = [(15120, 6), (15122, 4)]
 
 ATTN_COEFS = [0.1, 1, 10]
 ATTR_SPARSITIES = [1, 3, 10]
@@ -34,9 +34,17 @@ def run_multiple(setup: bool) -> None:
         subprocess.Popen(run_cmd, shell=True)
 
 
+def sync_multiple():
+    # Run ssh-sync with each of the servers
+    for server in VAST_AI_SERVERS:
+        port, num = server
+        sync_cmd = f"make ssh-sync SSH_DESTINATION=root@ssh{num}.vast.ai SSH_PORT=" + str(port)
+        subprocess.run(sync_cmd, shell=True)
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "setup":
-        setup = True
+    if len(sys.argv) > 1 and sys.argv[1] == "sync":
+        sync_multiple()
+    elif len(sys.argv) > 1 and sys.argv[1] == "setup":
+        run_multiple(setup=True)
     else:
-        setup = False
-    run_multiple(setup=setup)
+        run_multiple(setup=False)
