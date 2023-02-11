@@ -69,8 +69,9 @@ class Experiment:
     lr: float = 1e-03
     weight_decay: float = 2e-4
     attr_sparsity: int = 1
-
     batch_size: int = 64
+
+    tti_int: int = 50 # Frequency of running TTI during run
 
     freeze: bool = False
     weighted_loss: str = ""
@@ -85,6 +86,9 @@ class Experiment:
     n_models: int = 4
 
     quick: bool = False
+
+    model_sigmoid: bool = True
+    gen_pred_sigmoid: bool = False
 
 
 @dataclasses.dataclass
@@ -108,12 +112,12 @@ class TTI_Config:
     # Whether to correct with class or instance level values
     replace_class: bool = True
 
-    # Which mode to use for correction. Only random actually implemented in original code
-    mode: str = "random"
     n_trials: int = 1  # Number of trials to run, when mode is random
-    n_groups: int = 28  # n. groups of attributes (28 enums with ~1 options = 312 attrs)
+    n_groups: int = 28  # n. groups of attributes (28 enums with ~10 options = 312 attrs)
     multimodel: bool = True # whether to use the multimodel architecture
 
+    sigmoid: bool = False
+    model_sigmoid: bool = False
 
 base_ind_tti_cfg = TTI_Config(
     n_trials=5,
@@ -197,5 +201,25 @@ seq_sparse_cfg = dataclasses.replace(
 joint_sparse_cfg = dataclasses.replace(
     joint_cfg,
     tag="joint_sparse",
-    attr_sparsity=2,
+    attr_sparsity=5,
+    attr_loss_weight=1.0,
+)
+
+joint_cfg2 = dataclasses.replace(
+    joint_cfg,
+    tag="joint_0.1",
+    attr_loss_weight=0.1,
+)
+
+joint_cfg3 = dataclasses.replace(
+    joint_cfg,
+    tag="joint_1.0",
+    attr_loss_weight=1.0,
+)
+
+multi_sparse_cfg = dataclasses.replace(
+    multiple_cfg3,
+    tag="multimodel_sparse",
+    attr_sparsity=5,
+    attr_loss_weight=1.0,
 )

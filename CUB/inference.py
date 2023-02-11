@@ -54,6 +54,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     """
 
     # Load models
+    print(args.model_dir)
     model = torch.load(args.model_dir)
     model.eval()
 
@@ -99,6 +100,10 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
 
         attr_preds, _, class_preds, _ = model.generate_predictions(inputs, attr_labels, attr_mask, straight_through=True)
 
+        if args.multimodel:
+            class_preds = torch.cat(class_preds, dim=0)
+            class_labels = class_labels.repeat(len(model.pre_models), 1)
+
         class_acc = accuracy(class_preds, class_labels, topk=K)
 
         for m in range(len(meters.class_accs)):
@@ -106,7 +111,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     
         if args.multimodel:
             attr_preds_t = torch.cat([torch.cat(a, dim=1) for a in attr_preds], dim=0)
-            attr_labels = attr_labels.repeat(args.n_models, 1)
+            attr_labels = attr_labels.repeat(len(model.pre_models), 1)
         else:
             attr_preds_t = torch.cat(attr_preds, dim=1)
         
@@ -125,6 +130,8 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
 
         # Store outputs
         n_examples = inputs.size(0)
+        if args.multimodel:
+            n_examples = n_examples * len(model.pre_models)
 
         all_attr_preds[n_seen:n_seen + n_examples] = attr_preds_t.data.cpu().numpy()
         all_attr_preds_sigmoid[n_seen:n_seen + n_examples] = attr_preds_sigmoid.data.cpu().numpy()

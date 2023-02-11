@@ -27,13 +27,14 @@ from CUB.models import (
     Multimodel,
     SequentialModel,
 )
-from CUB.cub_classes import Experiment, Meters, RunRecord
+from CUB.cub_classes import Experiment, Meters, RunRecord, TTI_Config
 from CUB.cub_classes import ind_cfg, joint_cfg, seq_cfg
-from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3
-from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg
+from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3, multi_sparse_cfg
+from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg, joint_cfg2, joint_cfg3
 
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
+from CUB.tti import run_tti
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
 RESULTS_DIR ="out"
@@ -147,6 +148,28 @@ def train(
     val_records = RunRecord()
 
     for epoch_ndx in range(init_epoch, args.epochs + init_epoch):
+        if args.tti_int > 0 and epoch_ndx % args.tti_int == 0:
+            model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
+            torch.save(model, model_save_path)
+
+            tti_cfg = TTI_Config(
+                log_dir=run_save_path,
+                model_dir=model_save_path,
+                multimodel=args.multimodel,
+                sigmoid=False,
+                model_sigmoid=False,
+            )
+
+            tti_results = run_tti(tti_cfg)
+            wandb.log(
+                    dict(
+                    epoch = epoch_ndx,
+                    tti0 = tti_results[0][1],
+                    tti10 = tti_results[10][1],
+                    ttilast = tti_results[-1][1],
+                )
+            )
+
     
         train_meters = Meters()
         val_meters = Meters()
@@ -180,8 +203,6 @@ def train(
         if epoch_ndx <= stop_epoch:
             scheduler.step()
 
-        if epoch_ndx % 10 == 0:
-            print("Current lr:", scheduler.get_lr())
 
         if epoch_ndx % args.save_step == 0:
             now_str = datetime.now().strftime(DATETIME_FMT)
@@ -375,7 +396,9 @@ def make_configs_list() -> List[Experiment]:
         ind_sparse_cfg, # 6
         seq_sparse_cfg,
         joint_sparse_cfg,
-
+        joint_cfg2, # 9
+        joint_cfg3,
+        multi_sparse_cfg, # 11
     ]
     return configs
 

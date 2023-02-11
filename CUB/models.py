@@ -73,7 +73,7 @@ class Multimodel(nn.Module):
 
     def reset_post_models(self) -> None:
         post_models_list = [
-            ModelCtoY(self.args)
+            nn.Sequential(nn.Sigmoid(), ModelCtoY(self.args))
             for _ in range(self.args.n_models)
         ]
 
@@ -228,7 +228,13 @@ class JointModel(nn.Module):
         super().__init__()
         self.args = args
         self.first_model = ModelXtoC(self.args)
-        self.second_model = ModelCtoY(self.args)
+
+        self.second_model: nn.Module
+        if self.args.model_sigmoid:
+            self.second_model = nn.Sequential(nn.Sigmoid(), ModelCtoY(self.args))
+        else:
+            self.second_model = ModelCtoY(self.args)
+
         self.criterion = nn.CrossEntropyLoss()
         if self.args.weighted_loss:
             self.attr_criterion = make_weighted_criteria(args)
@@ -236,6 +242,7 @@ class JointModel(nn.Module):
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
 
         self.attr_loss_weight = args.attr_loss_weight
+        print(self.second_model)
 
     def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None):
         attr_preds, aux_attr_preds = self.first_model(inputs)
@@ -244,9 +251,10 @@ class JointModel(nn.Module):
         attr_preds_input = torch.cat(attr_preds, dim=1)
         aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1)
 
-        # Apply a sigmoid to the input tensors
-        attr_preds_input = torch.sigmoid(attr_preds_input)
-        aux_attr_preds_input = torch.sigmoid(aux_attr_preds_input)
+        if self.args.gen_pred_sigmoid:
+            # Apply a sigmoid to the input tensors
+            attr_preds_input = torch.sigmoid(attr_preds_input)
+            aux_attr_preds_input = torch.sigmoid(aux_attr_preds_input)
     
         class_preds = self.second_model(attr_preds_input)
         aux_class_preds = self.second_model(aux_attr_preds_input)

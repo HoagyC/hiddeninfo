@@ -163,6 +163,15 @@ def run_tti(args) -> List[Tuple[int, float]]:
         len(eval_output.attr_true_labels),
     )
 
+    # Print percentiles for the raw and corrected attr outputs
+    # to check that they are from similar distributions
+    print("Raw attr outputs:")
+    print([np.percentile(eval_output.attr_pred_outputs, x) for x in range(0, 101, 10)])
+    print("Corrected attr outputs:")
+    print([np.percentile(correct_attr_outputs, x) for x in range(0, 101, 10)])
+
+
+
     results = []
     for n_replace in range(args.n_groups + 1):
         all_class_acc = []
@@ -174,7 +183,6 @@ def run_tti(args) -> List[Tuple[int, float]]:
         for ndx in range(n_trials):
             # Array of attr predictions, will be modified towards ground truth
             updated_attrs = np.array(eval_output.attr_pred_outputs[:])
-            
             if n_replace > 0:
                 for img_id in range(len(eval_output.class_labels)):
                     # Get a list of all attrs (in the flattened list) that we will intervene on for this img
@@ -184,14 +192,15 @@ def run_tti(args) -> List[Tuple[int, float]]:
                     )
                     for i in group_replace_idx:
                         replace_idxs.extend(attr_group_dict[i])
+                    
                     updated_attrs[img_id, replace_idxs] = correct_attr_outputs[img_id, replace_idxs]
-
+            
             # Evaluate the model on the new attributes
             if args.multimodel:
                 model_use = model.post_models[ndx % n_trials]
             else:
                 model_use = model.second_model
-
+            
             model_use.eval()
 
             stage2_inputs = torch.from_numpy(updated_attrs).cuda()
