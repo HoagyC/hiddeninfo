@@ -2,12 +2,12 @@
 Taken from yewsiang/ConceptBottlenecks
 """
 import os
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Iterable
 
 import torch
 from torch import nn
 
-from CUB.model_templates import MLP, inception_v3
+from CUB.model_templates import MLP, inception_v3, FC
 from CUB.cub_classes import Experiment
 from CUB.dataset import find_class_imbalance
 from CUB.config import BASE_DIR, AUX_LOSS_RATIO
@@ -38,6 +38,7 @@ def ModelXtoC(args: Experiment) -> nn.Module:
         num_classes=args.num_classes,
         n_attributes=args.n_attributes,
         expand_dim=args.expand_dim,
+        thin_models=args.n_models if args.thin else 0
     )
 
 # Basic model for predicting classes from attributes
@@ -84,42 +85,31 @@ class Multimodel(nn.Module):
         aux_attr_preds = []
         class_preds = []
         aux_class_preds = []
-
+        post_model_indices: Iterable
         # Train each pre model with its own post model
         if self.train_mode == "separate":
-            for i in range(self.args.n_models):
-                attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-
-                attr_pred_input = torch.cat(attr_pred, dim=1)
-                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
-
-                class_pred = self.post_models[i](attr_pred_input)
-                aux_class_pred = self.post_models[i](aux_attr_pred_input)
-
-                attr_preds.append(attr_pred)
-                aux_attr_preds.append(aux_attr_pred)
-                class_preds.append(class_pred)
-                aux_class_preds.append(aux_class_pred)
+            post_model_indices = range(self.args.n_models)
         
         # Randomly shuffle which post model is used for each pre model
         elif self.train_mode == "shuffle":
             post_model_indices = torch.randperm(self.args.n_models)
-            for i, j in enumerate(post_model_indices):
-                attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-
-                attr_pred_input = torch.cat(attr_pred, dim=1)
-                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
-
-                class_pred = self.post_models[j](attr_pred)
-                aux_class_pred = self.post_models[j](aux_attr_pred)
-        
-                attr_preds.append(attr_pred)
-                aux_attr_preds.append(aux_attr_pred)
-                class_preds.append(class_pred)
-                aux_class_preds.append(aux_class_pred)
             
         else:
             raise ValueError(f"Invalid train mode {self.train_mode}")
+        
+        for i, j in enumerate(post_model_indices):
+            attr_pred, aux_attr_pred = self.pre_models[i](inputs)
+
+            attr_pred_input = torch.cat(attr_pred, dim=1)
+            aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
+
+            class_pred = self.post_models[j](attr_pred_input)
+            aux_class_pred = self.post_models[j](aux_attr_pred_input)
+    
+            attr_preds.append(attr_pred)
+            aux_attr_preds.append(aux_attr_pred)
+            class_preds.append(class_pred)
+            aux_class_preds.append(aux_class_pred)
 
         return attr_preds, aux_attr_preds, class_preds, aux_class_preds
     
@@ -372,10 +362,8 @@ class ThinMultimodel(nn.Module):
     def __init__(self, args: Experiment):
         super().__init__()
         self.args = args
-        self.pre_models: nn.ModuleList
-        self.post_models: nn.ModuleList
-        self.reset_pre_models()
-        self.reset_post_models()
+        self.pre_models = ModelXtoC(self.args) # This creates a model which is the same except for the last layer, which there is multiple copies of
+        self.reset_post_models() # Creates post models
         self.train_mode = "separate"
         self.criterion = nn.CrossEntropyLoss()
         if self.args.weighted_loss:
@@ -385,62 +373,53 @@ class ThinMultimodel(nn.Module):
 
 
     def reset_pre_models(self) -> None:
-        pre_models_list = [
-            ModelXtoC(self.args)
-            for _ in range(self.args.n_models)
-        ]
-        self.pre_models = nn.ModuleList(pre_models_list)
+        n_fcs = self.args.n_attributes * self.args.n_models
+        new_fcs = nn.ModuleList()
+        for _ in range(n_fcs):
+            new_fcs.append(FC(2048, 1, self.args.expand_dim))
+        self.pre_models.all_fc = new_fcs
+
 
     def reset_post_models(self) -> None:
         post_models_list = [
-            ModelCtoY(self.args)
+            nn.Sequential(
+                nn.Sigmoid(),
+                ModelCtoY(self.args)
+            )
             for _ in range(self.args.n_models)
         ]
 
         self.post_models = nn.ModuleList(post_models_list)
 
-    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through):
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through: bool = False):
         attr_preds = []
         aux_attr_preds = []
         class_preds = []
         aux_class_preds = []
+        post_model_indices: Iterable
+
+        attr_preds, aux_attr_preds = self.pre_models(inputs)
 
         # Train each pre model with its own post model
         if self.train_mode == "separate":
-            for i in range(self.args.n_models):
-                attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-
-                attr_pred_input = torch.cat(attr_pred, dim=1)
-                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
-
-                class_pred = self.post_models[i](attr_pred_input)
-                aux_class_pred = self.post_models[i](aux_attr_pred_input)
-
-                attr_preds.append(attr_pred)
-                aux_attr_preds.append(aux_attr_pred)
-                class_preds.append(class_pred)
-                aux_class_preds.append(aux_class_pred)
+            post_model_indices = list(range(self.args.n_models))
         
         # Randomly shuffle which post model is used for each pre model
         elif self.train_mode == "shuffle":
             post_model_indices = torch.randperm(self.args.n_models)
-            for i, j in enumerate(post_model_indices):
-                attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-
-                attr_pred_input = torch.cat(attr_pred, dim=1)
-                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
-
-                class_pred = self.post_models[j](attr_pred)
-                aux_class_pred = self.post_models[j](aux_attr_pred)
-        
-                attr_preds.append(attr_pred)
-                aux_attr_preds.append(aux_attr_pred)
-                class_preds.append(class_pred)
-                aux_class_preds.append(aux_class_pred)
-            
         else:
             raise ValueError(f"Invalid train mode {self.train_mode}")
 
+        for i, j in enumerate(post_model_indices):
+            attr_pred_input = torch.cat(attr_preds[i], dim=1)
+            aux_attr_pred_input = torch.cat(aux_attr_preds[i], dim=1)
+
+            class_pred = self.post_models[j](attr_pred_input)
+            aux_class_pred = self.post_models[j](aux_attr_pred_input)
+    
+            class_preds.append(class_pred)
+            aux_class_preds.append(aux_class_pred)
+        
         return attr_preds, aux_attr_preds, class_preds, aux_class_preds
     
     def generate_loss(
@@ -456,8 +435,8 @@ class ThinMultimodel(nn.Module):
         total_class_loss = 0.
         total_attr_loss = 0.
         
-        assert len(attr_preds) == len(aux_attr_preds) == len(class_preds) == len(aux_class_preds) == len(self.pre_models)
-        for ndx in range(len(self.pre_models)):
+        assert len(attr_preds) == len(aux_attr_preds) == len(class_preds) == len(aux_class_preds) == self.args.n_models
+        for ndx in range(self.args.n_models):
             class_loss = self.criterion(class_preds[ndx], class_labels)
             aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
             class_loss += aux_class_loss * AUX_LOSS_RATIO

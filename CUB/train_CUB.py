@@ -26,10 +26,11 @@ from CUB.models import (
     JointModel,
     Multimodel,
     SequentialModel,
+    ThinMultimodel
 )
 from CUB.cub_classes import Experiment, Meters, RunRecord, TTI_Config
 from CUB.cub_classes import ind_cfg, joint_cfg, seq_cfg
-from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3, multi_sparse_cfg
+from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3, multi_sparse_cfg, thin_cfg
 from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg, joint_cfg2, joint_cfg3
 
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
@@ -327,8 +328,10 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 
 
 def train_multi(args: Experiment) -> None:
-    model = Multimodel(args)
-    args.epochs=2
+    if args.thin:
+        model = ThinMultimodel(args)
+    else:
+        model = Multimodel(args)
     elapsed_epochs = train(model, args)
 
     if args.reset_post_models:
@@ -398,7 +401,8 @@ def make_configs_list() -> List[Experiment]:
         joint_sparse_cfg,
         joint_cfg2, # 9
         joint_cfg3,
-        multi_sparse_cfg, # 11
+        multi_sparse_cfg,
+        thin_cfg, # 12
     ]
     return configs
 

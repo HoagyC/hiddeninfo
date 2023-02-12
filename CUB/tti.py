@@ -148,6 +148,10 @@ def run_tti(args) -> List[Tuple[int, float]]:
 
     # Get main model and attr -> label model
     model = torch.load(args.model_dir)
+    if args.multimodel:
+         # NOTE: these are numpy arrays and np.repeat is different to torch.repeat()
+        raw_attr_labels = raw_attr_labels.repeat(model.args.n_models, axis=0)
+        raw_attr_uncertanties = raw_attr_uncertanties.repeat(model.args.n_models, axis=0)
 
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
     assert len(raw_attr_labels) == len(
@@ -176,7 +180,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
     for n_replace in range(args.n_groups + 1):
         all_class_acc = []
         if args.multimodel:
-            n_trials = args.n_trials * len(model.post_models)
+            n_trials = args.n_trials * model.args.n_models
         else:
             n_trials = args.n_trials
 
@@ -198,13 +202,21 @@ def run_tti(args) -> List[Tuple[int, float]]:
             # Evaluate the model on the new attributes
             if args.multimodel:
                 model_use = model.post_models[ndx % n_trials]
-            else:
-                model_use = model.second_model
-            
-            model_use.eval()
 
             stage2_inputs = torch.from_numpy(updated_attrs).cuda()
-            class_outputs = model_use(stage2_inputs)
+
+            if args.multimodel: # if multimodel, we need to reshape the inputs to be (n_models, n_imgs, n_attrs)
+                stage2_inputs = stage2_inputs.reshape(model.args.n_models, -1, args.n_attributes)
+                class_outputs = []
+                for i, post_model in enumerate(model.post_models):
+                    post_model.eval()
+                    class_outputs.append(post_model(stage2_inputs[i]))
+                
+                class_outputs = torch.cat(class_outputs, dim=0)
+            else:
+                model_use = model.second_model
+                model_use.eval()
+                class_outputs = model_use(stage2_inputs)
 
             _, predictions = class_outputs.topk(k=1, dim=1) # topk returns a tuple of (values, indices)
             predictions = predictions.data.cpu().numpy().squeeze()

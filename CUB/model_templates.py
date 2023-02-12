@@ -79,6 +79,7 @@ class Inception3(nn.Module):
         expand_dim,
         aux_logits=True,
         transform_input=False,
+        thin_models=0
     ):
         """
         Args:
@@ -93,6 +94,7 @@ class Inception3(nn.Module):
         self.transform_input = transform_input
         self.n_attributes = n_attributes
         self.aux_logits = aux_logits
+        self.thin_models = thin_models
         self.Conv2d_1a_3x3 = BasicConv2d(3, 32, kernel_size=3, stride=2)
         self.Conv2d_2a_3x3 = BasicConv2d(32, 32, kernel_size=3)
         self.Conv2d_2b_3x3 = BasicConv2d(32, 64, kernel_size=3, padding=1)
@@ -120,7 +122,8 @@ class Inception3(nn.Module):
             nn.ModuleList()
         )  # separate fc layer for each prediction task. If main task is involved, it's always the first fc in the list
         
-        for _ in range(self.n_attributes):
+        n_fc = self.thin_models * self.n_attributes if self.thin_models else self.n_attributes
+        for _ in range(n_fc):
             self.all_fc.append(FC(2048, 1, expand_dim))
 
         for m in self.modules():
@@ -137,7 +140,7 @@ class Inception3(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x, partial=False):
+    def forward(self, x):
         if self.transform_input:
             x_ch0 = torch.unsqueeze(x[:, 0], 1) * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
             x_ch1 = torch.unsqueeze(x[:, 1], 1) * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
@@ -174,7 +177,6 @@ class Inception3(nn.Module):
         # N x 768 x 17 x 17
         x = self.Mixed_6e(x)
         # N x 768 x 17 x 17
-        x_aix = x
         if self.aux_logits:
             out_aux = self.AuxLogits(x)
         # N x 768 x 17 x 17
@@ -190,13 +192,23 @@ class Inception3(nn.Module):
         x = F.dropout(x, training=self.training)
         # N x 2048 x 1 x 1
         x = x.view(x.size(0), -1)
-        # N x 2048
-        if partial:
-            return x
-        out = []
-        for fc in self.all_fc:
-            out.append(fc(x))
-        if self.aux_logits:
+        if self.thin_models:
+            out = []
+            for i in range(self.thin_models):
+                # N x 2048
+                out_n = []
+                for fc in self.all_fc[self.n_attributes * i : self.n_attributes * (i + 1)]:
+                    out_n.append(fc(x))
+                
+                out.append(out_n)
+            
+            return out, [out_aux for _ in range(self.thin_models)]
+        
+        else:
+            out = []
+            for fc in self.all_fc:
+                out.append(fc(x))
+            
             return out, out_aux
 
     def load_partial_state_dict(self, state_dict):

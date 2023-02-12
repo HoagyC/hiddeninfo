@@ -72,18 +72,20 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     loader = load_data([data_dir], args)
 
     dataset_len = len(loader.dataset)
+    n_models = model.args.n_models if args.multimodel else 1
+    total_size = dataset_len * n_models
 
     # Initialize arrays to store outputs
-    all_class_labels = np.zeros(dataset_len, dtype=np.int32)
-    all_class_logits = np.zeros((dataset_len, N_CLASSES), dtype=np.float32) # MUST BE REVERTED!!!!! TESTING ONLY
+    all_class_labels = np.zeros(total_size, dtype=np.int32)
+    all_class_logits = np.zeros((total_size, N_CLASSES), dtype=np.float32) # MUST BE REVERTED!!!!! TESTING ONLY
 
-    top_class_preds = np.zeros(dataset_len, dtype=np.int32)
-    topk_class_labels = np.zeros((dataset_len, max(K)), dtype=np.int32)
-    topk_class_outputs = np.zeros((dataset_len, max(K)), dtype=np.int32)
+    top_class_preds = np.zeros(total_size, dtype=np.int32)
+    topk_class_labels = np.zeros((total_size, max(K)), dtype=np.int32)
+    topk_class_outputs = np.zeros((total_size, max(K)), dtype=np.int32)
 
-    all_attr_labels = np.zeros((dataset_len, args.n_attributes), dtype=np.int32)
-    all_attr_preds = np.zeros((dataset_len, args.n_attributes), dtype=np.float32)
-    all_attr_preds_sigmoid = np.zeros((dataset_len, args.n_attributes), dtype=np.float32)
+    all_attr_labels = np.zeros((total_size, args.n_attributes), dtype=np.int32)
+    all_attr_preds = np.zeros((total_size, args.n_attributes), dtype=np.float32)
+    all_attr_preds_sigmoid = np.zeros((total_size, args.n_attributes), dtype=np.float32)
 
     # Run a normal epoch, get outputs and top K class outputs
     n_seen = 0
@@ -102,7 +104,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
 
         if args.multimodel:
             class_preds = torch.cat(class_preds, dim=0)
-            class_labels = class_labels.repeat(len(model.pre_models), 1)
+            class_labels = class_labels.repeat(model.args.n_models) # shape (batch_size) to (batch_size * n_models)
 
         class_acc = accuracy(class_preds, class_labels, topk=K)
 
@@ -111,29 +113,35 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     
         if args.multimodel:
             attr_preds_t = torch.cat([torch.cat(a, dim=1) for a in attr_preds], dim=0)
-            attr_labels = attr_labels.repeat(len(model.pre_models), 1)
+            attr_labels = attr_labels.repeat(model.args.n_models, 1) # shape (batch_size, N_ATTRIBUTES) to (batch_size * n_models, N_ATTRIBUTES)
         else:
             attr_preds_t = torch.cat(attr_preds, dim=1)
         
         attr_preds_sigmoid = torch.nn.Sigmoid()(attr_preds_t)
-        
-        for i in range(args.n_attributes):
-            acc = binary_accuracy(
-                attr_preds_sigmoid[:, i].squeeze(), attr_labels[:, i]
-            )
-            acc = acc.data.cpu().numpy()
-            # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
-            meters.attr_acc_tot.update(acc, inputs.size(0))
-            # keep track of accuracy of individual attributes
-            if args.feature_group_results:
-                meters.attr_accs[i].update(acc, inputs.size(0))
+
+        try:
+            for i in range(args.n_attributes):
+                acc = binary_accuracy(
+                    attr_preds_sigmoid[:, i].squeeze(), attr_labels[:, i]
+                )
+                acc = acc.data.cpu().numpy()
+                # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
+                meters.attr_acc_tot.update(acc, inputs.size(0))
+                # keep track of accuracy of individual attributes
+                if args.feature_group_results:
+                    meters.attr_accs[i].update(acc, inputs.size(0))
+        except:
+            import pdb; pdb.set_trace()
 
         # Store outputs
         n_examples = inputs.size(0)
         if args.multimodel:
-            n_examples = n_examples * len(model.pre_models)
+            n_examples = n_examples * model.args.n_models
 
-        all_attr_preds[n_seen:n_seen + n_examples] = attr_preds_t.data.cpu().numpy()
+        try:
+            all_attr_preds[n_seen:n_seen + n_examples] = attr_preds_t.data.cpu().numpy()
+        except ValueError:
+            import pdb; pdb.set_trace()
         all_attr_preds_sigmoid[n_seen:n_seen + n_examples] = attr_preds_sigmoid.data.cpu().numpy()
         all_attr_labels[n_seen:n_seen + n_examples] = attr_labels.data.cpu().numpy()
 

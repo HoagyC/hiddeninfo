@@ -84,6 +84,8 @@ class Experiment:
     reset_pre_models: bool = False
     reset_post_models: bool = False
     n_models: int = 4
+    thin: bool = False # Whether to only change the last/first layers of th e
+
 
     quick: bool = False
 
@@ -169,7 +171,7 @@ multiple_cfg1 = Experiment(
     batch_size=24,
     attr_loss_weight=0.01,
     # multimodel specific
-    n_models=3,
+    n_models=2,
     freeze_post_models=True,
     reset_pre_models=True,
 )
@@ -222,4 +224,10 @@ multi_sparse_cfg = dataclasses.replace(
     tag="multimodel_sparse",
     attr_sparsity=5,
     attr_loss_weight=1.0,
+)
+
+thin_cfg = dataclasses.replace(
+    multiple_cfg3,
+    tag = "thin",
+    thin=True
 )
