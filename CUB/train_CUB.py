@@ -32,7 +32,7 @@ from CUB.cub_classes import Experiment, Meters, RunRecord, TTI_Config
 from CUB.cub_classes import ind_cfg, joint_cfg, seq_cfg
 from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3, multi_sparse_cfg, thin_cfg
 from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg, joint_cfg2, joint_cfg3
-from CUB.cub_classes import ind_inst_cfg, joint_inst_cfg, seq_inst_cfg, multi_inst_cfg
+from CUB.cub_classes import ind_inst_cfg, joint_inst_cfg, seq_inst_cfg, multi_inst_cfg, multi_inst_post_cfg
 
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
@@ -84,6 +84,21 @@ def run_epoch(
             optimizer.step()
             meters.loss.update(loss.item(), inputs.size(0))
 
+            
+            # model1_grad = 0
+            # for p in model.pre_models[0].parameters():
+            #     if p.grad is not None:
+            #         model1_grad += torch.norm(p.grad)
+            
+            # model2_grad = 0
+            # for p in model.post_models[0].parameters():
+            #     if p.grad is not None:
+            #         model2_grad += torch.norm(p.grad)
+            
+            # print(f"Model 1 grad: {model1_grad}")
+            # print(f"Model 2 grad: {model2_grad}")
+
+
         if attr_preds is not None:
             # Multimodel preds are a list of tensors, one for each model
             # so we concatenate them as if they were a larger batch
@@ -131,9 +146,6 @@ def train(
         
     model.train()
     model = model.cuda()
-
-    for param in model.parameters():
-        param.requires_grad = True
 
     params = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = make_optimizer(params, args)
@@ -339,7 +351,6 @@ def train_multi(args: Experiment) -> None:
     else:
         model = Multimodel(args)
     elapsed_epochs = train(model, args)
-
     if args.reset_post_models:
         model.reset_post_models()
     if args.reset_pre_models:
@@ -413,6 +424,7 @@ def make_configs_list() -> List[Experiment]:
         seq_inst_cfg,
         joint_inst_cfg, # 15
         multi_inst_cfg,
+        multi_inst_post_cfg
     ]
     return configs
 

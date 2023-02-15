@@ -258,3 +258,19 @@ multi_inst_cfg = dataclasses.replace(
     tag="multimodel_inst",
     data_dir="CUB_instance_masked",
 )
+
+multi_inst_post_cfg = dataclasses.replace(
+    multiple_cfg3,
+    tag="multimodel_inst",
+    data_dir="CUB_instance_masked",
+    freeze_post_models=False,
+    reset_pre_models=False,
+    freeze_pre_models=True,
+    reset_post_models=True,
+)
+
+all_frozen = dataclasses.replace(
+    multiple_cfg3,
+    tag="all_frozen",
+    freeze_post_models=True,
+)

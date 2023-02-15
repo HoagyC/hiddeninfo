@@ -72,6 +72,19 @@ def inception_v3(pretrained, freeze, **kwargs):
         return Inception3(**kwargs)
 
 
+class WideMLPOut(nn.Module):
+    def __init__(self, input_dim, expand_dim, output_dim) -> None:
+        super().__init__()
+        self.linear = nn.Linear(input_dim, expand_dim)
+        self.activation = torch.nn.ReLU()
+        self.linear2 = nn.Linear(expand_dim, output_dim)
+    
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.activation(x)
+        x = self.linear2(x)
+        return [y for y in x.t()] # Returning a list of tensors to match the output of Inceptionv3
+
 class Inception3(nn.Module):
     def __init__(
         self,

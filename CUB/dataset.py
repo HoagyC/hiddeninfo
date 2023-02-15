@@ -59,7 +59,6 @@ class CUBDataset(Dataset):
         img_path = img_data["img_path"]
         attr_mask_bin = idx % self.attr_sparsity == 0
         # Trim unnecessary paths
-        import pdb; pdb.set_trace()
         try:
             idx = img_path.split("/").index("CUB_200_2011")
             if self.image_dir != "images":
