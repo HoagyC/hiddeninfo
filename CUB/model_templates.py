@@ -4,6 +4,7 @@ New changes: add softmax layer + option for freezing lower layers except fc
 """
 import os
 import random
+import time
 
 import torch
 import torch.nn as nn
@@ -141,6 +142,9 @@ class Inception3(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+        # Start by timing the different parts of the forward pass
+        print("Starting forward pass")
+        start = time.time()
         if self.transform_input:
             x_ch0 = torch.unsqueeze(x[:, 0], 1) * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
             x_ch1 = torch.unsqueeze(x[:, 1], 1) * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
@@ -160,6 +164,8 @@ class Inception3(nn.Module):
         x = self.Conv2d_4a_3x3(x)
         # N x 192 x 71 x 71
         x = F.max_pool2d(x, kernel_size=3, stride=2)
+        print("Finished first part of forward pass in {} seconds".format(time.time() - start))
+        start = time.time()
         # N x 192 x 35 x 35
         x = self.Mixed_5b(x)
         # N x 256 x 35 x 35
@@ -179,6 +185,8 @@ class Inception3(nn.Module):
         # N x 768 x 17 x 17
         if self.aux_logits:
             out_aux = self.AuxLogits(x)
+        print("Finished forward pass up to aux in {} seconds".format(time.time() - start))
+        start = time.time()
         # N x 768 x 17 x 17
         x = self.Mixed_7a(x)
         # N x 1280 x 8 x 8
@@ -192,6 +200,8 @@ class Inception3(nn.Module):
         x = F.dropout(x, training=self.training)
         # N x 2048 x 1 x 1
         x = x.view(x.size(0), -1)
+        print("Finished forward pass up to fc in {} seconds".format(time.time() - start))
+        start = time.time()
         if self.thin_models:
             out = []
             for i in range(self.thin_models):
@@ -201,14 +211,13 @@ class Inception3(nn.Module):
                     out_n.append(fc(x))
                 
                 out.append(out_n)
-            
+            print("Finished fcs in {} seconds".format(time.time() - start))
             return out, [out_aux for _ in range(self.thin_models)]
-        
         else:
             out = []
             for fc in self.all_fc:
                 out.append(fc(x))
-            
+            print("Finished fcs in {} seconds".format(time.time() - start))
             return out, out_aux
 
     def load_partial_state_dict(self, state_dict):

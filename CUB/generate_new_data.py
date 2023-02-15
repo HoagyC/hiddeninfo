@@ -344,7 +344,7 @@ def inference_no_grad(
 
 def convert_3_class(data_dir, out_dir="three_class/"):
     """
-    Transform attribute labels in the dataset in data_dir to create a separate prediction class for not visible attributes
+    Trahttps://knowyourmeme.com/memes/google-vs-bingnsform attribute labels in the dataset in data_dir to create a separate prediction class for not visible attributes
     """
 
     def filter_not_visible(d):
@@ -482,21 +482,21 @@ def orig_main_fn():
 if __name__ == "__main__":
     get_class_attributes_data(
         min_class_count=10,
-        out_dir="CUB_masked_class2",
+        out_dir="CUB_instance_masked",
         data_dir=Path("CUB_processed"),
         modify_data_dir="CUB_processed",
     )
 
-    # Args dict from original for making dataset from ind_XtoC model
-    create_logits_args = {
-        "exp": "ExtractConcepts",
-        "model_path": "ConceptModel__Seed1/outputs/best_model_1.pth",
-        "data_dir": "CUB_processed/class_attr_data_10",
-        "out_dir": "ConceptModel1__PredConcepts",
-    }
+    # # Args dict from original for making dataset from ind_XtoC model
+    # create_logits_args = {
+    #     "exp": "ExtractConcepts",
+    #     "model_path": "ConceptModel__Seed1/outputs/best_model_1.pth",
+    #     "data_dir": "CUB_processed/class_attr_data_10",
+    #     "out_dir": "ConceptModel1__PredConcepts",
+    # }
 
-    create_logits_data(
-        create_logits_args["model_path"], 
-        create_logits_args["out_dir"], 
-        create_logits_args["data_dir"],
-    )
+    # create_logits_data(
+    #     create_logits_args["model_path"], 
+    #     create_logits_args["out_dir"], 
+    #     create_logits_args["data_dir"],
+    # )

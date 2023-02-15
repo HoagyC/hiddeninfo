@@ -182,7 +182,7 @@ def load_data(
         shuffle = False
 
     loader = DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=3
+        dataset, batch_size=args.batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=1
     )
     return loader
 

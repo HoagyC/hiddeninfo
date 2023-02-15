@@ -8,7 +8,7 @@ from CUB.cub_utils import download_from_aws
 
 if __name__ == "__main__":
     endings = ["train.pkl", "test.pkl", "val.pkl"]
-    folders = ["CUB_masked_class/", "CUB_processed/"]
+    folders = ["CUB_masked_class/", "CUB_processed/", "CUB_instance_masked/"]
     files = [a + b for a, b in product(folders, endings)]
     files += ["CUB_dataset.zip"]
 

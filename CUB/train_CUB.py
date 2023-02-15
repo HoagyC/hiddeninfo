@@ -32,6 +32,7 @@ from CUB.cub_classes import Experiment, Meters, RunRecord, TTI_Config
 from CUB.cub_classes import ind_cfg, joint_cfg, seq_cfg
 from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3, multi_sparse_cfg, thin_cfg
 from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg, joint_cfg2, joint_cfg3
+from CUB.cub_classes import ind_inst_cfg, joint_inst_cfg, seq_inst_cfg, multi_inst_cfg
 
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
@@ -54,6 +55,11 @@ def run_epoch(
 
     for data in loader:
         inputs, class_labels, attr_labels, attr_mask = data
+        
+        if sum(attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
+            print("Skipping batch, consider increasing batch size or decreasing sparsity")
+            continue
+
         attr_labels = [i.float() for i in attr_labels]
         attr_labels = torch.stack(attr_labels, dim=1)
 
@@ -149,29 +155,6 @@ def train(
     val_records = RunRecord()
 
     for epoch_ndx in range(init_epoch, args.epochs + init_epoch):
-        if args.tti_int > 0 and epoch_ndx % args.tti_int == 0:
-            model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
-            torch.save(model, model_save_path)
-
-            tti_cfg = TTI_Config(
-                log_dir=run_save_path,
-                model_dir=model_save_path,
-                multimodel=args.multimodel,
-                sigmoid=False,
-                model_sigmoid=False,
-            )
-
-            tti_results = run_tti(tti_cfg)
-            wandb.log(
-                    dict(
-                    epoch = epoch_ndx,
-                    tti0 = tti_results[0][1],
-                    tti10 = tti_results[10][1],
-                    ttilast = tti_results[-1][1],
-                )
-            )
-
-    
         train_meters = Meters()
         val_meters = Meters()
 
@@ -200,6 +183,29 @@ def train(
             val_records,
             run_save_path,
         )
+        if not (args.exp in ["Independent", "Sequential"] and model.train_mode == "XtoC") and \
+            args.tti_int > 0 and epoch_ndx % args.tti_int == 0:
+            model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
+            torch.save(model, model_save_path)
+
+            tti_cfg = TTI_Config(
+                log_dir=run_save_path,
+                model_dir=model_save_path,
+                multimodel=args.multimodel,
+                sigmoid=False,
+                model_sigmoid=False,
+            )
+
+            tti_results = run_tti(tti_cfg)
+            wandb.log(
+                    dict(
+                    epoch = epoch_ndx,
+                    tti0 = tti_results[0][1],
+                    tti10 = tti_results[10][1],
+                    ttilast = tti_results[-1][1],
+                )
+            )
+
 
         if epoch_ndx <= stop_epoch:
             scheduler.step()
@@ -399,10 +405,14 @@ def make_configs_list() -> List[Experiment]:
         ind_sparse_cfg, # 6
         seq_sparse_cfg,
         joint_sparse_cfg,
-        joint_cfg2, # 9
+        multi_sparse_cfg, # 9
+        joint_cfg2,
         joint_cfg3,
-        multi_sparse_cfg,
         thin_cfg, # 12
+        ind_inst_cfg,
+        seq_inst_cfg,
+        joint_inst_cfg, # 15
+        multi_inst_cfg,
     ]
     return configs
 

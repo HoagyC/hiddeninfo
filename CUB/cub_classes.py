@@ -190,20 +190,22 @@ multiple_cfg3 = dataclasses.replace(
 
 ind_sparse_cfg = dataclasses.replace(
     ind_cfg,
-    tag="ind_XtoC_sparse",
-    attr_sparsity=2,
+    tag="ind_sparse",
+    attr_sparsity=10,
+    batch_size=64 * 10,
 )
 
 seq_sparse_cfg = dataclasses.replace(
     seq_cfg,
-    tag="seq_CtoY_sparse",
-    attr_sparsity=2,
+    tag="seq_sparse",
+    attr_sparsity=10,
+    batch_size=64 * 10,
 )
 
 joint_sparse_cfg = dataclasses.replace(
     joint_cfg,
     tag="joint_sparse",
-    attr_sparsity=5,
+    attr_sparsity=10,
     attr_loss_weight=1.0,
 )
 
@@ -222,7 +224,7 @@ joint_cfg3 = dataclasses.replace(
 multi_sparse_cfg = dataclasses.replace(
     multiple_cfg3,
     tag="multimodel_sparse",
-    attr_sparsity=5,
+    attr_sparsity=10,
     attr_loss_weight=1.0,
 )
 
@@ -230,4 +232,33 @@ thin_cfg = dataclasses.replace(
     multiple_cfg3,
     tag = "thin",
     thin=True
+)
+
+# Creating normal runs but using CUB_instance_masked instead of CUB_masked_class as the args.dir
+ind_inst_cfg = dataclasses.replace(
+    ind_cfg,
+    tag="ind_inst",
+    data_dir="CUB_instance_masked",
+    n_attributes=312,
+)
+
+seq_inst_cfg = dataclasses.replace(
+    seq_cfg,
+    tag="seq_inst",
+    data_dir="CUB_instance_masked",
+    n_attributes=312,
+)
+
+joint_inst_cfg = dataclasses.replace(
+    joint_cfg3,
+    tag="joint_inst",
+    data_dir="CUB_instance_masked",
+    n_attributes=312,
+)
+
+multi_inst_cfg = dataclasses.replace(
+    multiple_cfg3,
+    tag="multimodel_inst",
+    data_dir="CUB_instance_masked",
+    n_attributes=312,
 )

@@ -317,7 +317,10 @@ class IndependentModel(nn.Module):
             return attr_preds, aux_attr_preds, class_preds, aux_class_preds
 
         if self.train_mode == "XtoC":
-            attr_preds, aux_attr_preds = self.first_model(inputs[mask])
+            try:
+                attr_preds, aux_attr_preds = self.first_model(inputs[mask])
+            except:
+                import pdb; pdb.set_trace()
         else:
             attr_preds, aux_attr_preds = None, None
 
