@@ -485,6 +485,7 @@ if __name__ == "__main__":
         out_dir="CUB_instance_masked",
         data_dir=Path("CUB_processed"),
         modify_data_dir="CUB_processed",
+        keep_instance_data=True
     )
 
     # # Args dict from original for making dataset from ind_XtoC model

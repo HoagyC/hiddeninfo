@@ -46,6 +46,11 @@ def list_aws_files(folder_name: str, get_folders: bool = True) -> List[str]:
 
 
 def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
+    """"
+    Upload a file to an S3 bucket
+    :param local_file_name: File to upload
+    :param s3_file_name: S3 object name. If not specified then local_file_name is used
+    """
     secrets = get_secrets()
 
     s3 = boto3.client(
@@ -66,7 +71,7 @@ def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
         print(f"Upload Successful of {local_file_name}")
         return True
     except FileNotFoundError:
-        print(f"Flle {local_file_name} was not found")
+        print(f"File {local_file_name} was not found")
         return False
     except NoCredentialsError:
         print("Credentials not available")

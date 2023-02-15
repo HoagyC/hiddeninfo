@@ -239,26 +239,22 @@ ind_inst_cfg = dataclasses.replace(
     ind_cfg,
     tag="ind_inst",
     data_dir="CUB_instance_masked",
-    n_attributes=312,
 )
 
 seq_inst_cfg = dataclasses.replace(
     seq_cfg,
     tag="seq_inst",
     data_dir="CUB_instance_masked",
-    n_attributes=312,
 )
 
 joint_inst_cfg = dataclasses.replace(
     joint_cfg3,
     tag="joint_inst",
     data_dir="CUB_instance_masked",
-    n_attributes=312,
 )
 
 multi_inst_cfg = dataclasses.replace(
     multiple_cfg3,
     tag="multimodel_inst",
     data_dir="CUB_instance_masked",
-    n_attributes=312,
 )
