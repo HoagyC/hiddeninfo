@@ -91,6 +91,7 @@ class Experiment:
 
     model_sigmoid: bool = True
     gen_pred_sigmoid: bool = False
+    use_test: bool = False # Whether to also check test accuracy as we go
 
 
 @dataclasses.dataclass
@@ -261,7 +262,7 @@ multi_inst_cfg = dataclasses.replace(
 
 multi_inst_post_cfg = dataclasses.replace(
     multiple_cfg3,
-    tag="multimodel_inst",
+    tag="multimodel_post_inst",
     data_dir="CUB_instance_masked",
     freeze_post_models=False,
     reset_pre_models=False,

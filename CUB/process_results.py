@@ -61,7 +61,7 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
 
     for folder in run_folders:
         # model_file = f"{folder}final_model.pth"
-        model_file = f"{folder}350_model.pth"
+        model_file = f"{folder}final_model.pth"
 
         # Check if results have already been processed
         if not reprocess and folder + 'tti_results.pkl' in list_aws_files(folder, get_folders=False):
@@ -78,18 +78,17 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
         # Create the TTI config
         tti_config = create_tti_cfg(model_file, model_folder)
 
+        # Download the model
         download_from_aws([model_file])
-        for sigmoid in [True, False]:
-            for model_sigmoid in [True, False]:
-                print(f"Running TTI with sigmoid={sigmoid}, model_sigmoid={model_sigmoid}")
-                tti_config = dataclasses.replace(
-                    tti_config,
-                    sigmoid=sigmoid,
-                    model_sigmoid=model_sigmoid,
-                )
-                # Run TTI and graph results
-                results = run_tti(tti_config)
-                graph_tti_output(results, save_dir=model_folder, show=False)
+
+        tti_config = dataclasses.replace(
+            tti_config,
+            sigmoid=False,
+            model_sigmoid=False,
+        )
+        # Run TTI and graph results
+        results = run_tti(tti_config)
+        graph_tti_output(results, save_dir=model_folder, show=False)
 
         # Save results and graph
         with open(f"{model_folder}/tti_results.pkl", "wb") as f:
@@ -123,15 +122,10 @@ def get_results_pkls(runs_list: List[str], use_all: bool = False) -> List[TTI_Ou
     return all_results
 
 
-
-
-
 if __name__ == "__main__":
     # List of models to download from AWS (getting the most recent one in each case
     runs_list = [
-        # "out/ind_XtoC",
-        # "out/seq_CtoY",
-        "out/joint_1.0"
+        "out/multimodel_post_inst",
     ]
 
     process_results(runs_list, process_all=False, reprocess=True)

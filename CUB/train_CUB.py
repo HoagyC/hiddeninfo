@@ -69,20 +69,21 @@ def run_epoch(
         attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
         attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, attr_mask)
 
+        loss = model.generate_loss(
+            attr_preds=attr_preds, 
+            aux_attr_preds=aux_attr_preds, 
+            class_preds=class_preds,
+            aux_class_preds=aux_class_preds, 
+            attr_labels=attr_labels, 
+            class_labels=class_labels,
+            mask=attr_mask
+        )
         if is_training:
-            loss = model.generate_loss(
-                attr_preds=attr_preds, 
-                aux_attr_preds=aux_attr_preds, 
-                class_preds=class_preds,
-                aux_class_preds=aux_class_preds, 
-                attr_labels=attr_labels, 
-                class_labels=class_labels,
-                mask=attr_mask
-            )
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            meters.loss.update(loss.item(), inputs.size(0))
+        
+        meters.loss.update(loss.item(), inputs.size(0))
 
             
             # model1_grad = 0
@@ -166,6 +167,10 @@ def train(
 
     val_records = RunRecord()
 
+    if args.use_test:
+        test_data_path = train_data_path.replace("train.pkl", "test.pkl")
+        test_loader = load_data([test_data_path], args)
+
     for epoch_ndx in range(init_epoch, args.epochs + init_epoch):
         train_meters = Meters()
         val_meters = Meters()
@@ -186,6 +191,19 @@ def train(
             is_training=False
         )
 
+        if args.use_test:
+            test_meters = Meters()
+            run_epoch(
+                model,
+                optimizer,
+                test_loader,
+                test_meters,
+                is_training=False
+            )
+
+        else:
+            test_meters = None
+
         write_metrics(
             epoch_ndx,
             model,
@@ -194,6 +212,7 @@ def train(
             val_meters,
             val_records,
             run_save_path,
+            test_meters=test_meters,
         )
         if not (args.exp in ["Independent", "Sequential"] and model.train_mode == "XtoC") and \
             args.tti_int > 0 and epoch_ndx % args.tti_int == 0:
@@ -282,6 +301,7 @@ def write_metrics(
     val_meters: Meters,
     val_records: RunRecord,
     save_path: Path,
+    test_meters: Optional[Meters] = None,
 ) -> None:
     # If training independent models, use concept accuracy as key metric since we don't have labels
     if args.exp in ["Independent", "Sequential"] and model.train_mode=="XtoC":
@@ -303,6 +323,9 @@ def write_metrics(
     train_loss_avg = train_meters.loss.avg
     val_loss_avg = val_meters.loss.avg
 
+    test_loss = test_meters.loss.avg if test_meters else 0
+    test_acc = test_meters.label_acc.avg if test_meters else 0
+
     metrics_dict = {
         "epoch": epoch,
         "train_loss": train_loss_avg,
@@ -312,6 +335,8 @@ def write_metrics(
         "best_val_epoch": val_records.epoch,
         "concept_train_acc": train_meters.concept_acc.avg,
         "concept_val_acc": val_meters.concept_acc.avg,
+        "test_loss": test_loss,
+        "test_acc": test_acc,
     }
 
     wandb.log(metrics_dict)
@@ -381,7 +406,8 @@ def train_switch(args):
         train_sequential(args)
 
 def train_independent(args):
-    model = IndependentModel(args, train_mode="XtoC")
+    model = IndependentModel(args, train_mode="CtoY")
+    args.use_test=True
     train(model, args)
     args.lr=0.001
     model.train_mode = "CtoY"
