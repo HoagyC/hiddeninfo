@@ -241,7 +241,10 @@ def graph_tti_output(
     return_fig: bool = False
     ) -> Optional[Figure]:
     """Graph the output of a TTI run"""
-    n_replace, acc = zip(*tti_output)
+    try:
+        n_replace, acc = zip(*tti_output)
+    except:
+        breakpoint()
     plt.plot(n_replace, acc, label=label)
     plt.xlabel("Number of groups replaced")
     plt.ylabel("Accuracy")
@@ -254,11 +257,11 @@ def graph_tti_output(
 
 def graph_multi_tti_output(tti_outputs: List[TTI_Output], save_dir: Optional[str] = None):
     """Graph the output of multiple TTI runs"""
-    for tti_o in tti_outputs:
+    for i, tti_output in enumerate(tti_outputs):
+        return_fig = i == len(tti_outputs) - 1
         graph_tti_output(
-            tti_output=tti_o.result,
-            show=False, 
-            label=f"Coef: {tti_o.coef}, Sparsity: {tti_o.sparsity}, Run: {tti_o.model_name}"
+            tti_output=tti_output,
+            return_fig=return_fig, 
         )
 
     plt.legend()
