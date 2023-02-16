@@ -60,6 +60,7 @@ class Experiment:
     use_sigmoid: bool = False
     pretrained: bool = True
     use_aux: bool = True
+    post_model_dropout: Optional[float] = None
 
     # Training
     epochs: int = 1000

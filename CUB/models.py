@@ -44,7 +44,7 @@ def ModelXtoC(args: Experiment) -> nn.Module:
 # Basic model for predicting classes from attributes
 def ModelCtoY(args: Experiment) -> nn.Module:
     model = MLP(
-        input_dim=args.n_attributes, num_classes=args.num_classes, expand_dim=args.expand_dim
+        input_dim=args.n_attributes, num_classes=args.num_classes, expand_dim=args.expand_dim, post_model_dropout=args.post_model_dropout
     )
     return model
 

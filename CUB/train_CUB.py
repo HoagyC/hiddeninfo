@@ -218,6 +218,7 @@ def train(
             args.tti_int > 0 and epoch_ndx % args.tti_int == 0:
             model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
             torch.save(model, model_save_path)
+            upload_to_aws(run_save_path / "latest_model.pth")
 
             tti_cfg = TTI_Config(
                 log_dir=run_save_path,
@@ -236,6 +237,7 @@ def train(
                     ttilast = tti_results[-1][1],
                 )
             )
+
 
 
         if epoch_ndx <= stop_epoch:
@@ -408,6 +410,7 @@ def train_switch(args):
 def train_independent(args):
     model = IndependentModel(args, train_mode="CtoY")
     args.use_test=True
+    args.tti_int = 10
     train(model, args)
     args.lr=0.001
     model.train_mode = "CtoY"
