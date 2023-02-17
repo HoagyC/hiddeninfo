@@ -123,6 +123,9 @@ class TTI_Config:
     sigmoid: bool = False
     model_sigmoid: bool = False
 
+    flat_intervene: bool = False
+    intervene_vals: Tuple[float, float] = (0.0, 1.0) # If intervening with a flat value, what is it?
+
 base_ind_tti_cfg = TTI_Config(
     n_trials=5,
     replace_class=True,

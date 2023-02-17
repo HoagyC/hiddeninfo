@@ -61,7 +61,6 @@ def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
 
     if not s3_file_name:
         s3_file_name = local_file_name
-
     local_file_path = Path(local_file_name)
     try:
         if local_file_path.is_dir():
@@ -78,8 +77,10 @@ def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
         return False
 
 
-def download_from_aws(files: List[str]) -> None:
+def download_from_aws(files: List[str], force_redownload: bool = False) -> None:
     secrets = get_secrets()
+    if not force_redownload:
+        files = [f for f in files if not os.path.exists(f)]
 
     s3 = boto3.client(
         "s3",

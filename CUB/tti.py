@@ -6,6 +6,8 @@ import torch
 import pickle
 import random
 
+from collections import defaultdict as ddict
+
 from typing import List, Tuple, Dict, Optional
 
 import numpy as np
@@ -129,9 +131,15 @@ def run_tti(args) -> List[Tuple[int, float]]:
     # Get 5, 95 percentiles for how much each attribute was predicted to be true [0,1]
     ptl_5, ptl_95 = dict(), dict()
     
-    for attr_idx in range(args.n_attributes):
-        ptl_5[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 5)
-        ptl_95[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 95)
+    if args.flat_intervene:
+        ptl_5 = ddict(lambda: args.intervene_vals[0])
+        ptl_95 = ddict(lambda: args.intervene_vals[1])
+
+    else:
+        for attr_idx in range(args.n_attributes):
+            ptl_5[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 5)
+            ptl_95[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 95)
+        
     
     # Creating the correct output array, where 'correct' is the 5th percentile of the attribute if false, and 95th percentile if true
     correct_attr_outputs = np.zeros_like(eval_output.attr_pred_outputs)
@@ -199,9 +207,6 @@ def run_tti(args) -> List[Tuple[int, float]]:
                     
                     updated_attrs[img_id, replace_idxs] = correct_attr_outputs[img_id, replace_idxs]
             
-            # Evaluate the model on the new attributes
-            if args.multimodel:
-                model_use = model.post_models[ndx % n_trials]
 
             stage2_inputs = torch.from_numpy(updated_attrs).cuda()
 
@@ -215,6 +220,8 @@ def run_tti(args) -> List[Tuple[int, float]]:
                 class_outputs = torch.cat(class_outputs, dim=0)
             else:
                 model_use = model.second_model
+                if model.args.exp == "Independent":
+                    model_use = torch.nn.Sequential(torch.nn.Sigmoid(), model_use)
                 model_use.eval()
                 class_outputs = model_use(stage2_inputs)
 

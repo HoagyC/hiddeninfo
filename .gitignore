@@ -19,3 +19,5 @@ CUB_instance_masked/
 CUB_masked_class
 CUB_dataset.zip
 CUB/attr_ndxs.py
+
+CUB/tti_inv.py

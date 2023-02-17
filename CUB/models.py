@@ -156,7 +156,7 @@ class SequentialModel(nn.Module):
         super().__init__()
         self.args = args
         self.first_model = ModelXtoC(self.args)
-        self.second_model = ModelCtoY(self.args)
+        self.second_model = nn.Sequential(nn.Sigmoid(), ModelCtoY(self.args))
         self.criterion = nn.CrossEntropyLoss()
         if self.args.weighted_loss:
             self.attr_criterion = make_weighted_criteria(args)
@@ -175,10 +175,6 @@ class SequentialModel(nn.Module):
             attr_preds_input = torch.cat(attr_preds, dim=1).detach()
             aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1).detach()
 
-            # Apply a sigmoid to the input tensors
-            attr_preds_input = torch.sigmoid(attr_preds_input)
-            aux_attr_preds_input = torch.sigmoid(aux_attr_preds_input)
-    
             class_preds = self.second_model(attr_preds_input)
             aux_class_preds = self.second_model(aux_attr_preds_input)
             

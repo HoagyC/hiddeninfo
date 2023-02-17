@@ -218,7 +218,7 @@ def train(
             args.tti_int > 0 and epoch_ndx % args.tti_int == 0:
             model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
             torch.save(model, model_save_path)
-            upload_to_aws(run_save_path / "latest_model.pth")
+            upload_to_aws(s3_file_name=run_save_path / "latest_model.pth", local_file_name=model_save_path)
 
             tti_cfg = TTI_Config(
                 log_dir=run_save_path,
