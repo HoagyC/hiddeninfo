@@ -408,8 +408,7 @@ def train_switch(args):
         train_sequential(args)
 
 def train_independent(args):
-    model = IndependentModel(args, train_mode="CtoY")
-    args.use_test=True
+    model = IndependentModel(args, train_mode="XtoC")
     args.tti_int = 10
     train(model, args)
     args.lr=0.001
@@ -422,6 +421,55 @@ def train_sequential(args):
     args.lr=0.001
     model.train_mode = "CtoY"
     train(model, args)
+
+def train_alternating(args):
+    if args.thin:
+        model = ThinMultimodel(args)
+    else:
+        model = Multimodel(args)
+    
+    elapsed_epochs = 0
+    for _ in range(args.n_alternates):
+        if args.freeze_first == "pre":
+            model, elapsed_epochs = run_frozen_pre(args, model, elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_frozen_post(args, model, elapsed_epochs=elapsed_epochs)
+        elif args.freeze_first == "post":
+            model, elapsed_epochs = run_frozen_post(args, model, elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_frozen_pre(args, model, elapsed_epochs=elapsed_epochs)
+        else:
+            raise ValueError(f"Freeze first {args.freeze_first} not recognized")
+
+
+
+def run_frozen_pre(args, model, elapsed_epochs=0):
+    for param in model.pre_models.parameters():
+        param.requires_grad = True
+    for param in model.post_models.parameters():
+        param.requires_grad = False
+
+    if args.alternate_reset:
+        model.reset_pre_models()
+
+    # Train again with shuffling and freezing
+    train(model, args, init_epoch=elapsed_epochs)
+
+    return model, elapsed_epochs
+
+def run_frozen_post(args, model, elapsed_epochs=0):
+    for param in model.pre_models.parameters():
+        param.requires_grad = False
+    for param in model.post_models.parameters():
+        param.requires_grad = True
+
+    if args.alternate_reset:
+        model.reset_post_models()
+
+    # Train again with shuffling and freezing
+    train(model, args, init_epoch=elapsed_epochs)
+
+    return model, elapsed_epochs
+
+
 
 
 def _save_CUB_result(train_result):
