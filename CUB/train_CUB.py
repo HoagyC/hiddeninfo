@@ -437,7 +437,9 @@ def train_alternating(args):
         model = Multimodel(args)
     
     elapsed_epochs = 0
-    for _ in range(args.n_alternating):
+    assert len(args.alternating_epochs) == args.n_alternating, "Number of alternating epochs must match number of alternating models"
+    for ndx in range(args.n_alternating):
+        args.epochs = args.alternating_epochs[ndx]
         if args.freeze_first == "pre":
             model, elapsed_epochs = run_frozen_pre(args, model, elapsed_epochs=elapsed_epochs)
             model, elapsed_epochs = run_frozen_post(args, model, elapsed_epochs=elapsed_epochs)
@@ -472,7 +474,7 @@ def run_frozen_post(args, model, elapsed_epochs=0):
         model.reset_post_models()
 
     # Train again with shuffling and freezing
-    train(model, args, init_epoch=elapsed_epochs)
+    elapsed_epochs = train(model, args, init_epoch=elapsed_epochs)
 
     return model, elapsed_epochs
 
@@ -499,6 +501,10 @@ def make_configs_list() -> List[Experiment]:
         prepost_cfg,
         postpre_cfg,
     ]
+    # Make all output folders specific to this run
+    for cfg in configs:
+        cfg.log_dir = "big_run"
+
     return configs
 
 

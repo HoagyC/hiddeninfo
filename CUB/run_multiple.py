@@ -6,7 +6,7 @@ from itertools import product
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from vast_servers import get_servers_info
+from vast_servers import get_servers_info, destroy_server
 
 VAST_AI_SERVERS = [(17204, 4), (19866, 6)]
 
@@ -39,19 +39,22 @@ def setup_multiple(server_list = None):
     running = [p.poll() is None for p in processes]
     n_minutes = 0
     while any(running):
-        print(f"Setting up for {n_minutes}. Current status: {['Running' if r else 'Done' for r in running]}")
+        print(f"Setting up for {n_minutes} minute/s. Current status: {['Running' if r else 'Done' for r in running]}")
         time.sleep(60)
         running = [p.poll() is None for p in processes]
         n_minutes += 1
+
     
     [p.wait() for p in processes]
     print("All servers setup")
 
 def run_multiple(server_list = None) -> None:
-    start_ndx = 13
+    start_ndx = 0
     if server_list is None:
-        server_list = VAST_AI_SERVERS
+        server_info = get_servers_info()
+        server_list = server_list = [(s['ssh_port'], int(s['ssh_idx'])) for s in server_info]
     
+    processes = []
     for ndx, server in enumerate(server_list):
         port, num = server
         addr = "root@ssh" + str(num) + ".vast.ai"
@@ -66,6 +69,23 @@ def run_multiple(server_list = None) -> None:
         print(f"Running experiment {start_ndx + ndx} on server {server}")
         run_cmd = f"ssh -fn -p {port} {addr} \" cd ~/hoagy-hiddeninfo-sync && source .env/bin/activate && python CUB/train_CUB.py --cfg-index={start_ndx + ndx}\"&"
         run_proc = subprocess.Popen(run_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        processes.append((server_info[ndx]["id"], run_proc))
+
+    # Wait for all the servers to be setup
+    running = [p.poll() is None for id, p in processes]
+    n_hours = 0.
+    while any(running):
+        print(f"Running up for {n_hours} hours. Current status: {['Running' if r else 'Done' for r in running]}")
+        time.sleep(30*60)
+        running = [p.poll() is None for id, p in processes]
+        n_hours += 0.5
+        for id, p in processes:
+            if p.poll() is not None:
+                print(f"Server {id} has finished running")
+                destroy_server(id)
+                print(f"Server {id} has been destroyed")
+
+
 
 
 def sync_multiple(server_list = None):

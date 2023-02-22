@@ -46,7 +46,7 @@ class Experiment:
     seed: int = 1
 
     # Data
-    log_dir: str = "big_out"
+    log_dir: str = "out"
     data_dir: str = "CUB_masked_class"
     image_dir: str = "images"
     save_step: int = 100
@@ -96,7 +96,8 @@ class Experiment:
 
     n_alternating: int = 1 # How many times to alternate between pre and post models
     freeze_first: str = "pre" # Whether to freeze the first pre or post model, "pre" or "post"
-    alternate_reset: bool = True 
+    alternating_reset: bool = True 
+    alternating_epochs: List[int] = []
 
 
 @dataclasses.dataclass
@@ -302,9 +303,9 @@ prepost_cfg = dataclasses.replace(
     tag="prepost_test",
     n_alternating=2,
     freeze_first="pre",
-    epochs=50,
-    tti_int=10,
+    alternating_epochs=[200, 50],
     data_dir="CUB_instance_masked",
+    alternating_reset=False,
 )
 
 postpre_cfg = dataclasses.replace(
@@ -313,9 +314,9 @@ postpre_cfg = dataclasses.replace(
     tag="postpre_test",
     n_alternating=2,
     freeze_first="post",
-    epochs=50,
-    tti_int=10,
+    alternating_epochs=[200, 50],
     data_dir="CUB_instance_masked",
+    alternating_reset=False,
 )
 
 
@@ -328,8 +329,8 @@ raw_configs = [
     multi_inst_post_cfg, # Retrains post model, freezes pre model
     multi_noreset_cfg, # Retrains pre models, without resetting
     multi_noreset_post_cfg, # Retrains post models, without resetting
-    prepost_cfg, # Retrains pre model, then post model, twice
-    postpre_cfg, # Retrains post model, then pre model, twice
+    prepost_cfg, # Retrains pre model, then post model, twice, no reset
+    postpre_cfg, # Retrains post model, then pre model, twice, no reset
 ]
 
 sparsities = [1, 3, 10]
