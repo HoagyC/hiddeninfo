@@ -46,7 +46,7 @@ class Experiment:
     seed: int = 1
 
     # Data
-    log_dir: str = "out"
+    log_dir: str = "big_out"
     data_dir: str = "CUB_masked_class"
     image_dir: str = "images"
     save_step: int = 100
@@ -72,7 +72,7 @@ class Experiment:
     attr_sparsity: int = 1
     batch_size: int = 64
 
-    tti_int: int = 50 # Frequency of running TTI during run
+    tti_int: int = 10 # Frequency of running TTI during run
 
     freeze: bool = False
     weighted_loss: str = ""
@@ -96,6 +96,7 @@ class Experiment:
 
     n_alternating: int = 1 # How many times to alternate between pre and post models
     freeze_first: str = "pre" # Whether to freeze the first pre or post model, "pre" or "post"
+    alternate_reset: bool = True 
 
 
 @dataclasses.dataclass
@@ -277,8 +278,68 @@ multi_inst_post_cfg = dataclasses.replace(
     reset_post_models=True,
 )
 
+multi_noreset_cfg = dataclasses.replace(
+    multi_inst_cfg,
+    tag="multimodel_noreset",
+    reset_pre_models=False,
+)
+
+multi_noreset_post_cfg = dataclasses.replace(
+    multi_inst_post_cfg,
+    tag="multimodel_noreset_post",
+    reset_post_models=False,
+)
+
 all_frozen = dataclasses.replace(
     multiple_cfg3,
     tag="all_frozen",
     freeze_post_models=True,
 )
+
+prepost_cfg = dataclasses.replace(
+    multiple_cfg3,
+    exp="Alternating",
+    tag="prepost_test",
+    n_alternating=2,
+    freeze_first="pre",
+    epochs=50,
+    tti_int=10,
+    data_dir="CUB_instance_masked",
+)
+
+postpre_cfg = dataclasses.replace(
+    multiple_cfg3,
+    exp="Alternating",
+    tag="postpre_test",
+    n_alternating=2,
+    freeze_first="post",
+    epochs=50,
+    tti_int=10,
+    data_dir="CUB_instance_masked",
+)
+
+
+# Making a new list of configs to test lots of different things
+raw_configs = [
+    joint_inst_cfg, 
+    ind_inst_cfg, 
+    seq_inst_cfg, 
+    multi_inst_cfg, # Retrains pre model, freezes post model
+    multi_inst_post_cfg, # Retrains post model, freezes pre model
+    multi_noreset_cfg, # Retrains pre models, without resetting
+    multi_noreset_post_cfg, # Retrains post models, without resetting
+    prepost_cfg, # Retrains pre model, then post model, twice
+    postpre_cfg, # Retrains post model, then pre model, twice
+]
+
+sparsities = [1, 3, 10]
+n_runs = 3
+
+# Creating a list of configs for each sparsity
+configs = []
+for sparsity in sparsities:
+    for cfg in raw_configs:
+        configs.append(dataclasses.replace(cfg, attr_sparsity=sparsity))
+
+
+

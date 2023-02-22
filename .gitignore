@@ -8,6 +8,7 @@ __pycache__/
 images
 papers
 wandb/
+vast
 
 secrets.json
 

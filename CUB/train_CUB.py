@@ -32,7 +32,7 @@ from CUB.cub_classes import Experiment, Meters, RunRecord, TTI_Config
 from CUB.cub_classes import ind_cfg, joint_cfg, seq_cfg
 from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3, multi_sparse_cfg, thin_cfg
 from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg, joint_cfg2, joint_cfg3
-from CUB.cub_classes import ind_inst_cfg, joint_inst_cfg, seq_inst_cfg, multi_inst_cfg, multi_inst_post_cfg
+from CUB.cub_classes import ind_inst_cfg, joint_inst_cfg, seq_inst_cfg, multi_inst_cfg, multi_inst_post_cfg, prepost_cfg, postpre_cfg
 
 from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
@@ -223,6 +223,7 @@ def train(
             tti_cfg = TTI_Config(
                 log_dir=run_save_path,
                 model_dir=model_save_path,
+                data_dir=args.data_dir,
                 multimodel=args.multimodel,
                 sigmoid=False,
                 model_sigmoid=False,
@@ -406,19 +407,26 @@ def train_switch(args):
         train_multi(args)
     elif args.exp == "Sequential":
         train_sequential(args)
+    elif args.exp == "Alternating":
+        train_alternating(args)
+    else:
+        raise ValueError(f"Experiment type {args.exp} not recognized")
 
 def train_independent(args):
-    model = IndependentModel(args, train_mode="XtoC")
-    args.tti_int = 10
-    train(model, args)
+    args.epochs=100 # Beyond 100 epochs, the model starts to overfit
     args.lr=0.001
+    model = IndependentModel(args, train_mode="XtoC")
+    train(model, args)
+    args.epochs=700
     model.train_mode = "CtoY"
     train(model, args)
 
 def train_sequential(args):
+    args.epochs=100 # Beyond 100 epochs, the model starts to overfit
+    args.lr=0.001
     model = SequentialModel(args, train_mode="XtoC")
     train(model, args)
-    args.lr=0.001
+    args.epochs=700
     model.train_mode = "CtoY"
     train(model, args)
 
@@ -429,7 +437,7 @@ def train_alternating(args):
         model = Multimodel(args)
     
     elapsed_epochs = 0
-    for _ in range(args.n_alternates):
+    for _ in range(args.n_alternating):
         if args.freeze_first == "pre":
             model, elapsed_epochs = run_frozen_pre(args, model, elapsed_epochs=elapsed_epochs)
             model, elapsed_epochs = run_frozen_post(args, model, elapsed_epochs=elapsed_epochs)
@@ -438,7 +446,6 @@ def train_alternating(args):
             model, elapsed_epochs = run_frozen_pre(args, model, elapsed_epochs=elapsed_epochs)
         else:
             raise ValueError(f"Freeze first {args.freeze_first} not recognized")
-
 
 
 def run_frozen_pre(args, model, elapsed_epochs=0):
@@ -484,24 +491,13 @@ def _save_CUB_result(train_result):
 
 def make_configs_list() -> List[Experiment]:
     configs = [
-        ind_cfg, # 0 
-        seq_cfg,
-        joint_cfg,
-        multiple_cfg1, # 3
-        multiple_cfg2,
-        multiple_cfg3,
-        ind_sparse_cfg, # 6
-        seq_sparse_cfg,
-        joint_sparse_cfg,
-        multi_sparse_cfg, # 9
-        joint_cfg2,
-        joint_cfg3,
-        thin_cfg, # 12
         ind_inst_cfg,
         seq_inst_cfg,
-        joint_inst_cfg, # 15
+        joint_inst_cfg,
         multi_inst_cfg,
-        multi_inst_post_cfg
+        multi_inst_post_cfg,
+        prepost_cfg,
+        postpre_cfg,
     ]
     return configs
 

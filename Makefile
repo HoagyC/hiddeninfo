@@ -14,7 +14,7 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=16474
+SSH_PORT=19866
 VASTAI_N=6
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
@@ -101,7 +101,7 @@ retrieve:
 
 .PHONY: ssh-setup
 ssh-setup:
-	ssh -p $(SSH_PORT) $(SSH_DESTINATION) \
+	ssh -oStrictHostKeyChecking=no -p $(SSH_PORT) $(SSH_DESTINATION) \
 		"apt install -y build-essential python3-venv"
 	make ssh-sync
 	make ssh-run COMMAND="install"
