@@ -92,7 +92,7 @@ ssh-run:
 aws-pull:
 	apt install unzip
 	$(PYTHON) CUB/aws_download.py
-	unzip CUB_dataset.zip
+	unzip -n CUB_dataset.zip # -n to not overwrite existing files
 
 # Get a file through scp from the remote location.
 .PHONY: retrieve

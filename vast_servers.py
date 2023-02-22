@@ -33,7 +33,17 @@ def destroy_server(id):
     destroy_cmd = f"./vast destroy instance {id} --raw"
     raw_out = subprocess.Popen(destroy_cmd, stdout=subprocess.PIPE, shell=True, stderr=subprocess.PIPE)
     out, err = raw_out.communicate()
-    return json.loads(out)
+    if out:
+        out = json.loads(out)
+    return out
+
+def reboot_server(id):
+    destroy_cmd = f"./vast destroy instance {id} --raw"
+    raw_out = subprocess.Popen(destroy_cmd, stdout=subprocess.PIPE, shell=True, stderr=subprocess.PIPE)
+    out, err = raw_out.communicate()
+    if out:
+        out = json.loads(out)
+    return out
 
     
 def get_vast_ai_servers(n_servers=1, clear_existing=False):

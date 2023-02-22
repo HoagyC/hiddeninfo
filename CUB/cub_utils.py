@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import random
 from pathlib import Path
 from typing import List, Dict
@@ -18,6 +19,16 @@ def get_secrets() -> Dict:
         secrets = json.load(f)
 
     return secrets
+
+def kill_python_processes() -> None:
+    """Kill all python processes."""
+    processes = os.popen("ps -Af").read() # -A and -f are for all processes and full format
+    current_pid = os.getpid()
+    for line in processes.splitlines():
+        if "python" in line.lower() and str(current_pid) not in line:
+            print("Killing process: " + line)
+            pid = int(line.split()[1])
+            os.kill(pid, 9)
 
 # List all the objects in the specified folder(one layer only)
 def list_aws_files(folder_name: str, get_folders: bool = True) -> List[str]:
@@ -159,3 +170,8 @@ def show_img_horizontally(list_of_files) -> None:
         imshow(image)
         axis("off")
     show(block=True)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "kill":
+        kill_python_processes()

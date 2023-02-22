@@ -456,7 +456,7 @@ def run_frozen_pre(args, model, elapsed_epochs=0):
     for param in model.post_models.parameters():
         param.requires_grad = False
 
-    if args.alternate_reset:
+    if args.alternating_reset:
         model.reset_pre_models()
 
     # Train again with shuffling and freezing
@@ -470,7 +470,7 @@ def run_frozen_post(args, model, elapsed_epochs=0):
     for param in model.post_models.parameters():
         param.requires_grad = True
 
-    if args.alternate_reset:
+    if args.alternating_reset:
         model.reset_post_models()
 
     # Train again with shuffling and freezing

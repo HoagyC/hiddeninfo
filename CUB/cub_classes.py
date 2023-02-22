@@ -97,7 +97,7 @@ class Experiment:
     n_alternating: int = 1 # How many times to alternate between pre and post models
     freeze_first: str = "pre" # Whether to freeze the first pre or post model, "pre" or "post"
     alternating_reset: bool = True 
-    alternating_epochs: List[int] = []
+    alternating_epochs: List[int] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass

@@ -21,4 +21,6 @@ CUB_masked_class
 CUB_dataset.zip
 CUB/attr_ndxs.py
 
+multilog/
+
 CUB/tti_inv.py
