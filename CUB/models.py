@@ -136,11 +136,11 @@ class Multimodel(nn.Module):
             attr_loss = 0.
             for i in range(len(self.attr_criterion)):
                 attr_loss += self.attr_criterion[i](
-                    attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                    attr_preds[ndx][i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
                 )
 
                 aux_attr_loss = self.attr_criterion[i](
-                    aux_attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                    aux_attr_preds[ndx][i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
                 )
                 attr_loss += aux_attr_loss * AUX_LOSS_RATIO
             
