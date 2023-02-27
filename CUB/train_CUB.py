@@ -504,6 +504,12 @@ def make_configs_list() -> List[Experiment]:
     # Make all output folders specific to this run
     for cfg in configs:
         cfg.log_dir = "big_run"
+        cfg.tag += "_sparse"
+        cfg.attr_sparsity = 5
+        
+        # If attrs are sparse, can increase batch if not training end-to-end
+        if cfg.exp in ["Sequential", "Independent"]:
+            cfg.batch *= cfg.attr_sparsity
 
     return configs
 
