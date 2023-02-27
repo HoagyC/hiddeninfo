@@ -10,7 +10,7 @@ from torch import nn
 from CUB.model_templates import MLP, inception_v3, FC
 from CUB.cub_classes import Experiment
 from CUB.dataset import find_class_imbalance
-from CUB.config import BASE_DIR, AUX_LOSS_RATIO
+from CUB.configs import BASE_DIR, AUX_LOSS_RATIO
 
 # Create loss criteria for each attribute, upweighting the less common ones
 def make_weighted_criteria(args):

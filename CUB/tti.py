@@ -16,7 +16,7 @@ from matplotlib.figure import Figure
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from CUB.config import N_CLASSES, N_ATTRIBUTES
+from CUB.configs import N_CLASSES, N_ATTRIBUTES
 from CUB.cub_classes import TTI_Config, TTI_Output
 from CUB.inference import eval
 
