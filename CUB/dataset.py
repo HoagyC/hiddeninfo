@@ -29,6 +29,7 @@ class CUBDataset(Dataset):
         image_dir,
         transform=None,
         attr_sparsity: int = 1,
+        attr_class_sparsity: int = 1,
     ):
         """
         Arguments:
@@ -50,6 +51,12 @@ class CUBDataset(Dataset):
         self.image_dir = image_dir
         self.attr_sparsity = attr_sparsity
 
+        # Randomly decide which classes to mask
+        class_mask = torch.ones(N_CLASSES)
+        n_class_visible = N_CLASSES // attr_class_sparsity
+        class_mask[:n_class_visible] = 0
+        self.class_mask = class_mask[torch.randperm(N_CLASSES)]
+
     def __len__(self):
         return len(self.data)
 
@@ -58,6 +65,8 @@ class CUBDataset(Dataset):
         img_data = self.data[idx]
         img_path = img_data["img_path"]
         attr_mask_bin = idx % self.attr_sparsity == 0
+        class_mask_bin = self.class_mask[img_data["class_label"]]
+        mask = attr_mask_bin and class_mask_bin
         # Trim unnecessary paths
         try:
             idx = img_path.split("/").index("CUB_200_2011")
@@ -82,7 +91,7 @@ class CUBDataset(Dataset):
         else:
             attr_label = img_data["attribute_label"]
 
-        return img, class_label, attr_label, attr_mask_bin
+        return img, class_label, attr_label, mask
 
 
 
@@ -173,6 +182,7 @@ def load_data(
         args.image_dir,
         transform,
         args.attr_sparsity,
+        args.class_sparsity,
     )
     if is_training:
         drop_last = True

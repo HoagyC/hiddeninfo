@@ -34,7 +34,7 @@ from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3, multi_s
 from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg, joint_cfg2, joint_cfg3
 from CUB.cub_classes import ind_inst_cfg, joint_inst_cfg, seq_inst_cfg, multi_inst_cfg, multi_inst_post_cfg, prepost_cfg, postpre_cfg
 
-from CUB.config import MIN_LR, BASE_DIR, LR_DECAY_SIZE
+from CUB.configs import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
 from CUB.tti import run_tti
 
