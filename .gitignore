@@ -22,5 +22,6 @@ CUB_dataset.zip
 CUB/attr_ndxs.py
 
 multilog/
+big_run
 
 CUB/tti_inv.py

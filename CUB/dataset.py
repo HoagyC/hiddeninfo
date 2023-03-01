@@ -14,7 +14,7 @@ import torch
 import torchvision.transforms as transforms
 
 from torch.utils.data import Dataset, DataLoader, BatchSampler
-from CUB.config import BASE_DIR, N_ATTRIBUTES, N_CLASSES
+from CUB.cub_classes import BASE_DIR, N_CLASSES
 
 
 class CUBDataset(Dataset):
@@ -52,7 +52,7 @@ class CUBDataset(Dataset):
         self.attr_sparsity = attr_sparsity
 
         # Randomly decide which classes to mask
-        class_mask = torch.ones(N_CLASSES)
+        class_mask = torch.ones(N_CLASSES).to(torch.bool)
         n_class_visible = N_CLASSES // attr_class_sparsity
         class_mask[:n_class_visible] = 0
         self.class_mask = class_mask[torch.randperm(N_CLASSES)]
@@ -66,6 +66,7 @@ class CUBDataset(Dataset):
         img_path = img_data["img_path"]
         attr_mask_bin = idx % self.attr_sparsity == 0
         class_mask_bin = self.class_mask[img_data["class_label"]]
+
         mask = attr_mask_bin and class_mask_bin
         # Trim unnecessary paths
         try:
@@ -175,6 +176,11 @@ def load_data(
                 transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
             ]
         )
+    # Some configs were created before class_sparsity was added
+    if hasattr(args, "class_sparsity"):
+        class_sparsity = args.class_sparsity
+    else:
+        class_sparsity = 1
 
     dataset = CUBDataset(
         pkl_paths,
@@ -182,7 +188,7 @@ def load_data(
         args.image_dir,
         transform,
         args.attr_sparsity,
-        args.class_sparsity,
+        class_sparsity,
     )
     if is_training:
         drop_last = True

@@ -16,8 +16,7 @@ from matplotlib.figure import Figure
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from CUB.configs import N_CLASSES, N_ATTRIBUTES
-from CUB.cub_classes import TTI_Config, TTI_Output
+from CUB.cub_classes import TTI_Config, TTI_Output, N_CLASSES, N_ATTRIBUTES_RAW
 from CUB.inference import eval
 
 def get_stage2_pred(a_hat, model):
@@ -30,7 +29,7 @@ def get_stage2_pred(a_hat, model):
 
 def build_mask(data: List[Dict], min_count: int = 10) -> np.ndarray:
     # Count the number of times each attribute is known to be true or false for each class
-    class_attr_count = np.zeros((N_CLASSES, N_ATTRIBUTES, 2))
+    class_attr_count = np.zeros((N_CLASSES, N_ATTRIBUTES_RAW, 2))
     for d in data:
         class_label = d["class_label"]
         certainties = d["attribute_certainty"]
@@ -109,6 +108,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
 
     # Make a filter for attributes that are not common enough, as list of IDs to keep
     attr_mask = build_mask(train_data, min_count=10) 
+    assert len(attr_mask) == args.n_attributes
 
     test_data = pickle.load(open(os.path.join(args.data_dir_raw, "test.pkl"), "rb"))
 
@@ -156,10 +156,11 @@ def run_tti(args) -> List[Tuple[int, float]]:
 
     # Get main model and attr -> label model
     model = torch.load(args.model_dir)
-    if args.multimodel:
-         # NOTE: these are numpy arrays and np.repeat is different to torch.repeat()
+    if args.multimodel and args.multimodel_type == "ensemble":
+        # NOTE: these are numpy arrays and np.repeat is different to torch.repeat()
         raw_attr_labels = raw_attr_labels.repeat(model.args.n_models, axis=0)
         raw_attr_uncertanties = raw_attr_uncertanties.repeat(model.args.n_models, axis=0)
+        
 
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
     assert len(raw_attr_labels) == len(
@@ -187,7 +188,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
     results = []
     for n_replace in range(args.n_groups + 1):
         all_class_acc = []
-        if args.multimodel:
+        if args.multimodel and args.multimodel_type == "ensemble":
             n_trials = args.n_trials * model.args.n_models
         else:
             n_trials = args.n_trials
@@ -261,6 +262,28 @@ def graph_tti_output(
         plt.show()
     if return_fig:
         return plt.gcf()
+    
+def graph_tti_simple(
+    tti_output: List[Tuple[int, float]],
+    save_dir: Optional[str] = None,
+    show: bool = True,
+    label: Optional[str] = None,
+    return_fig: bool = False,
+    fig: Optional[Figure] = None,
+):
+    """ Add a single point to a 2D graph showing the non-intervention (tti0) and full-intervention (ttilast) results"""
+    if not fig:
+        fig = plt.figure()
+
+    n_replace, acc = zip(*tti_output)
+    plt.plot(acc[0], acc[-1], "o", label=label)
+    plt.xlabel("Accuracy with no intervention")
+    plt.ylabel("Accuracy with full intervention")
+    if save_dir:
+        plt.savefig(os.path.join(save_dir, "tti_results.png"))
+    if show:
+        plt.show()
+    return fig
 
 def graph_multi_tti_output(tti_outputs: List[TTI_Output], save_dir: Optional[str] = None):
     """Graph the output of multiple TTI runs"""

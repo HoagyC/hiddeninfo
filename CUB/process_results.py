@@ -32,19 +32,19 @@ def process_run_name(model_file: str) -> Tuple[float, int, str]:
 
 
 def create_tti_cfg(model_file: str, model_folder: str) -> Optional[TTI_Config]:
-    """Create the TTI config based on the name of the run."""
-    if "multimodel" in model_folder:
-        tti_config = TTI_Config(
-            log_dir=model_folder,
-            model_dir=model_file,
-            multimodel=True,
-        )
-    else:
-        tti_config = TTI_Config(
-            log_dir=model_folder,
-            model_dir=model_file,
-            multimodel=False,
-        )
+    """Create the TTI config based on the config.pkl of the original experiment."""
+
+    download_from_aws([model_folder + "/config.pkl"])
+    with open(model_folder + "/config.pkl", "rb") as f:
+        exp_cfg = pickle.load(f)
+
+    tti_config = TTI_Config(
+        log_dir=model_folder,
+        model_dir=model_file,
+        multimodel=exp_cfg.multimodel,
+        data_dir=exp_cfg.data_dir,
+        multimodel_type="mixture",
+    )
 
     return tti_config
 
@@ -64,7 +64,7 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
         model_file = f"{folder}final_model.pth"
 
         # Check if results have already been processed
-        if not reprocess and folder + 'tti_results.pkl' in list_aws_files(folder, get_folders=False):
+        if not reprocess and folder + 'tti_results_mix.pkl' in list_aws_files(folder, get_folders=False):
             print(f"Results for {folder} already processed")
             continue
     
@@ -77,6 +77,8 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
 
         # Create the TTI config
         tti_config = create_tti_cfg(model_file, model_folder)
+        if not tti_config.multimodel: # careful, it's now saving in results_mix, and is setting tti_cong.multitype to mixture
+            continue
 
         # Download the model
         download_from_aws([model_file])
@@ -124,8 +126,9 @@ def get_results_pkls(runs_list: List[str], use_all: bool = False) -> List[TTI_Ou
 
 if __name__ == "__main__":
     # List of models to download from AWS (getting the most recent one in each case
-    runs_list = [
-        "out/multimodel_post_inst",
-    ]
+    runs_list = list_aws_files("big_run", get_folders=True)
+    print(runs_list)
+    runs_list.remove("big_run/postpre_test_sparse/") # still running
 
-    process_results(runs_list, process_all=False, reprocess=True)
+
+    process_results(runs_list[8:], process_all=False, reprocess=True)

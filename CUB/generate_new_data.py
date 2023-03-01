@@ -16,7 +16,7 @@ import torchvision.transforms as transforms
 from collections import defaultdict as ddict
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from CUB.config import N_ATTRIBUTES, N_CLASSES
+from CUB.cub_classes import N_ATTRIBUTES, N_CLASSES
 
 
 def get_few_shot_data(n_samples, out_dir, data_file="train.pkl"):

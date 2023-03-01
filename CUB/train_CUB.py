@@ -28,13 +28,9 @@ from CUB.models import (
     SequentialModel,
     ThinMultimodel
 )
-from CUB.cub_classes import Experiment, Meters, RunRecord, TTI_Config
-from CUB.cub_classes import ind_cfg, joint_cfg, seq_cfg
-from CUB.cub_classes import multiple_cfg1, multiple_cfg2, multiple_cfg3, multi_sparse_cfg, thin_cfg
-from CUB.cub_classes import ind_sparse_cfg, seq_sparse_cfg, joint_sparse_cfg, joint_cfg2, joint_cfg3
-from CUB.cub_classes import ind_inst_cfg, joint_inst_cfg, seq_inst_cfg, multi_inst_cfg, multi_inst_post_cfg, prepost_cfg, postpre_cfg
+from CUB.cub_classes import TTI_Config, Meters, Experiment, RunRecord
+import CUB.configs as cfgs
 
-from CUB.configs import MIN_LR, BASE_DIR, LR_DECAY_SIZE
 from CUB.cub_utils import upload_to_aws, get_secrets
 from CUB.tti import run_tti
 
@@ -155,11 +151,11 @@ def train(
     )
 
     stop_epoch = (
-        int(math.log(MIN_LR / args.lr) / math.log(LR_DECAY_SIZE)) * args.scheduler_step
+        int(math.log(args.min_lr / args.lr) / math.log(args.lr_decay_size)) * args.scheduler_step
     )
     print("Stop epoch: ", stop_epoch)
 
-    train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
+    train_data_path = os.path.join(args.base_dir, args.data_dir, "train.pkl")
     val_data_path = train_data_path.replace("train.pkl", "val.pkl")
 
     train_loader = load_data([train_data_path], args)
@@ -281,7 +277,7 @@ def make_criteria(
     if args.use_attr and not args.no_img:
         attr_criterion = []  # separate criterion (loss function) for each attribute
         if args.weighted_loss:
-            train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
+            train_data_path = os.path.join(args.base_dir, args.data_dir, "train.pkl")
             imbalance = find_class_imbalance(train_data_path, True)
             for ratio in imbalance:
                 attr_criterion.append(
@@ -493,13 +489,15 @@ def _save_CUB_result(train_result):
 
 def make_configs_list() -> List[Experiment]:
     configs = [
-        ind_inst_cfg,
-        seq_inst_cfg,
-        joint_inst_cfg,
-        multi_inst_cfg,
-        multi_inst_post_cfg,
-        prepost_cfg,
-        postpre_cfg,
+        cfgs.ind_inst_cfg,
+        cfgs.seq_inst_cfg,
+        cfgs.joint_inst_cfg,
+        cfgs.multi_inst_cfg,
+        cfgs.multi_inst_post_cfg,
+        cfgs.prepost_cfg,
+        cfgs.postpre_cfg,
+        cfgs.seq_sparse_class_cfg,
+        cfgs.seq_inst_sparse_class_cfg,
     ]
     # Make all output folders specific to this run
     for cfg in configs:

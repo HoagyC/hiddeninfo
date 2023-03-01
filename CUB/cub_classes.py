@@ -1,8 +1,11 @@
 import dataclasses
 from typing import Optional, List, Tuple
 
-from CUB.configs import N_ATTRIBUTES, N_CLASSES
+BASE_DIR = "/root/hoagy-hiddeninfo-sync"
 
+N_CLASSES = 200
+N_ATTRIBUTES_RAW = 312
+N_ATTRIBUTES = 109
 
 class AverageMeter(object):
     """
@@ -46,6 +49,7 @@ class Experiment:
     seed: int = 1
 
     # Data
+    base_dir: str = BASE_DIR
     log_dir: str = "out"
     data_dir: str = "CUB_masked_class"
     image_dir: str = "images"
@@ -54,13 +58,17 @@ class Experiment:
     # Model
     multimodel: bool = False
     n_attributes: int = 109
-    num_classes: int = N_CLASSES
+    num_classes: int = 200
     expand_dim: int = 500
     use_relu: bool = False
     use_sigmoid: bool = False
     pretrained: bool = True
     use_aux: bool = True
     post_model_dropout: Optional[float] = None
+
+    min_lr = 1e-04
+    lr_decay_size: float = 0.1
+    aux_loss_ratio: float = 0.4
 
     # Training
     epochs: int = 1000
@@ -112,6 +120,7 @@ class TTI_Config:
     use_sigmoid: bool = False
     attr_sparsity: int = 1
 
+    base_dir: str = BASE_DIR
     data_dir: str = "CUB_masked_class"  # directory to the data used for evaluation
     data_dir_raw: str = "CUB_processed"  # directory to the raw data
     n_attributes: int = 109
@@ -125,7 +134,7 @@ class TTI_Config:
     n_trials: int = 1  # Number of trials to run, when mode is random
     n_groups: int = 28  # n. groups of attributes (28 enums with ~10 options = 312 attrs)
     multimodel: bool = True # whether to use the multimodel architecture
-
+    multimodel_type: str = "separate" # Will run them separately if "separate", or will average the logits if "mixture"
     sigmoid: bool = False
     model_sigmoid: bool = False
 

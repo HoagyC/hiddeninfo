@@ -4,8 +4,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-
-from CUB.cub_classes import N_ATTRIBUTES, N_CLASSES, Experiment, TTI_Config
+from CUB.cub_classes import Experiment, TTI_Config
 
 N_ATTRIBUTES = 312
 N_CLASSES = 200

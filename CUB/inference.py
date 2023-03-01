@@ -12,8 +12,7 @@ from sklearn.metrics import f1_score
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from CUB.dataset import load_data
-from CUB.config import BASE_DIR, N_CLASSES, N_ATTRIBUTES
-from CUB.cub_classes import TTI_Config, Meters
+from CUB.cub_classes import TTI_Config, Meters, N_CLASSES
 from analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
 
 K = [1, 3, 5]  # top k class accuracies to compute
@@ -68,7 +67,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     if args.feature_group_results:
         meters.attr_accs = [AverageMeter() for _ in range(args.n_attributes)]
 
-    data_dir = os.path.join(BASE_DIR, args.data_dir, args.eval_data + ".pkl")
+    data_dir = os.path.join(args.base_dir, args.data_dir, args.eval_data + ".pkl")
     loader = load_data([data_dir], args)
 
     dataset_len = len(loader.dataset)
@@ -98,7 +97,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
-        attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
+        attr_mask = torch.ones_like(attr_mask).cuda() if torch.cuda.is_available() else torch.ones_like(attr_mask)
 
         attr_preds, _, class_preds, _ = model.generate_predictions(inputs, attr_labels, attr_mask, straight_through=True)
 

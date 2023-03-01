@@ -10,12 +10,11 @@ from torch import nn
 from CUB.model_templates import MLP, inception_v3, FC
 from CUB.cub_classes import Experiment
 from CUB.dataset import find_class_imbalance
-from CUB.configs import BASE_DIR, AUX_LOSS_RATIO
 
 # Create loss criteria for each attribute, upweighting the less common ones
 def make_weighted_criteria(args):
     attr_criterion = []
-    train_data_path = os.path.join(BASE_DIR, args.data_dir, "train.pkl")
+    train_data_path = os.path.join(args.base_dir, args.data_dir, "train.pkl")
     imbalance = find_class_imbalance(train_data_path, True) # assume args.weighted loss is always "multiple" if not ""
     for ratio in imbalance:
         attr_criterion.append(
@@ -130,7 +129,7 @@ class Multimodel(nn.Module):
         for ndx in range(len(self.pre_models)):
             class_loss = self.criterion(class_preds[ndx], class_labels)
             aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
-            class_loss += aux_class_loss * AUX_LOSS_RATIO
+            class_loss += aux_class_loss * self.args.aux_loss_ratio
             total_class_loss += class_loss
             
             attr_loss = 0.
@@ -142,7 +141,7 @@ class Multimodel(nn.Module):
                 aux_attr_loss = self.attr_criterion[i](
                     aux_attr_preds[ndx][i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
                 )
-                attr_loss += aux_attr_loss * AUX_LOSS_RATIO
+                attr_loss += aux_attr_loss * self.args.aux_loss_ratio
             
             attr_loss /= len(self.attr_criterion)
             total_attr_loss += attr_loss
@@ -259,7 +258,7 @@ class JointModel(nn.Module):
 
         class_loss = self.criterion(class_preds, class_labels)
         aux_class_loss = self.criterion(aux_class_preds, class_labels)
-        class_loss += aux_class_loss * AUX_LOSS_RATIO
+        class_loss += aux_class_loss * self.args.aux_loss_ratio
         
         attr_loss = 0.
         for i in range(len(self.attr_criterion)):
@@ -270,7 +269,7 @@ class JointModel(nn.Module):
             aux_attr_loss = self.attr_criterion[i](
                 aux_attr_preds[i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
             )
-            attr_loss += aux_attr_loss * AUX_LOSS_RATIO
+            attr_loss += aux_attr_loss * self.args.aux_loss_ratio
 
         
         attr_loss /= len(self.attr_criterion)
@@ -438,7 +437,7 @@ class ThinMultimodel(nn.Module):
         for ndx in range(self.args.n_models):
             class_loss = self.criterion(class_preds[ndx], class_labels)
             aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
-            class_loss += aux_class_loss * AUX_LOSS_RATIO
+            class_loss += aux_class_loss * self.args.aux_loss_ratio
             total_class_loss += class_loss
             
             attr_loss = 0.
@@ -450,7 +449,7 @@ class ThinMultimodel(nn.Module):
                 aux_attr_loss = self.attr_criterion[i](
                     aux_attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
                 )
-                attr_loss += aux_attr_loss * AUX_LOSS_RATIO
+                attr_loss += aux_attr_loss * self.args.aux_loss_ratio
             
             attr_loss /= len(self.attr_criterion)
             total_attr_loss += attr_loss
