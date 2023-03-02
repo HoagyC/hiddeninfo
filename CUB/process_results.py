@@ -131,4 +131,4 @@ if __name__ == "__main__":
     runs_list.remove("big_run/postpre_test_sparse/") # still running
 
 
-    process_results(runs_list[8:], process_all=False, reprocess=True)
+    process_results(runs_list, process_all=False, reprocess=True)

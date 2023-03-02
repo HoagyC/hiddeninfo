@@ -191,12 +191,13 @@ def load_data(
         class_sparsity,
     )
     if is_training:
-        drop_last = True
+        drop_last = True # drop last batch if it is smaller than batch_size
         shuffle = True
     else:
         drop_last = False
         shuffle = False
-
+        
+    print(f"making dataloader where shuffle={shuffle} and drop_last={drop_last}")
     loader = DataLoader(
         dataset, batch_size=args.batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=1
     )

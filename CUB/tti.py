@@ -124,8 +124,8 @@ def run_tti(args) -> List[Tuple[int, float]]:
     attr_group_dict = build_dict_from_mask(attr_mask=attr_mask)
 
     # Run one epoch, get lots of detail about performance
-    eval_output = eval(args)
-    class_outputs = eval_output.topk_classes[:, 0]
+    eval_output = eval(args) # outputs tuple of arrays with first dim of each being n_models
+    class_outputs = eval_output.topk_classes[:, :, 0]
     attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoids).astype(int)  # RoundINT
     
     # Get 5, 95 percentiles for how much each attribute was predicted to be true [0,1]
@@ -137,41 +137,32 @@ def run_tti(args) -> List[Tuple[int, float]]:
 
     else:
         for attr_idx in range(args.n_attributes):
-            ptl_5[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 5)
-            ptl_95[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, attr_idx], 95)
+            ptl_5[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, :, attr_idx], 5)
+            ptl_95[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, :, attr_idx], 95)
         
-    
     # Creating the correct output array, where 'correct' is the 5th percentile of the attribute if false, and 95th percentile if true
     correct_attr_outputs = np.zeros_like(eval_output.attr_pred_outputs)
-    if args.replace_class:
+    if args.replace_class: # shapes here are (n_models, n_examples, n_attributes)
         for attr_idx in range(args.n_attributes):
-            correct_attr_outputs[:, attr_idx] = np.where(
-                eval_output.attr_true_labels[:, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
+            correct_attr_outputs[:, :, attr_idx] = np.where(
+                eval_output.attr_true_labels[:, :, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
             )
     else:
         for attr_idx in range(args.n_attributes):
-            correct_attr_outputs[:, attr_idx] = np.where(
-                raw_attr_labels[:, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
+            correct_attr_outputs[:, :, attr_idx] = np.where(
+                raw_attr_labels[:, :, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
             )
 
     # Get main model and attr -> label model
     model = torch.load(args.model_dir)
-    if args.multimodel and args.multimodel_type == "ensemble":
-        # NOTE: these are numpy arrays and np.repeat is different to torch.repeat()
-        raw_attr_labels = raw_attr_labels.repeat(model.args.n_models, axis=0)
-        raw_attr_uncertanties = raw_attr_uncertanties.repeat(model.args.n_models, axis=0)
         
 
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
-    assert len(raw_attr_labels) == len(
-        eval_output.attr_true_labels
-    ), "len(instance_attr_labels): %d, len(eval_output.attr_labels): %d" % (
+    assert len(raw_attr_labels) == eval_output.attr_true_labels.shape[1], "len(instance_attr_labels): %d, len(eval_output.attr_labels): %d" % (
         len(raw_attr_labels),
         len(eval_output.attr_true_labels),
     )
-    assert len(raw_attr_uncertanties) == len(
-        eval_output.attr_true_labels
-    ), "len(uncertainty_attr_labels): %d, len(eval_output.attr_labels): %d" % (
+    assert len(raw_attr_uncertanties) == eval_output.attr_true_labels.shape[1], "len(uncertainty_attr_labels): %d, len(eval_output.attr_labels): %d" % (
         len(raw_attr_uncertanties),
         len(eval_output.attr_true_labels),
     )
@@ -188,6 +179,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
     results = []
     for n_replace in range(args.n_groups + 1):
         all_class_acc = []
+        all_mix_class_acc = []
         if args.multimodel and args.multimodel_type == "ensemble":
             n_trials = args.n_trials * model.args.n_models
         else:
@@ -197,7 +189,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
             # Array of attr predictions, will be modified towards ground truth
             updated_attrs = np.array(eval_output.attr_pred_outputs[:])
             if n_replace > 0:
-                for img_id in range(len(eval_output.class_labels)):
+                for img_id in range(eval_output.class_labels.shape[1]):
                     # Get a list of all attrs (in the flattened list) that we will intervene on for this img
                     replace_idxs = []
                     group_replace_idx = list(
@@ -206,40 +198,65 @@ def run_tti(args) -> List[Tuple[int, float]]:
                     for i in group_replace_idx:
                         replace_idxs.extend(attr_group_dict[i])
                     
-                    updated_attrs[img_id, replace_idxs] = correct_attr_outputs[img_id, replace_idxs]
+                    updated_attrs[:, img_id, replace_idxs] = correct_attr_outputs[:, img_id, replace_idxs]
             
 
             stage2_inputs = torch.from_numpy(updated_attrs).cuda()
 
             if args.multimodel: # if multimodel, we need to reshape the inputs to be (n_models, n_imgs, n_attrs)
-                stage2_inputs = stage2_inputs.reshape(model.args.n_models, -1, args.n_attributes)
                 class_outputs = []
+                class_outputs_mix = torch.zeros(stage2_inputs.shape[1], N_CLASSES).cuda()
+                top1s = []
                 for i, post_model in enumerate(model.post_models):
                     post_model.eval()
-                    class_outputs.append(post_model(stage2_inputs[i]))
+                    model_class_outputs = post_model(stage2_inputs[i])
+                    class_outputs.append(model_class_outputs)
+                    class_outputs_mix += post_model(stage2_inputs[i])
+                    top1s.append(model_class_outputs.topk(k=1, dim=1)[1].data.cpu().numpy().squeeze())
                 
-                class_outputs = torch.cat(class_outputs, dim=0)
+                class_outputs = torch.stack(class_outputs, dim=0)
+                
+                class_outputs_mix /= model.args.n_models
+
             else:
                 model_use = model.second_model
                 if model.args.exp == "Independent":
                     model_use = torch.nn.Sequential(torch.nn.Sigmoid(), model_use)
                 model_use.eval()
-                class_outputs = model_use(stage2_inputs)
+                class_outputs = model_use(stage2_inputs[0])
 
-            _, predictions = class_outputs.topk(k=1, dim=1) # topk returns a tuple of (values, indices)
-            predictions = predictions.data.cpu().numpy().squeeze()
-            class_acc = np.mean(
-                np.array(predictions) == np.array(eval_output.class_labels)
-            )
-            all_class_acc.append(class_acc * 100) # convert to percent
+            try:
+                _, predictions = class_outputs.topk(k=1, dim=2) # topk returns a tuple of (values, indices)
+                _, mix_predictions = class_outputs_mix.topk(k=1, dim=1)
+                predictions = predictions.data.cpu().numpy().squeeze()
+                mix_predictions = mix_predictions.data.cpu().numpy().squeeze()
+                if ndx == 0:
+                    print("top1 similarities: 0,1 0,mix, 1,mix", prop_equal(predictions[0], predictions[1]), prop_equal(predictions[0], mix_predictions), prop_equal(predictions[1], mix_predictions))
+                
+                correct_t = np.array(predictions) == np.array(eval_output.class_labels)
+                class_acc = np.mean(correct_t)
+                correct_mix = np.array(mix_predictions) == np.array(eval_output.class_labels)
+                mix_class_acc = np.mean(correct_mix)
+                if ndx == 0:
+                    print("cross accs", np.logical_and(correct_mix, correct_t[0]).mean(), np.logical_or(correct_mix, correct_t[1]).mean())
+
+                all_class_acc.append(class_acc * 100) # convert to percent
+                all_mix_class_acc.append(mix_class_acc * 100)
+
+            except:
+                breakpoint()
 
         # changed from max to sum - not sure why max would be appropriate
         acc = sum(all_class_acc) / len(all_class_acc)
+        mix_acc = sum(all_mix_class_acc) / len(all_mix_class_acc)
 
-        print(n_replace, acc)
+        print(n_replace, acc, mix_acc)
         results.append((n_replace, acc))
     return results
 
+
+def prop_equal(t1: np.array, t2: np.array) -> float:
+    return np.sum(t1 == t2) / len(t1)
 
 def graph_tti_output(
     tti_output: List[Tuple[int, float]], 

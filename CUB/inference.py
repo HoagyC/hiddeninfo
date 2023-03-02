@@ -75,16 +75,16 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
     total_size = dataset_len * n_models
 
     # Initialize arrays to store outputs
-    all_class_labels = np.zeros(total_size, dtype=np.int32)
-    all_class_logits = np.zeros((total_size, N_CLASSES), dtype=np.float32) # MUST BE REVERTED!!!!! TESTING ONLY
+    all_class_labels = np.zeros((n_models, dataset_len), dtype=np.int32)
+    all_class_logits = np.zeros((n_models, dataset_len, N_CLASSES), dtype=np.float32) # MUST BE REVERTED!!!!! TESTING ONLY
 
-    top_class_preds = np.zeros(total_size, dtype=np.int32)
-    topk_class_labels = np.zeros((total_size, max(K)), dtype=np.int32)
-    topk_class_outputs = np.zeros((total_size, max(K)), dtype=np.int32)
+    top_class_preds = np.zeros((n_models, dataset_len), dtype=np.int32)
+    topk_class_labels = np.zeros((n_models, dataset_len, max(K)), dtype=np.int32)
+    topk_class_outputs = np.zeros((n_models, dataset_len, max(K)), dtype=np.int32)
 
-    all_attr_labels = np.zeros((total_size, args.n_attributes), dtype=np.int32)
-    all_attr_preds = np.zeros((total_size, args.n_attributes), dtype=np.float32)
-    all_attr_preds_sigmoid = np.zeros((total_size, args.n_attributes), dtype=np.float32)
+    all_attr_labels = np.zeros((n_models, dataset_len, args.n_attributes), dtype=np.int32)
+    all_attr_preds = np.zeros((n_models, dataset_len, args.n_attributes), dtype=np.float32)
+    all_attr_preds_sigmoid = np.zeros((n_models, dataset_len, args.n_attributes), dtype=np.float32)
 
     # Run a normal epoch, get outputs and top K class outputs
     n_seen = 0
@@ -102,17 +102,21 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         attr_preds, _, class_preds, _ = model.generate_predictions(inputs, attr_labels, attr_mask, straight_through=True)
 
         if args.multimodel:
-            class_preds = torch.cat(class_preds, dim=0)
-            class_labels = class_labels.repeat(model.args.n_models) # shape (batch_size) to (batch_size * n_models)
+            # Tensor from list of tensors, shape (n_models, batch_size, N_CLASSES)
+            class_preds = torch.stack(class_preds, dim=0)
+            # Repeat class labels for each model as the 0th dim
+            class_labels = class_labels.repeat(model.args.n_models, 1) # shape batch_size to n_models * batch_size
 
-        class_acc = accuracy(class_preds, class_labels, topk=K)
+        
+        class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=K)
 
         for m in range(len(meters.class_accs)):
             meters.class_accs[m].update(class_acc[m], inputs.size(0))
     
         if args.multimodel:
-            attr_preds_t = torch.cat([torch.cat(a, dim=1) for a in attr_preds], dim=0)
-            attr_labels = attr_labels.repeat(model.args.n_models, 1) # shape (batch_size, N_ATTRIBUTES) to (batch_size * n_models, N_ATTRIBUTES)
+            attr_preds_t = torch.stack([torch.cat(a, dim=1) for a in attr_preds], dim=0)
+            assert attr_preds_t.shape == (model.args.n_models, inputs.shape[0], args.n_attributes)
+            attr_labels = attr_labels.repeat(model.args.n_models, 1, 1) # shape (batch_size, N_ATTRIBUTES) to (n_models,batch_size, N_ATTRIBUTES)
         else:
             attr_preds_t = torch.cat(attr_preds, dim=1)
         
@@ -121,7 +125,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         try:
             for i in range(args.n_attributes):
                 acc = binary_accuracy(
-                    attr_preds_sigmoid[:, i].squeeze(), attr_labels[:, i]
+                    attr_preds_sigmoid[:, :, i].reshape(-1), attr_labels[:, :, i].reshape(-1)
                 )
                 acc = acc.data.cpu().numpy()
                 # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
@@ -134,26 +138,27 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
 
         # Store outputs
         n_examples = inputs.size(0)
-        if args.multimodel:
-            n_examples = n_examples * model.args.n_models
 
         try:
-            all_attr_preds[n_seen:n_seen + n_examples] = attr_preds_t.data.cpu().numpy()
+            all_attr_preds[:, n_seen:n_seen + n_examples] = attr_preds_t.data.cpu().numpy()
+            all_attr_preds_sigmoid[:, n_seen:n_seen + n_examples] = attr_preds_sigmoid.data.cpu().numpy()
+            all_attr_labels[:, n_seen:n_seen + n_examples] = attr_labels.data.cpu().numpy()
+
+            all_class_labels[:, n_seen:n_seen + n_examples] = class_labels.data.cpu().numpy()
+            all_class_logits[:, n_seen:n_seen + n_examples] = class_preds.detach().cpu().numpy()
         except ValueError:
             import pdb; pdb.set_trace()
-        all_attr_preds_sigmoid[n_seen:n_seen + n_examples] = attr_preds_sigmoid.data.cpu().numpy()
-        all_attr_labels[n_seen:n_seen + n_examples] = attr_labels.data.cpu().numpy()
+        
+        try:
+            # Get and store top K class predictions
+            topk_preds = class_preds.reshape(-1, N_CLASSES).topk(max(K), 1, True, True)[1].reshape(-1, inputs.size(0), max(K))
+            preds = class_preds.reshape(-1, N_CLASSES).topk(1, 1, True, True)[1].reshape(-1, inputs.size(0))
 
-        all_class_labels[n_seen:n_seen + n_examples] = class_labels.data.cpu().numpy()
-        all_class_logits[n_seen:n_seen + n_examples] = class_preds.detach().cpu().numpy()
-
-        # Get and store top K class predictions
-        _, topk_preds = class_preds.topk(max(K), 1, True, True)
-        _, preds = class_preds.topk(1, 1, True, True)
-
-        top_class_preds[n_seen:n_seen + n_examples] = preds.detach().cpu().numpy().squeeze()
-        topk_class_outputs[n_seen:n_seen + n_examples] = topk_preds.detach().cpu().numpy()
-        topk_class_labels[n_seen:n_seen + n_examples] = class_labels.view(-1, 1).expand_as(preds).cpu().numpy()
+            top_class_preds[:, n_seen:n_seen + n_examples] = preds.detach().cpu().numpy()
+            topk_class_outputs[:, n_seen:n_seen + n_examples] = topk_preds.detach().cpu().numpy()
+            topk_class_labels[:,n_seen:n_seen + n_examples] = class_labels.unsqueeze(2).expand_as(topk_preds).cpu().numpy()
+        except:
+            import pdb; pdb.set_trace()
 
         # np.set_printoptions(threshold=sys.maxsize)
         n_seen += n_examples
