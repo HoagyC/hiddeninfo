@@ -51,10 +51,10 @@ class CUBDataset(Dataset):
         self.image_dir = image_dir
         self.attr_sparsity = attr_sparsity
 
-        # Randomly decide which classes to mask
+        # Randomly decide which classes to mask, note that mask=1 means visible
         class_mask = torch.ones(N_CLASSES).to(torch.bool)
         n_class_visible = N_CLASSES // attr_class_sparsity
-        class_mask[:n_class_visible] = 0
+        class_mask[-n_class_visible:] = 1
         self.class_mask = class_mask[torch.randperm(N_CLASSES)]
 
     def __len__(self):

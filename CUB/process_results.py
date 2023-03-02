@@ -77,7 +77,7 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
 
         # Create the TTI config
         tti_config = create_tti_cfg(model_file, model_folder)
-        if not tti_config.multimodel: # careful, it's now saving in results_mix, and is setting tti_cong.multitype to mixture
+        if not tti_config.multimodel: # careful, it's now saving in results_mix, and is setting tti_conf.multitype to mixture
             continue
 
         # Download the model
@@ -125,10 +125,14 @@ def get_results_pkls(runs_list: List[str], use_all: bool = False) -> List[TTI_Ou
 
 
 if __name__ == "__main__":
-    # List of models to download from AWS (getting the most recent one in each case
-    runs_list = list_aws_files("big_run", get_folders=True)
-    print(runs_list)
-    runs_list.remove("big_run/postpre_test_sparse/") # still running
+    if len(sys.argv) > 1:
+        run_name = sys.argv[1]
+        runs_list = ["big_run/" + run_name]
+    else:
+        # List of models to download from AWS (getting the most recent one in each case
+        runs_list = list_aws_files("big_run", get_folders=True)
+        print(runs_list)
+        runs_list.remove("big_run/postpre_test_sparse/") # still running
 
-
+    print(f"Processing {runs_list}")
     process_results(runs_list, process_all=False, reprocess=True)

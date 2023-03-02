@@ -113,13 +113,10 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         for m in range(len(meters.class_accs)):
             meters.class_accs[m].update(class_acc[m], inputs.size(0))
     
-        if args.multimodel:
-            attr_preds_t = torch.stack([torch.cat(a, dim=1) for a in attr_preds], dim=0)
-            assert attr_preds_t.shape == (model.args.n_models, inputs.shape[0], args.n_attributes)
-            attr_labels = attr_labels.repeat(model.args.n_models, 1, 1) # shape (batch_size, N_ATTRIBUTES) to (n_models,batch_size, N_ATTRIBUTES)
-        else:
-            attr_preds_t = torch.cat(attr_preds, dim=1)
-        
+        attr_preds_t = torch.stack([torch.cat(a, dim=1) for a in attr_preds], dim=0)
+        assert attr_preds_t.shape == (model.args.n_models, inputs.shape[0], args.n_attributes)
+        attr_labels = attr_labels.repeat(model.args.n_models, 1, 1) # shape (batch_size, N_ATTRIBUTES) to (n_models,batch_size, N_ATTRIBUTES)
+    
         attr_preds_sigmoid = torch.nn.Sigmoid()(attr_preds_t)
 
         try:
