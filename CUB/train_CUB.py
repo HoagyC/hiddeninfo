@@ -51,7 +51,6 @@ def run_epoch(
 
     for data in loader:
         inputs, class_labels, attr_labels, attr_mask = data
-        
         if sum(attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
             print("Skipping batch, consider increasing batch size or decreasing sparsity")
             continue
@@ -81,43 +80,21 @@ def run_epoch(
         
         meters.loss.update(loss.item(), inputs.size(0))
 
-            
-            # model1_grad = 0
-            # for p in model.pre_models[0].parameters():
-            #     if p.grad is not None:
-            #         model1_grad += torch.norm(p.grad)
-            
-            # model2_grad = 0
-            # for p in model.post_models[0].parameters():
-            #     if p.grad is not None:
-            #         model2_grad += torch.norm(p.grad)
-            
-            # print(f"Model 1 grad: {model1_grad}")
-            # print(f"Model 2 grad: {model2_grad}")
-
-
         if attr_preds is not None:
-            # Multimodel preds are a list of tensors, one for each model
-            # so we concatenate them as if they were a larger batch
-            if args.multimodel:
-                attr_preds_t = torch.cat([torch.cat(a, dim=1) for a in attr_preds], dim=0)
-                attr_labels = attr_labels.repeat(args.n_models, 1)
-            else:
-                attr_preds_t = torch.cat(attr_preds, dim=1)
-            
-            if attr_preds_t.shape[0] != attr_labels.shape[0]:
-                attr_labels=attr_labels[attr_mask]
-            attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds_t)
+            # Note that the first dimension in all outputs is the number of models, then batch size, then the rest of the dimensions
+            attr_labels = attr_labels.repeat(args.n_models, 1)
+            if class_preds.shape[1] != class_labels.shape[1]:
+                class_labels=class_labels[:, attr_mask]
+
+            attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds)
             attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels)
             meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
         
         if class_preds is not None:
-            if args.multimodel:
-                class_preds = torch.cat(class_preds, dim=0)
-                class_labels = class_labels.repeat(args.n_models)
+            class_labels = class_labels.repeat(args.n_models, 1)
             
-            if class_preds.shape[0] != class_labels.shape[0]:
-                class_labels=class_labels[attr_mask]
+            if class_preds.shape[1] != class_labels.shape[1]:
+                class_labels=class_labels[:, attr_mask]
             class_acc = accuracy(class_preds, class_labels, topk=(1,))
             meters.label_acc.update(class_acc[0], inputs.size(0))
 
@@ -488,26 +465,33 @@ def _save_CUB_result(train_result):
 
 
 def make_configs_list() -> List[Experiment]:
+    # configs = [
+    #     cfgs.ind_inst_cfg,
+    #     cfgs.seq_inst_cfg,
+    #     cfgs.joint_inst_cfg,
+    #     cfgs.multi_inst_cfg,
+    #     cfgs.multi_inst_post_cfg,
+    #     cfgs.prepost_cfg,
+    #     cfgs.postpre_cfg,
+    #     cfgs.seq_sparse_class_cfg,
+    #     cfgs.seq_inst_sparse_class_cfg,
+    # ]
+    # # Make all output folders specific to this run
+    # for cfg in configs:
+    #     cfg.log_dir = "big_run"
+    #     cfg.tag += "_sparse"
+    #     cfg.attr_sparsity = 5
+
+    #     # If attrs are sparse, can increase batch if not training end-to-end
+    #     if cfg.exp in ["Sequential", "Independent"]:
+    #         cfg.batch_size *= cfg.attr_sparsity
+
     configs = [
         cfgs.ind_inst_cfg,
         cfgs.seq_inst_cfg,
         cfgs.joint_inst_cfg,
         cfgs.multi_inst_cfg,
-        cfgs.multi_inst_post_cfg,
-        cfgs.prepost_cfg,
-        cfgs.postpre_cfg,
-        cfgs.seq_sparse_class_cfg,
-        cfgs.seq_inst_sparse_class_cfg,
     ]
-    # Make all output folders specific to this run
-    for cfg in configs:
-        cfg.log_dir = "big_run"
-        cfg.tag += "_sparse"
-        cfg.attr_sparsity = 5
-
-        # If attrs are sparse, can increase batch if not training end-to-end
-        if cfg.exp in ["Sequential", "Independent"]:
-            cfg.batch_size *= cfg.attr_sparsity
 
     return configs
 

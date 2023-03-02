@@ -23,6 +23,16 @@ def make_weighted_criteria(args):
     return attr_criterion
 
 
+def unsqueeze(x: Optional[torch.Tensor], dim: int = 0):
+    if x is None:
+        return None
+    return x.unsqueeze(dim)
+
+def squeeze(x: Optional[torch.Tensor], dim: int = 0):
+    if x is None:
+        return None
+    return x.squeeze(dim)
+
 # Basic model for predicting attributes from images
 def ModelXtoC(args: Experiment) -> nn.Module:
     """
@@ -105,12 +115,12 @@ class Multimodel(nn.Module):
             class_pred = self.post_models[j](attr_pred_input)
             aux_class_pred = self.post_models[j](aux_attr_pred_input)
     
-            attr_preds.append(attr_pred)
-            aux_attr_preds.append(aux_attr_pred)
+            attr_preds.append(attr_pred_input)
+            aux_attr_preds.append(aux_attr_pred_input)
             class_preds.append(class_pred)
             aux_class_preds.append(aux_class_pred)
 
-        return attr_preds, aux_attr_preds, class_preds, aux_class_preds
+        return torch.stack(attr_preds), torch.stack(aux_attr_preds), torch.stack(class_preds), torch.stack(aux_class_preds)
     
     def generate_loss(
         self, 
@@ -135,11 +145,11 @@ class Multimodel(nn.Module):
             attr_loss = 0.
             for i in range(len(self.attr_criterion)):
                 attr_loss += self.attr_criterion[i](
-                    attr_preds[ndx][i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
+                    attr_preds[ndx, i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
                 )
 
                 aux_attr_loss = self.attr_criterion[i](
-                    aux_attr_preds[ndx][i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
+                    aux_attr_preds[ndx, i].squeeze()[mask], attr_labels[mask, i] # Masking attr losses
                 )
                 attr_loss += aux_attr_loss * self.args.aux_loss_ratio
             
@@ -177,9 +187,10 @@ class SequentialModel(nn.Module):
             class_preds = self.second_model(attr_preds_input)
             aux_class_preds = self.second_model(aux_attr_preds_input)
             
-            return attr_preds, aux_attr_preds, class_preds, aux_class_preds
         else:
-            return attr_preds, aux_attr_preds, None, None
+            class_preds, aux_class_preds = None, None
+        
+        return attr_preds_input.unsqueeze(0), aux_attr_preds_input.unsqueeze(0), class_preds.unsqueeze(0), aux_class_preds.unsqueeze(0)
 
     def generate_loss(
         self,
@@ -191,6 +202,11 @@ class SequentialModel(nn.Module):
         aux_attr_preds: torch.Tensor,
         mask: torch.Tensor,
     ):
+        squeeze(attr_preds) # Extra dimension has been added for dimensional consistency with multimodels
+        squeeze(aux_attr_preds)
+        squeeze(class_preds)
+        squeeze(aux_class_preds)
+
         attr_loss = 0.
         if self.train_mode == "XtoC":
             for i in range(len(self.attr_criterion)):
@@ -244,7 +260,8 @@ class JointModel(nn.Module):
         class_preds = self.second_model(attr_preds_input)
         aux_class_preds = self.second_model(aux_attr_preds_input)
 
-        return attr_preds, aux_attr_preds, class_preds, aux_class_preds
+        # Add extra dimension for consistency with multimodels
+        return unsqueeze(torch.cat(attr_preds, dim=1)), unsqueeze(torch.cat(aux_attr_preds, dim=1)), unsqueeze(class_preds), unsqueeze(aux_class_preds)
 
     def generate_loss(
         self, 
@@ -255,6 +272,11 @@ class JointModel(nn.Module):
         aux_class_preds: torch.Tensor, 
         aux_attr_preds: torch.Tensor, 
         mask: torch.Tensor):
+        
+        squeeze(attr_preds) # Extra dimension has been added for dimensional consistency with multimodels
+        squeeze(aux_attr_preds)
+        squeeze(class_preds)
+        squeeze(aux_class_preds)
 
         class_loss = self.criterion(class_preds, class_labels)
         aux_class_loss = self.criterion(aux_class_preds, class_labels)
@@ -309,41 +331,45 @@ class IndependentModel(nn.Module):
             class_preds = self.second_model(attr_preds_input)
             aux_class_preds = self.second_model(aux_attr_preds_input)
 
-            return attr_preds, aux_attr_preds, class_preds, aux_class_preds
 
-        if self.train_mode == "XtoC":
-            try:
-                attr_preds, aux_attr_preds = self.first_model(inputs[mask])
-            except:
-                import pdb; pdb.set_trace()
         else:
-            attr_preds, aux_attr_preds = None, None
+            if self.train_mode == "XtoC":
+                try:
+                    attr_preds, aux_attr_preds = self.first_model(inputs[mask])
+                except:
+                    import pdb; pdb.set_trace()
+            else:
+                attr_preds, aux_attr_preds = None, None
 
-        if self.train_mode == "CtoY":
-            class_preds = self.second_model(attr_labels[mask])
-        else:
-            class_preds = None
-        
-        aux_class_preds = None
+            if self.train_mode == "CtoY":
+                class_preds = self.second_model(attr_labels[mask])
+            else:
+                class_preds = None
+            
+            aux_class_preds = None
 
-        return attr_preds, aux_attr_preds, class_preds, aux_class_preds
-
+        return unsqueeze(torch.cat(attr_preds, dim=1)), unsqueeze(torch.cat(aux_attr_preds, dim=1)), unsqueeze(class_preds), unsqueeze(aux_class_preds)
     
     def generate_loss(
         self,
-        attr_preds: torch.Tensor,
-        attr_labels: torch.Tensor, 
-        class_preds: torch.Tensor, 
-        class_labels: torch.Tensor, 
-        aux_class_preds: torch.Tensor,
-        aux_attr_preds: torch.Tensor,
-        mask: torch.Tensor,
+        attr_preds: torch.Tensor, # n_models x batch_size x n_attributes
+        attr_labels: torch.Tensor, # batch_size x n_attributes
+        class_preds: torch.Tensor, # n_models x batch_size x n_classes
+        class_labels: torch.Tensor, # batch_size x n_classes
+        aux_class_preds: torch.Tensor, # n_models x batch_size x n_classes
+        aux_attr_preds: torch.Tensor, # n_models x batch_size x n_attributes
+        mask: torch.Tensor, # batch_size
     ):
+        squeeze(attr_preds) # Removing the n_models dimension
+        squeeze(aux_attr_preds)
+        squeeze(class_preds)
+        squeeze(aux_class_preds)
+
         attr_loss = 0.
         if self.train_mode == "XtoC":
             for i in range(len(self.attr_criterion)):
                 attr_loss += self.attr_criterion[i](
-                    attr_preds[i].squeeze(), attr_labels[mask, i]
+                    attr_preds[mask, i], attr_labels[mask, i]
                 )
         
             attr_loss /= len(self.attr_criterion)
@@ -418,7 +444,7 @@ class ThinMultimodel(nn.Module):
             class_preds.append(class_pred)
             aux_class_preds.append(aux_class_pred)
         
-        return attr_preds, aux_attr_preds, class_preds, aux_class_preds
+        return torch.stack(attr_preds), torch.stack(aux_attr_preds), torch.stack(class_preds), torch.stack(aux_class_preds)
     
     def generate_loss(
         self, 
@@ -443,11 +469,11 @@ class ThinMultimodel(nn.Module):
             attr_loss = 0.
             for i in range(len(self.attr_criterion)):
                 attr_loss += self.attr_criterion[i](
-                    attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                    attr_preds[ndx, i].squeeze(), attr_labels[mask, i] # Masking attr losses
                 )
 
                 aux_attr_loss = self.attr_criterion[i](
-                    aux_attr_preds[ndx][i].squeeze(), attr_labels[mask, i] # Masking attr losses
+                    aux_attr_preds[ndx, i].squeeze(), attr_labels[mask, i] # Masking attr losses
                 )
                 attr_loss += aux_attr_loss * self.args.aux_loss_ratio
             
