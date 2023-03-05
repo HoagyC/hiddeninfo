@@ -28,7 +28,7 @@ from CUB.models import (
     SequentialModel,
     ThinMultimodel
 )
-from CUB.cub_classes import TTI_Config, Meters, Experiment, RunRecord
+from CUB.cub_classes import TTI_Config, Meters, Experiment, RunRecord, N_CLASSES
 import CUB.configs as cfgs
 
 from CUB.cub_utils import upload_to_aws, get_secrets
@@ -82,9 +82,9 @@ def run_epoch(
 
         if attr_preds is not None:
             # Note that the first dimension in all outputs is the number of models, then batch size, then the rest of the dimensions
-            attr_labels = attr_labels.repeat(args.n_models, 1)
-            if class_preds.shape[1] != class_labels.shape[1]:
-                class_labels=class_labels[:, attr_mask]
+            attr_labels = attr_labels.repeat(args.n_models, 1, 1)
+            if attr_preds.shape[1] != attr_labels.shape[1]:
+                attr_labels=attr_labels[attr_mask]
 
             attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds)
             attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels)
@@ -94,14 +94,16 @@ def run_epoch(
             class_labels = class_labels.repeat(args.n_models, 1)
             
             if class_preds.shape[1] != class_labels.shape[1]:
-                class_labels=class_labels[:, attr_mask]
-            class_acc = accuracy(class_preds, class_labels, topk=(1,))
+                class_labels=class_labels[attr_mask]
+            # Collecting the n_model and batch size dimensions into one for the accuracy function
+            class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
             meters.label_acc.update(class_acc[0], inputs.size(0))
 
 
 def train(
     model: torch.nn.Module,
     args: Experiment,
+    n_epochs: int,
     init_epoch: int = 0,
 ):
     print(f"Running {args.tag}")
@@ -144,7 +146,7 @@ def train(
         test_data_path = train_data_path.replace("train.pkl", "test.pkl")
         test_loader = load_data([test_data_path], args)
 
-    for epoch_ndx in range(init_epoch, args.epochs + init_epoch):
+    for epoch_ndx in range(init_epoch, init_epoch + n_epochs):
         train_meters = Meters()
         val_meters = Meters()
 
@@ -351,7 +353,7 @@ def train_multi(args: Experiment) -> None:
         model = ThinMultimodel(args)
     else:
         model = Multimodel(args)
-    elapsed_epochs = train(model, args)
+    elapsed_epochs = train(model, args, n_epochs=args.epochs[0])
     if args.reset_post_models:
         model.reset_post_models()
     if args.reset_pre_models:
@@ -368,14 +370,14 @@ def train_multi(args: Experiment) -> None:
             param.requires_grad = False
 
     # Train again with shuffling and freezing
-    train(model, args, init_epoch=elapsed_epochs)
+    train(model, args, init_epoch=elapsed_epochs, n_epochs=args.epochs[1])
 
 def train_switch(args):
     if args.exp == "Independent":
         train_independent(args)
     elif args.exp == "Joint":
         model = JointModel(args)
-        train(model, args)
+        train(model, args, n_epochs=args.epochs[0])
     elif args.exp == "Multimodel":
         train_multi(args)
     elif args.exp == "Sequential":
@@ -386,22 +388,18 @@ def train_switch(args):
         raise ValueError(f"Experiment type {args.exp} not recognized")
 
 def train_independent(args):
-    args.epochs=100 # Beyond 100 epochs, the model starts to overfit
     args.lr=0.001
     model = IndependentModel(args, train_mode="XtoC")
-    train(model, args)
-    args.epochs=700
+    train(model, args, n_epochs=args.epochs[0])
     model.train_mode = "CtoY"
-    train(model, args)
+    train(model, args, n_epochs=args.epochs[1])
 
 def train_sequential(args):
-    args.epochs=100 # Beyond 100 epochs, the model starts to overfit
     args.lr=0.001
     model = SequentialModel(args, train_mode="XtoC")
-    train(model, args)
-    args.epochs=700
+    train(model, args, n_epochs=args.epochs[0])
     model.train_mode = "CtoY"
-    train(model, args)
+    train(model, args, n_epochs=args.epochs[1])
 
 def train_alternating(args):
     if args.thin:
@@ -410,20 +408,19 @@ def train_alternating(args):
         model = Multimodel(args)
     
     elapsed_epochs = 0
-    assert len(args.alternating_epochs) == args.n_alternating, "Number of alternating epochs must match number of alternating models"
+    assert len(args.epochs) == args.n_alternating * 2, "Number of alternating epochs must match number of alternating models"
     for ndx in range(args.n_alternating):
-        args.epochs = args.alternating_epochs[ndx]
         if args.freeze_first == "pre":
-            model, elapsed_epochs = run_frozen_pre(args, model, elapsed_epochs=elapsed_epochs)
-            model, elapsed_epochs = run_frozen_post(args, model, elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_frozen_pre(args, model, args.epochs[ndx * 2], elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_frozen_post(args, model, args.epochs[(ndx * 2) + 1], elapsed_epochs=elapsed_epochs)
         elif args.freeze_first == "post":
-            model, elapsed_epochs = run_frozen_post(args, model, elapsed_epochs=elapsed_epochs)
-            model, elapsed_epochs = run_frozen_pre(args, model, elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_frozen_post(args, model, args.epochs[ndx * 2], elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_frozen_pre(args, model, args.epochs[(ndx * 2) + 1], elapsed_epochs=elapsed_epochs)
         else:
             raise ValueError(f"Freeze first {args.freeze_first} not recognized")
 
 
-def run_frozen_pre(args, model, elapsed_epochs=0):
+def run_frozen_pre(args, model, epochs, elapsed_epochs=0):
     for param in model.pre_models.parameters():
         param.requires_grad = True
     for param in model.post_models.parameters():
@@ -433,11 +430,11 @@ def run_frozen_pre(args, model, elapsed_epochs=0):
         model.reset_pre_models()
 
     # Train again with shuffling and freezing
-    train(model, args, init_epoch=elapsed_epochs)
+    elapsed_epochs = train(model, args, init_epoch=elapsed_epochs, n_epochs=epochs)
 
     return model, elapsed_epochs
 
-def run_frozen_post(args, model, elapsed_epochs=0):
+def run_frozen_post(args, model, epochs, elapsed_epochs=0):
     for param in model.pre_models.parameters():
         param.requires_grad = False
     for param in model.post_models.parameters():
@@ -447,7 +444,7 @@ def run_frozen_post(args, model, elapsed_epochs=0):
         model.reset_post_models()
 
     # Train again with shuffling and freezing
-    elapsed_epochs = train(model, args, init_epoch=elapsed_epochs)
+    elapsed_epochs = train(model, args, init_epoch=elapsed_epochs, n_epochs=epochs)
 
     return model, elapsed_epochs
 
@@ -493,6 +490,8 @@ def make_configs_list() -> List[Experiment]:
         cfgs.multi_inst_cfg,
     ]
 
+    for cfg in configs:
+        cfg.epochs = [1, 1]
     return configs
 
 

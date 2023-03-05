@@ -100,24 +100,17 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         attr_mask = torch.ones_like(attr_mask).cuda() if torch.cuda.is_available() else torch.ones_like(attr_mask)
 
         attr_preds, _, class_preds, _ = model.generate_predictions(inputs, attr_labels, attr_mask, straight_through=True)
-
-        if args.multimodel:
-            # Tensor from list of tensors, shape (n_models, batch_size, N_CLASSES)
-            class_preds = torch.stack(class_preds, dim=0)
-            # Repeat class labels for each model as the 0th dim
-            class_labels = class_labels.repeat(model.args.n_models, 1) # shape batch_size to n_models * batch_size
-
         
+        class_labels = class_labels.repeat(model.args.n_models, 1) # shape batch_size to n_models * batch_size
+        attr_labels = attr_labels.repeat(model.args.n_models, 1, 1) # shape batch_size * n_attrs to n_models * batch_size * n_attrs
+
         class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=K)
 
         for m in range(len(meters.class_accs)):
             meters.class_accs[m].update(class_acc[m], inputs.size(0))
     
-        attr_preds_t = torch.stack([torch.cat(a, dim=1) for a in attr_preds], dim=0)
-        assert attr_preds_t.shape == (model.args.n_models, inputs.shape[0], args.n_attributes)
-        attr_labels = attr_labels.repeat(model.args.n_models, 1, 1) # shape (batch_size, N_ATTRIBUTES) to (n_models,batch_size, N_ATTRIBUTES)
-    
-        attr_preds_sigmoid = torch.nn.Sigmoid()(attr_preds_t)
+        assert attr_preds.shape == (model.args.n_models, inputs.shape[0], args.n_attributes)    
+        attr_preds_sigmoid = torch.nn.Sigmoid()(attr_preds)
 
         try:
             for i in range(args.n_attributes):
@@ -137,7 +130,7 @@ def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Outp
         n_examples = inputs.size(0)
 
         try:
-            all_attr_preds[:, n_seen:n_seen + n_examples] = attr_preds_t.data.cpu().numpy()
+            all_attr_preds[:, n_seen:n_seen + n_examples] = attr_preds.data.cpu().numpy()
             all_attr_preds_sigmoid[:, n_seen:n_seen + n_examples] = attr_preds_sigmoid.data.cpu().numpy()
             all_attr_labels[:, n_seen:n_seen + n_examples] = attr_labels.data.cpu().numpy()
 

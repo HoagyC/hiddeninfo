@@ -8,7 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from vast_servers import get_servers_info, reboot_server
 
-VAST_AI_SERVERS = [(17204, 4), (19866, 6)]
+VAST_AI_SERVERS = [(16612, 5), (14696, 4)]
 
 ATTN_COEFS = [0.1, 1, 10]
 ATTR_SPARSITIES = [1, 3, 10]

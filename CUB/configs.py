@@ -6,19 +6,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from CUB.cub_classes import Experiment, TTI_Config
 
-N_ATTRIBUTES = 312
-N_CLASSES = 200
-
-MIN_LR = 1e-04
-BASE_DIR = "/root/hoagy-hiddeninfo-sync"
-LR_DECAY_SIZE = 0.1
-AUX_LOSS_RATIO = 0.4
-
-
 ind_cfg = Experiment(
     tag="ind_XtoC",
     exp="Independent",
-    epochs=1000,
+    epochs=[1000, 1000],
     lr=0.01,
     weighted_loss="multiple"
 )
@@ -34,7 +25,7 @@ base_ind_tti_cfg = TTI_Config(
 seq_cfg = Experiment(
     tag="seq_CtoY",
     exp="Sequential",
-    epochs=1000,
+    epochs=[1000, 1000],
     lr=0.001,
     weighted_loss="multiple",
 )
@@ -42,7 +33,7 @@ seq_cfg = Experiment(
 joint_cfg = Experiment(
     tag="joint",
     exp="Joint",
-    epochs=1000,
+    epochs=[1000],
     weighted_loss="multiple",
     attr_loss_weight=0.01,
     lr=0.001,
@@ -52,7 +43,7 @@ multiple_cfg1 = Experiment(
     multimodel=True,
     tag='multimodel0.01',
     exp="Multimodel",
-    epochs=150,
+    epochs=[150, 150],
     weighted_loss="multiple",
     lr=0.001,
     batch_size=24,

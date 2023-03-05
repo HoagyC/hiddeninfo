@@ -71,7 +71,7 @@ class Experiment:
     aux_loss_ratio: float = 0.4
 
     # Training
-    epochs: int = 1000
+    epochs: List[int] = dataclasses.field(default_factory=list)
     optimizer: str = "SGD"
     scheduler_step: int = 1000
     attr_loss_weight: float = 1.0
@@ -93,7 +93,7 @@ class Experiment:
     freeze_pre_models: bool = False
     reset_pre_models: bool = False
     reset_post_models: bool = False
-    n_models: int = 4
+    n_models: int = 1
     thin: bool = False # Whether to only change the last/first layers of th e
 
 

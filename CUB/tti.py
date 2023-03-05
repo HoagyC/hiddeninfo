@@ -184,7 +184,6 @@ def run_tti(args) -> List[Tuple[int, float]]:
             n_trials = args.n_trials * model.args.n_models
         else:
             n_trials = args.n_trials
-
         for ndx in range(n_trials):
             # Array of attr predictions, will be modified towards ground truth
             updated_attrs = np.array(eval_output.attr_pred_outputs[:])
@@ -223,34 +222,38 @@ def run_tti(args) -> List[Tuple[int, float]]:
                 if model.args.exp == "Independent":
                     model_use = torch.nn.Sequential(torch.nn.Sigmoid(), model_use)
                 model_use.eval()
-                class_outputs = model_use(stage2_inputs[0])
+                class_outputs = model_use(stage2_inputs[0]).unsqueeze(0)
 
             try:
                 _, predictions = class_outputs.topk(k=1, dim=2) # topk returns a tuple of (values, indices)
-                _, mix_predictions = class_outputs_mix.topk(k=1, dim=1)
                 predictions = predictions.data.cpu().numpy().squeeze()
-                mix_predictions = mix_predictions.data.cpu().numpy().squeeze()
-                if ndx == 0:
-                    print("top1 similarities: 0,1 0,mix, 1,mix", prop_equal(predictions[0], predictions[1]), prop_equal(predictions[0], mix_predictions), prop_equal(predictions[1], mix_predictions))
-                
                 correct_t = np.array(predictions) == np.array(eval_output.class_labels)
                 class_acc = np.mean(correct_t)
-                correct_mix = np.array(mix_predictions) == np.array(eval_output.class_labels)
-                mix_class_acc = np.mean(correct_mix)
-                if ndx == 0:
-                    print("cross accs", np.logical_and(correct_mix, correct_t[0]).mean(), np.logical_or(correct_mix, correct_t[1]).mean())
-
                 all_class_acc.append(class_acc * 100) # convert to percent
-                all_mix_class_acc.append(mix_class_acc * 100)
+
+                if args.multimodel:
+                    _, mix_predictions = class_outputs_mix.topk(k=1, dim=1)
+                    mix_predictions = mix_predictions.data.cpu().numpy().squeeze()
+                    if ndx == 0:
+                        print("top1 similarities: 0,1 0,mix, 1,mix", prop_equal(predictions[0], predictions[1]), prop_equal(predictions[0], mix_predictions), prop_equal(predictions[1], mix_predictions))
+                    correct_mix = np.array(mix_predictions) == np.array(eval_output.class_labels)
+                    mix_class_acc = np.mean(correct_mix)
+
+                    if ndx == 0:
+                        print("cross accs", np.logical_and(correct_mix, correct_t[0]).mean(), np.logical_or(correct_mix, correct_t[1]).mean())
+
+                    all_mix_class_acc.append(mix_class_acc * 100)
 
             except:
                 breakpoint()
 
         # changed from max to sum - not sure why max would be appropriate
         acc = sum(all_class_acc) / len(all_class_acc)
-        mix_acc = sum(all_mix_class_acc) / len(all_mix_class_acc)
-
-        print(n_replace, acc, mix_acc)
+        if args.multimodel:
+            mix_acc = sum(all_mix_class_acc) / len(all_mix_class_acc)
+            print(n_replace, acc, mix_acc)
+        else:
+            print(n_replace, acc)
         results.append((n_replace, acc))
     return results
 
