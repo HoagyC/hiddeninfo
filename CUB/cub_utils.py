@@ -111,6 +111,19 @@ def download_from_aws(files: List[str], force_redownload: bool = False) -> None:
             print(f"File: {filename} does not exist")
 
 
+def download_folder_from_aws(folder_name: str, force_redownload: bool = False) -> None:
+    secrets = get_secrets()
+    s3_resource = boto3.resource('s3', aws_access_key_id=secrets["access_key"], aws_secret_access_key=secrets["secret_key"])
+    bucket = s3_resource.Bucket(BUCKET_NAME) 
+    for obj in bucket.objects.filter(Prefix = folder_name):
+        try:
+            if not os.path.exists(os.path.dirname(obj.key)):
+                os.makedirs(os.path.dirname(obj.key))
+            bucket.download_file(obj.key, obj.key)
+            print(f"Successfully downloaded file: {obj.key}")
+        except ClientError:
+            print(f"File: {obj.key} does not exist")
+
 
 
 def _upload_directory(path, s3_client):

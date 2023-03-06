@@ -59,8 +59,9 @@ def setup_multiple(n_start: int = 0):
     
     [p.wait() for p in processes]
     print("All servers setup")
-    [f.close() for f in files]
-
+    for f in files:
+        f.close()
+        
 def kill_existing(n_start: int = 0) -> None:
     start_ndx = 0 # The index of the first experiment to run in the configs list at the end of train_CUB.py
     server_info = get_servers_info()
@@ -116,7 +117,8 @@ def run_multiple(n_start: int = 0) -> None:
                 # destroy_server(id[0])
                 # print(f"Server {'_'.join([str(x) for x in id])} has been destroyed")
 
-    [f.close() for f in files]
+    for f in files:
+        f.close()
 
 
 
