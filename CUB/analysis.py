@@ -14,7 +14,7 @@ from sklearn.metrics import (
     classification_report,
 )
 
-from cub_classes import AverageMeter
+from CUB.cub_classes import AverageMeter
 
 
 # ---------------------- OAI ----------------------

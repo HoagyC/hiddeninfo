@@ -321,12 +321,12 @@ class IndependentModel(nn.Module):
             attr_preds, aux_attr_preds = self.first_model(inputs)
 
             # Attr preds are list of tensors, need to concat them with batch as d0
-            attr_preds_input = torch.cat(attr_preds, dim=1)
-            aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1)
+            attr_preds = torch.cat(attr_preds, dim=1)
+            aux_attr_preds = torch.cat(aux_attr_preds, dim=1)
 
             # Apply a sigmoid to the input tensors
-            attr_preds_input = torch.sigmoid(attr_preds_input)
-            aux_attr_preds_input = torch.sigmoid(aux_attr_preds_input)
+            attr_preds_input = torch.sigmoid(attr_preds)
+            aux_attr_preds_input = torch.sigmoid(aux_attr_preds)
 
             class_preds = self.second_model(attr_preds_input)
             aux_class_preds = self.second_model(aux_attr_preds_input)

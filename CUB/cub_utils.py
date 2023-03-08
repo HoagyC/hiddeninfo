@@ -14,8 +14,8 @@ from botocore.exceptions import NoCredentialsError, ClientError
 BUCKET_NAME = "distilledrepr"
 
 def get_secrets() -> Dict:
-    assert "secrets.json" in os.listdir()
-    with open("secrets.json", "r") as f:
+    assert "secrets.json" in os.listdir(sys.path[-1])
+    with open(os.path.join(sys.path[-1], "secrets.json"), "r") as f:
         secrets = json.load(f)
 
     return secrets

@@ -17,7 +17,7 @@ from matplotlib.figure import Figure
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from CUB.cub_classes import TTI_Config, TTI_Output, N_CLASSES, N_ATTRIBUTES_RAW
-from CUB.inference import eval
+from CUB.inference import run_eval
 
 def get_stage2_pred(a_hat, model):
     """Takes intermediate representation and predict class outputs, to see how they change when intervening."""
@@ -124,7 +124,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
     attr_group_dict = build_dict_from_mask(attr_mask=attr_mask)
 
     # Run one epoch, get lots of detail about performance
-    eval_output = eval(args) # outputs tuple of arrays with first dim of each being n_models
+    eval_output = run_eval(args) # outputs tuple of arrays with first dim of each being n_models
     class_outputs = eval_output.topk_classes[:, :, 0]
     attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoids).astype(int)  # RoundINT
     

@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from CUB.dataset import load_data
 from CUB.cub_classes import TTI_Config, Meters, N_CLASSES
-from analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
+from CUB.analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
 
 K = [1, 3, 5]  # top k class accuracies to compute
 
@@ -39,7 +39,7 @@ class Eval_Output:
     wrong_idx: np.ndarray
 
 
-def eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Output]:
+def run_eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Output]:
     """
     Run inference using model (and model2 if bottleneck)
     Returns: (for notebook analysis)
