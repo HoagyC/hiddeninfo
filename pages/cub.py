@@ -7,6 +7,8 @@ import pandas as pd
 import streamlit as st
 import torch
 import torch.nn as nn
+from matplotlib import pyplot as plt
+import numpy as np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -189,10 +191,53 @@ def main():
     # Make a filter for attributes that are not common enough, as list of IDs to keep
     attr_mask = build_mask(train_data, min_count=10)
     attr_group_dict = build_dict_from_mask(attr_mask=attr_mask)
+
+    attr_cats = get_attr_categories()
+    display_example(torch.stack((ind_attrs, seq_attrs), dim=0)[:, 0, :].cpu(), attr_cats, attr_group_dict)
+
     ind_group_bool = attr_vec_to_onehot_groups(ind_attrs, attr_group_dict)
     seq_group_bool = attr_vec_to_onehot_groups(seq_attrs, attr_group_dict)
     st.write(torch.sum(ind_group_bool, dim=0), torch.sum(seq_group_bool, dim=0))
     st.write(len(attr_group_dict))
+
+def display_example(attr_logits, attr_categories, attr_group_dict):
+    """
+    Takes in one or vectors of attributes and displays them with a vertical bar to show the logit assigned to each attribute
+    """
+    assert len(attr_logits.shape) == 2, "Attr logits should be a 2D tensor"
+    # Make a list of the attribute name
+
+    # Make a list of the attribute logit
+
+    # Plot a bar chart of the attribute logits (without labels as that will be added with the vertical lines)
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_axes([0, 0, 1, 1])
+    x_coords = np.arange(len(attr_logits[0, :]))
+    colours = ["blue", "red"]
+    for i in range(len(attr_logits)):
+        ax.bar(x_coords + i / attr_logits.shape[0], attr_logits[i, :].cpu().numpy(), color=colours[i], width = 1. / attr_logits.shape[0])
+
+
+
+    # Add a vertical bar between the groups, as found by the end of one of the attr_group_dict vals and the beginning of the next
+
+    for cat_id, cat_group in attr_group_dict.items():
+        if cat_id == len(attr_group_dict) - 1:
+            break
+        ax.axvline(x=cat_group[-1] + 0.75, color="black", linestyle="--", linewidth=1)
+    st.pyplot(fig)
+
+
+def get_attr_categories():
+    attr_name_path = "CUB_200_2011/attributes/attributes.txt"
+    with open(attr_name_path, "r") as f:
+        attr_names = f.readlines()
+    
+    attr_categories = [x.split("::")[0].split(" ")[1] for x in attr_names]
+
+    # Get deduplicated list of categories while preserving order
+    attr_categories = list(dict.fromkeys(attr_categories))
+    return attr_categories
 
 def attr_vec_to_onehot_groups(attr_vec, attr_group_dict):
     """
@@ -203,14 +248,13 @@ def attr_vec_to_onehot_groups(attr_vec, attr_group_dict):
     """
 
     new_attr_vec = torch.zeros_like(attr_vec)
-    for group_id in attr_group_dict:
+    for group_id, group_val in attr_group_dict.items():
         group_start = attr_group_dict[group_id][0]
         max_in_attr_group = torch.argmax(attr_vec[:, attr_group_dict[group_id]], dim=1)
-        print(group_start, max_in_attr_group)
-        new_attr_vec[:, group_start + max_in_attr_group] = 1
-    
-    return new_attr_vec.to(torch.bool)
+        for example_id, attr_id in enumerate(max_in_attr_group):
+            new_attr_vec[example_id, group_start + attr_id] = 1
 
+    return new_attr_vec.to(torch.bool)
 
 
 if __name__ == "__main__":

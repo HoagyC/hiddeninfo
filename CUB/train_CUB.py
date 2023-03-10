@@ -2,6 +2,7 @@
 Train InceptionV3 Network using the CUB-200-2011 dataset
 """
 import argparse
+import copy
 import dataclasses
 from datetime import datetime
 import os
@@ -191,7 +192,7 @@ def train(
             run_save_path,
             test_meters=test_meters,
         )
-        if not (args.exp in ["Independent", "Sequential"] and model.train_mode == "XtoC") and \
+        if not (args.exp in ["Independent", "Sequential", "JustXtoC"] and model.train_mode == "XtoC") and \
             args.tti_int > 0 and epoch_ndx % args.tti_int == 0 and args.n_attributes == N_ATTRIBUTES:
             model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
             torch.save(model, model_save_path)
@@ -284,7 +285,7 @@ def write_metrics(
     test_meters: Optional[Meters] = None,
 ) -> None:
     # If training independent models, use concept accuracy as key metric since we don't have labels
-    if args.exp in ["Independent", "Sequential"] and model.train_mode=="XtoC":
+    if args.exp in ["Independent", "Sequential", "JustXtoC"] and model.train_mode=="XtoC":
         is_record = val_meters.concept_acc.avg > val_records.acc
         if is_record:
             val_records.acc = val_meters.concept_acc.avg
@@ -387,18 +388,23 @@ def train_switch(args):
         train_sequential(args)
     elif args.exp == "Alternating":
         train_alternating(args)
+    elif args.exp == "JustXtoC":
+        train_just_XtoC(args)
     else:
         raise ValueError(f"Experiment type {args.exp} not recognized")
 
 def train_independent(args):
-    args.lr=0.001
     model = IndependentModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
     model.train_mode = "CtoY"
     train(model, args, n_epochs=args.epochs[1])
 
+def train_just_XtoC(args):
+    model = SequentialModel(args, train_mode="XtoC")
+    train(model, args, n_epochs=args.epochs[0])
+
+
 def train_sequential(args):
-    args.lr=0.001
     model = SequentialModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
     model.train_mode = "CtoY"
@@ -486,17 +492,19 @@ def make_configs_list() -> List[Experiment]:
     #     if cfg.exp in ["Sequential", "Independent"]:
     #         cfg.batch_size *= cfg.attr_sparsity
 
-    configs = [
-        cfgs.ind_inst_cfg,
-        cfgs.seq_inst_cfg,
-        cfgs.joint_inst_cfg,
-        cfgs.multi_inst_cfg,
+    joint_configs = [
+        copy.deepcopy(cfgs.joint_inst_cfg) for _ in range(5)
     ]
+    for i, cfg in enumerate(joint_configs):
+        cfg.log_dir = "big_run"
+        cfg.tag += f"_{i}"
+    
+    seq_configs = [copy.deepcopy(cfgs.just_xtoc_cfg) for _ in range(5)]
+    for i, cfg in enumerate(seq_configs):
+        cfg.log_dir = "big_run"
+        cfg.tag += f"_{i}"
 
-    for cfg in configs:
-        cfg.epochs = [1, 1]
-        cfg.n_attributes = 59
-    return configs
+    return joint_configs + seq_configs
 
 
 if __name__ == "__main__":

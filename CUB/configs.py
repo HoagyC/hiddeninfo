@@ -199,6 +199,18 @@ seq_inst_sparse_class_cfg = dataclasses.replace(
     class_sparsity=2,
 )
 
+joint_missing_attrs_cfg = dataclasses.replace(
+    joint_inst_cfg,
+    tag="joint_missing_attrs",
+    n_attributes=94, # Leaving 4 attr groups out
+)
+
+just_xtoc_cfg = dataclasses.replace(
+    seq_inst_cfg,
+    tag="just_xtoc",
+    exp="JustXtoC"
+)
+
 # Making a new list of configs to test lots of different things
 raw_configs = [
     joint_inst_cfg, 
