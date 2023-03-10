@@ -88,7 +88,15 @@ def upload_to_aws(local_file_name, s3_file_name: str = "") -> bool:
         return False
 
 
-def download_from_aws(files: List[str], force_redownload: bool = False) -> None:
+def download_from_aws(files: List[str], force_redownload: bool = False) -> bool:
+    """
+    Download a file from an S3 bucket
+    :param files: List of files to download
+    :param force_redownload: If True, will download even if the file already exists
+    
+    Returns:
+        True if all files were downloaded successfully, False otherwise
+    """
     secrets = get_secrets()
     if not force_redownload:
         files = [f for f in files if not os.path.exists(f)]
@@ -98,6 +106,7 @@ def download_from_aws(files: List[str], force_redownload: bool = False) -> None:
         aws_access_key_id=secrets["access_key"],
         aws_secret_access_key=secrets["secret_key"],
     )
+    all_correct = True
     for filename in files:
         try:
             parent_dir = os.path.dirname(filename)
@@ -109,6 +118,11 @@ def download_from_aws(files: List[str], force_redownload: bool = False) -> None:
             print(f"Successfully downloaded file: {filename}")
         except ClientError:
             print(f"File: {filename} does not exist")
+            all_correct = False
+
+    return all_correct
+    
+
 
 
 def download_folder_from_aws(folder_name: str, force_redownload: bool = False) -> None:

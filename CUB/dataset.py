@@ -14,7 +14,7 @@ import torch
 import torchvision.transforms as transforms
 
 from torch.utils.data import Dataset, DataLoader, BatchSampler
-from CUB.cub_classes import BASE_DIR, N_CLASSES
+from CUB.cub_classes import BASE_DIR, N_CLASSES, N_ATTRIBUTES
 
 
 class CUBDataset(Dataset):
@@ -28,8 +28,9 @@ class CUBDataset(Dataset):
         uncertain_label,
         image_dir,
         transform=None,
-        attr_sparsity: int = 1,
+        example_attr_sparsity: int = 1,
         attr_class_sparsity: int = 1,
+        attr_cutoff: int = 109,
     ):
         """
         Arguments:
@@ -49,13 +50,15 @@ class CUBDataset(Dataset):
         self.transform = transform
         self.uncertain_label = uncertain_label
         self.image_dir = image_dir
-        self.attr_sparsity = attr_sparsity
+        self.example_attr_sparsity = example_attr_sparsity
+
 
         # Randomly decide which classes to mask, note that mask=1 means visible
         class_mask = torch.ones(N_CLASSES).to(torch.bool)
         n_class_visible = N_CLASSES // attr_class_sparsity
         class_mask[-n_class_visible:] = 1
         self.class_mask = class_mask[torch.randperm(N_CLASSES)]
+
 
     def __len__(self):
         return len(self.data)
@@ -64,10 +67,12 @@ class CUBDataset(Dataset):
 
         img_data = self.data[idx]
         img_path = img_data["img_path"]
-        attr_mask_bin = idx % self.attr_sparsity == 0
+        attr_mask_bin = idx % self.example_attr_sparsity == 0
         class_mask_bin = self.class_mask[img_data["class_label"]]
 
         mask = attr_mask_bin and class_mask_bin
+        # Outer product of mask with self.attr_mask to make a 2D mask
+
         # Trim unnecessary paths
         try:
             idx = img_path.split("/").index("CUB_200_2011")

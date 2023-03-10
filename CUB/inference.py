@@ -39,7 +39,7 @@ class Eval_Output:
     wrong_idx: np.ndarray
 
 
-def run_eval(args: TTI_Config) -> Tuple[Union[Eval_Meter, Eval_Meter_Acc], Eval_Output]:
+def run_eval(args: TTI_Config) -> Eval_Output:
     """
     Run inference using model (and model2 if bottleneck)
     Returns: (for notebook analysis)

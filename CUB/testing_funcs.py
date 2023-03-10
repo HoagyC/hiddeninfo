@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from CUB.models import Multimodel
 from CUB.cub_classes import TTI_Config
-from CUB.inference import eval
+from CUB.inference import run_eval
 from CUB.configs import multi_inst_cfg
 from CUB.dataset import load_data
 
@@ -30,7 +30,7 @@ def get_attrs():
     )
 
     print("Seq inst")
-    seq_eval = eval(seq_tti_config)
+    seq_eval =run_eval(seq_tti_config)
     print("Joint inst")
 
 

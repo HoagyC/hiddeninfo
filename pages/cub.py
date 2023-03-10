@@ -52,40 +52,41 @@ def main():
         ind_attrs = big_run_attrs["ind_inst"]
 
     else:
-        big_run_attrs = {}
-        with torch.no_grad():
-            for model_path in model_paths:
-                attr_container = []
-                full_path = os.path.join(BASE_PATH, model_path)
-                st.write((f"Loading model from {full_path}"))
-                model = torch.load(os.path.join(BASE_PATH, model_path))
-                model.eval()
-                for batch in train_loader:
-                    inputs, class_labels, attr_labels, attr_mask = batch
+        is_downloaded = download_from_aws(["big_run_attrs.pkl"])
+        if not is_downloaded:
+            with torch.no_grad():
+                for model_path in model_paths:
+                    attr_container = []
+                    full_path = os.path.join(BASE_PATH, model_path)
+                    st.write((f"Loading model from {full_path}"))
+                    model = torch.load(os.path.join(BASE_PATH, model_path))
+                    model.eval()
+                    for batch in train_loader:
+                        inputs, class_labels, attr_labels, attr_mask = batch
 
-                    attr_labels = [i.float() for i in attr_labels]
-                    attr_labels = torch.stack(attr_labels, dim=1)
+                        attr_labels = [i.float() for i in attr_labels]
+                        attr_labels = torch.stack(attr_labels, dim=1)
 
-                    attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
-                    inputs = inputs.cuda() if torch.cuda.is_available() else inputs
-                    class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
-                    attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
+                        attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
+                        inputs = inputs.cuda() if torch.cuda.is_available() else inputs
+                        class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
+                        attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
 
-                    output = model.generate_predictions(inputs, attr_labels, attr_mask, straight_through=True) # Need straight through for ind model
-                    attr_container.append(output[0])
+                        output = model.generate_predictions(inputs, attr_labels, attr_mask, straight_through=True) # Need straight through for ind model
+                        attr_container.append(output[0])
 
-                del(model) # Clear memory
-                model_name = model_path.split('/')[-3] # Should be eg "ind_inst"
-                big_run_attrs[model_name] = torch.cat(attr_container, dim=1)
-                print(f"Done with model {model_path.split('/')[-3]}")
+                    del(model) # Clear memory
+                    model_name = model_path.split('/')[-3] # Should be eg "ind_inst"
+                    big_run_attrs[model_name] = torch.cat(attr_container, dim=1)
+                    print(f"Done with model {model_path.split('/')[-3]}")
 
-        pickle.dump(big_run_attrs, open("big_run_attrs.pkl", "wb"))
-        big_run_attrs = pickle.load(open("big_run_attrs.pkl", "rb"))
-        seq_attrs = big_run_attrs["seq_inst"]
-        seq_sparse_attrs = big_run_attrs["seq_inst_sparse"]
-        joint_attrs = big_run_attrs["multi_inst_joint"]
-        multi_attrs = big_run_attrs["multimodel_inst"]
-        ind_attrs = big_run_attrs["ind_inst"]
+            pickle.dump(big_run_attrs, open("big_run_attrs.pkl", "wb"))
+            big_run_attrs = pickle.load(open("big_run_attrs.pkl", "rb"))
+            seq_attrs = big_run_attrs["seq_inst"]
+            seq_sparse_attrs = big_run_attrs["seq_inst_sparse"]
+            joint_attrs = big_run_attrs["multi_inst_joint"]
+            multi_attrs = big_run_attrs["multimodel_inst"]
+            ind_attrs = big_run_attrs["ind_inst"]
 
     # Looking at the difference between the two joint models
     seq_attrs = seq_attrs[0]

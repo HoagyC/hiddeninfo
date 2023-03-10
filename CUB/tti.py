@@ -125,11 +125,12 @@ def run_tti(args) -> List[Tuple[int, float]]:
 
     # Run one epoch, get lots of detail about performance
     eval_output = run_eval(args) # outputs tuple of arrays with first dim of each being n_models
-    class_outputs = eval_output.topk_classes[:, :, 0]
+    class_outputs_arr = eval_output.topk_classes[:, :, 0]
     attr_binary_outputs = np.rint(eval_output.attr_pred_sigmoids).astype(int)  # RoundINT
     
     # Get 5, 95 percentiles for how much each attribute was predicted to be true [0,1]
-    ptl_5, ptl_95 = dict(), dict()
+    ptl_5: Dict[int, float] = dict()
+    ptl_95: Dict[int, float] = dict()
     
     if args.flat_intervene:
         ptl_5 = ddict(lambda: args.intervene_vals[0])
@@ -174,8 +175,6 @@ def run_tti(args) -> List[Tuple[int, float]]:
     print("Corrected attr outputs:")
     print([np.percentile(correct_attr_outputs, x) for x in range(0, 101, 10)])
 
-
-
     results = []
     for n_replace in range(args.n_groups + 1):
         all_class_acc = []
@@ -203,17 +202,17 @@ def run_tti(args) -> List[Tuple[int, float]]:
             stage2_inputs = torch.from_numpy(updated_attrs).cuda()
 
             if args.multimodel: # if multimodel, we need to reshape the inputs to be (n_models, n_imgs, n_attrs)
-                class_outputs = []
+                class_outputs_l = []
                 class_outputs_mix = torch.zeros(stage2_inputs.shape[1], N_CLASSES).cuda()
                 top1s = []
                 for i, post_model in enumerate(model.post_models):
                     post_model.eval()
                     model_class_outputs = post_model(stage2_inputs[i])
-                    class_outputs.append(model_class_outputs)
+                    class_outputs_l.append(model_class_outputs)
                     class_outputs_mix += post_model(stage2_inputs[i])
                     top1s.append(model_class_outputs.topk(k=1, dim=1)[1].data.cpu().numpy().squeeze())
                 
-                class_outputs = torch.stack(class_outputs, dim=0)
+                class_outputs = torch.stack(class_outputs_l, dim=0)
                 
                 class_outputs_mix /= model.args.n_models
 
@@ -258,7 +257,7 @@ def run_tti(args) -> List[Tuple[int, float]]:
     return results
 
 
-def prop_equal(t1: np.array, t2: np.array) -> float:
+def prop_equal(t1: np.ndarray, t2: np.ndarray) -> float:
     return np.sum(t1 == t2) / len(t1)
 
 def graph_tti_output(
@@ -282,6 +281,7 @@ def graph_tti_output(
         plt.show()
     if return_fig:
         return plt.gcf()
+    return None
     
 def graph_tti_simple(
     tti_output: List[Tuple[int, float]],
@@ -305,7 +305,7 @@ def graph_tti_simple(
         plt.show()
     return fig
 
-def graph_multi_tti_output(tti_outputs: List[TTI_Output], save_dir: Optional[str] = None):
+def graph_multi_tti_output(tti_outputs: List[List[Tuple[int, float]]], save_dir: Optional[str] = None):
     """Graph the output of multiple TTI runs"""
     for i, tti_output in enumerate(tti_outputs):
         return_fig = i == len(tti_outputs) - 1

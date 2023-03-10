@@ -16,7 +16,7 @@ def make_weighted_criteria(args):
     attr_criterion = []
     train_data_path = os.path.join(args.base_dir, args.data_dir, "train.pkl")
     imbalance = find_class_imbalance(train_data_path, True) # assume args.weighted loss is always "multiple" if not ""
-    for ratio in imbalance:
+    for ratio in imbalance[:args.n_attributes]:
         attr_criterion.append(
             torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
         )
@@ -58,7 +58,29 @@ def ModelCtoY(args: Experiment) -> nn.Module:
     return model
 
 
-class Multimodel(nn.Module):
+# Base class that all models inherit from
+class CUB_Model(nn.Module):
+
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None) -> None:
+        pass
+
+    def generate_loss(self, 
+        attr_preds: torch.Tensor,
+        attr_labels: torch.Tensor,
+        class_preds: torch.Tensor, 
+        class_labels: torch.Tensor, 
+        aux_class_preds: torch.Tensor, 
+        aux_attr_preds: torch.Tensor,
+        mask: torch.Tensor,):
+        pass
+
+class CUB_Multimodel(CUB_Model):
+    def reset_pre_models(self) -> None:
+        pass
+    def reset_post_models(self):
+        pass
+
+class Multimodel(CUB_Multimodel):
     def __init__(self, args: Experiment):
         super().__init__()
         self.args = args
@@ -160,7 +182,7 @@ class Multimodel(nn.Module):
         return loss
     
 
-class SequentialModel(nn.Module):
+class SequentialModel(CUB_Model):
     def __init__(self, args: Experiment, train_mode: str) -> None:
         super().__init__()
         self.args = args
@@ -224,7 +246,7 @@ class SequentialModel(nn.Module):
         loss = (attr_loss * self.attr_loss_weight) + class_loss
         return loss
 
-class JointModel(nn.Module):
+class JointModel(CUB_Model):
     def __init__(self, args: Experiment) -> None:
         super().__init__()
         self.args = args
@@ -299,7 +321,7 @@ class JointModel(nn.Module):
         return loss
 
 
-class IndependentModel(nn.Module):
+class IndependentModel(CUB_Model):
     def __init__(self, args: Experiment, train_mode: str) -> None:
         super().__init__()
         self.args = args
@@ -344,7 +366,7 @@ class IndependentModel(nn.Module):
                 attr_preds, aux_attr_preds = None, None
 
             if self.train_mode == "CtoY":
-                class_preds = self.second_model(attr_labels[mask])
+                class_preds = self.second_model(attr_labels[mask, :self.args.n_attributes])
             else:
                 class_preds = None
             
@@ -384,7 +406,7 @@ class IndependentModel(nn.Module):
         loss = (attr_loss * self.attr_loss_weight) + class_loss
         return loss
 
-class ThinMultimodel(nn.Module):
+class ThinMultimodel(CUB_Multimodel):
     def __init__(self, args: Experiment):
         super().__init__()
         self.args = args

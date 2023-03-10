@@ -14,7 +14,7 @@ CODA_PIP=$(CODAENV)/bin/pip
 CODALAB=$(CODAENV)/bin/cl
 CUB_HASH=0xd013a7ba2e88481bbc07e787f73109f5
 
-SSH_PORT=33144
+SSH_PORT=36924
 VASTAI_N=4
 SSH_DESTINATION=root@ssh$(VASTAI_N).vast.ai
 SSH_DIRECTORY=hoagy-hiddeninfo-sync
@@ -22,6 +22,7 @@ SSH_DIRECTORY=hoagy-hiddeninfo-sync
 # List of ports for different vast.ai servers.
 # SSH_PORTS = 11082
 # VASTAI_NS = 6
+
 .PHONY: run
 run: $(ENV) $(SITE_PACKAGES) $(STREAMLIT)
 	$(STREAMLIT) run main.py

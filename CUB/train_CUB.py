@@ -10,7 +10,7 @@ import pickle
 import random
 import sys
 
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple, Union
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -26,9 +26,11 @@ from CUB.models import (
     JointModel,
     Multimodel,
     SequentialModel,
-    ThinMultimodel
+    ThinMultimodel,
+    CUB_Model,
+    CUB_Multimodel
 )
-from CUB.cub_classes import TTI_Config, Meters, Experiment, RunRecord, N_CLASSES
+from CUB.cub_classes import TTI_Config, Meters, Experiment, RunRecord, N_CLASSES, N_ATTRIBUTES
 import CUB.configs as cfgs
 
 from CUB.cub_utils import upload_to_aws, get_secrets
@@ -38,7 +40,7 @@ DATETIME_FMT = "%Y%m%d-%H%M%S"
 RESULTS_DIR ="out"
 
 def run_epoch(
-    model: torch.nn.Module,
+    model: CUB_Model,
     optimizer: torch.optim.Optimizer,
     loader: torch.utils.data.DataLoader,
     meters: Meters,
@@ -50,8 +52,8 @@ def run_epoch(
         model.eval()
 
     for data in loader:
-        inputs, class_labels, attr_labels, attr_mask = data
-        if sum(attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
+        inputs, class_labels, attr_labels, batch_attr_mask = data
+        if sum(batch_attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
             print("Skipping batch, consider increasing batch size or decreasing sparsity")
             continue
 
@@ -61,8 +63,8 @@ def run_epoch(
         attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
-        attr_mask = attr_mask.cuda() if torch.cuda.is_available() else attr_mask
-        attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, attr_mask)
+        batch_attr_mask = batch_attr_mask.cuda() if torch.cuda.is_available() else batch_attr_mask
+        attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, batch_attr_mask)
 
         loss = model.generate_loss(
             attr_preds=attr_preds, 
@@ -71,7 +73,7 @@ def run_epoch(
             aux_class_preds=aux_class_preds, 
             attr_labels=attr_labels, 
             class_labels=class_labels,
-            mask=attr_mask
+            mask=batch_attr_mask
         )
         if is_training:
             optimizer.zero_grad()
@@ -84,24 +86,24 @@ def run_epoch(
             # Note that the first dimension in all outputs is the number of models, then batch size, then the rest of the dimensions
             attr_labels = attr_labels.repeat(args.n_models, 1, 1)
             if attr_preds.shape[1] != attr_labels.shape[1]:
-                attr_labels=attr_labels[attr_mask]
+                attr_labels=attr_labels[batch_attr_mask]
 
             attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds)
-            attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels)
+            attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels[:, :, :args.n_attributes])
             meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
         
         if class_preds is not None:
             class_labels = class_labels.repeat(args.n_models, 1)
             
             if class_preds.shape[1] != class_labels.shape[1]:
-                class_labels=class_labels[attr_mask]
+                class_labels=class_labels[batch_attr_mask]
             # Collecting the n_model and batch size dimensions into one for the accuracy function
             class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
             meters.label_acc.update(class_acc[0], inputs.size(0))
 
 
 def train(
-    model: torch.nn.Module,
+    model: CUB_Model,
     args: Experiment,
     n_epochs: int,
     init_epoch: int = 0,
@@ -190,7 +192,7 @@ def train(
             test_meters=test_meters,
         )
         if not (args.exp in ["Independent", "Sequential"] and model.train_mode == "XtoC") and \
-            args.tti_int > 0 and epoch_ndx % args.tti_int == 0:
+            args.tti_int > 0 and epoch_ndx % args.tti_int == 0 and args.n_attributes == N_ATTRIBUTES:
             model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
             torch.save(model, model_save_path)
             upload_to_aws(s3_file_name=run_save_path / "latest_model.pth", local_file_name=model_save_path)
@@ -349,6 +351,7 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 
 
 def train_multi(args: Experiment) -> None:
+    model: CUB_Multimodel
     if args.thin:
         model = ThinMultimodel(args)
     else:
@@ -492,6 +495,7 @@ def make_configs_list() -> List[Experiment]:
 
     for cfg in configs:
         cfg.epochs = [1, 1]
+        cfg.n_attributes = 59
     return configs
 
 
