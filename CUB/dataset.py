@@ -30,7 +30,6 @@ class CUBDataset(Dataset):
         transform=None,
         example_attr_sparsity: int = 1,
         attr_class_sparsity: int = 1,
-        attr_cutoff: int = 109,
     ):
         """
         Arguments:
@@ -71,7 +70,6 @@ class CUBDataset(Dataset):
         class_mask_bin = self.class_mask[img_data["class_label"]]
 
         mask = attr_mask_bin and class_mask_bin
-        # Outer product of mask with self.attr_mask to make a 2D mask
 
         # Trim unnecessary paths
         try:
