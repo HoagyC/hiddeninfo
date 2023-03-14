@@ -34,18 +34,13 @@ def get_attrs():
     print("Joint inst")
 
 
-def compose_multi():
-    j_inst = "big_run/joint_inst/20230224-124648/final_model.pth"
-    j_inst_sparse = "big_run/joint_inst_sparse/20230227-161614/final_model.pth"
-
+def compose_multi(models_list): # List of paths to models
     # Make multimodel from the two joint models
-    j_inst_model = torch.load(j_inst)
-    j_inst_sparse_model = torch.load(j_inst_sparse)
-
+    sep_models = [torch.load(model_path) for model_path in models_list]
 
     multimodel = Multimodel(multi_inst_cfg)
-    multimodel.pre_models = nn.ModuleList([j_inst_model.first_model, j_inst_sparse_model.first_model])
-    multimodel.post_models = nn.ModuleList([j_inst_model.second_model, j_inst_sparse_model.second_model])
+    multimodel.pre_models = nn.ModuleList([model.first_model for model in sep_models])
+    multimodel.post_models = nn.ModuleList([model.second_model for model in sep_models])
 
     DATETIME_FMT = "%Y%m%d-%H%M%S"
     now_str = datetime.now().strftime(DATETIME_FMT)
