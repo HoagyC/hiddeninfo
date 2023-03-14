@@ -5,6 +5,7 @@ import argparse
 import copy
 import dataclasses
 from datetime import datetime
+import math
 import os
 from pathlib import Path
 import pickle
@@ -15,9 +16,9 @@ from typing import Iterable, List, Optional, Tuple, Union
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import math
-import torch
+import numpy as np
 
+import torch
 import wandb
 
 from CUB.analysis import accuracy, binary_accuracy
@@ -205,6 +206,7 @@ def train(
                 multimodel=args.multimodel,
                 sigmoid=False,
                 model_sigmoid=False,
+                seed=args.seed,
             )
 
             tti_results = run_tti(tti_cfg)
@@ -353,17 +355,30 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 
 def train_multi(args: Experiment) -> None:
     model: CUB_Multimodel
-    if args.thin:
-        model = ThinMultimodel(args)
+    if args.load is not None:
+        model = torch.load(args.load)
+        if args.thin:
+            assert type(model) == ThinMultimodel
+        else:
+            assert type(model) == Multimodel
     else:
-        model = Multimodel(args)
-    elapsed_epochs = train(model, args, n_epochs=args.epochs[0])
+        if args.thin:
+            model = ThinMultimodel(args)
+        else:
+            model = Multimodel(args)
+
+    if args.do_sep_train:
+        model.train_mode = "separate"
+        elapsed_epochs = train(model, args, n_epochs=args.epochs[0])
+    else:
+        elapsed_epochs = 0
+
     if args.reset_post_models:
         model.reset_post_models()
     if args.reset_pre_models:
         model.reset_pre_models()
     
-    args.shuffle_models = False
+    # model.train_mode = "shuffle"
 
     if args.freeze_pre_models:
         for param in model.pre_models.parameters():
@@ -380,7 +395,11 @@ def train_switch(args):
     if args.exp == "Independent":
         train_independent(args)
     elif args.exp == "Joint":
-        model = JointModel(args)
+        if args.load:
+            model = torch.load(args.load)
+            assert type(model) == JointModel
+        else:
+            model = JointModel(args)
         train(model, args, n_epochs=args.epochs[0])
     elif args.exp == "Multimodel":
         train_multi(args)
@@ -394,27 +413,47 @@ def train_switch(args):
         raise ValueError(f"Experiment type {args.exp} not recognized")
 
 def train_independent(args):
-    model = IndependentModel(args, train_mode="XtoC")
+    if args.load:
+        model = torch.load(args.load)
+        assert type(model) == IndependentModel
+    else:   
+        model = IndependentModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
     model.train_mode = "CtoY"
     train(model, args, n_epochs=args.epochs[1])
 
 def train_just_XtoC(args):
-    model = SequentialModel(args, train_mode="XtoC")
+    if args.load:
+        model = torch.load(args.load)
+        assert type(model) in [SequentialModel, IndependentModel]
+    else:
+        model = SequentialModel(args, train_mode="XtoC")
+    
     train(model, args, n_epochs=args.epochs[0])
 
 
 def train_sequential(args):
-    model = SequentialModel(args, train_mode="XtoC")
+    if args.load:
+        model = torch.load(args.load)
+        assert type(model) == SequentialModel
+    else:
+        model = SequentialModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
     model.train_mode = "CtoY"
     train(model, args, n_epochs=args.epochs[1])
 
 def train_alternating(args):
-    if args.thin:
-        model = ThinMultimodel(args)
+    if args.load:
+        model = torch.load(args.load)
+        if args.thin:
+            assert type(model) == ThinMultimodel
+        else:
+            assert type(model) == Multimodel
     else:
-        model = Multimodel(args)
+        if args.thin:
+            model = ThinMultimodel(args)
+        else:
+            model = Multimodel(args)
     
     elapsed_epochs = 0
     assert len(args.epochs) == args.n_alternating * 2, "Number of alternating epochs must match number of alternating models"
@@ -428,8 +467,8 @@ def train_alternating(args):
         else:
             raise ValueError(f"Freeze first {args.freeze_first} not recognized")
 
-
 def run_frozen_pre(args, model, epochs, elapsed_epochs=0):
+    model.train_mode = "shuffle"
     for param in model.pre_models.parameters():
         param.requires_grad = True
     for param in model.post_models.parameters():
@@ -444,6 +483,7 @@ def run_frozen_pre(args, model, epochs, elapsed_epochs=0):
     return model, elapsed_epochs
 
 def run_frozen_post(args, model, epochs, elapsed_epochs=0):
+    model.train_mode = "shuffle"
     for param in model.pre_models.parameters():
         param.requires_grad = False
     for param in model.post_models.parameters():
@@ -458,8 +498,6 @@ def run_frozen_post(args, model, epochs, elapsed_epochs=0):
     return model, elapsed_epochs
 
 
-
-
 def _save_CUB_result(train_result):
     now_str = datetime.now().strftime(DATETIME_FMT)
     train_result_path = RESULTS_DIR / train_result.tag / now_str / "train-result.pickle"
@@ -471,17 +509,18 @@ def _save_CUB_result(train_result):
 
 
 def make_configs_list() -> List[Experiment]:
-    # configs = [
-    #     cfgs.ind_inst_cfg,
-    #     cfgs.seq_inst_cfg,
-    #     cfgs.joint_inst_cfg,
-    #     cfgs.multi_inst_cfg,
-    #     cfgs.multi_inst_post_cfg,
-    #     cfgs.prepost_cfg,
-    #     cfgs.postpre_cfg,
-    #     cfgs.seq_sparse_class_cfg,
-    #     cfgs.seq_inst_sparse_class_cfg,
-    # ]
+    configs = [
+        cfgs.multi_inst_post_cfg,
+        copy.deepcopy(cfgs.multi_inst_post_cfg),
+    ]
+    for cfg in configs:
+        cfg.tti_int = 10
+        cfg.reset_post_models = False
+    
+    configs[1].seed = 2
+
+    return configs
+
     # # Make all output folders specific to this run
     # for cfg in configs:
     #     cfg.log_dir = "big_run"
@@ -492,19 +531,19 @@ def make_configs_list() -> List[Experiment]:
     #     if cfg.exp in ["Sequential", "Independent"]:
     #         cfg.batch_size *= cfg.attr_sparsity
 
-    joint_configs = [
-        copy.deepcopy(cfgs.joint_inst_cfg) for _ in range(5)
-    ]
-    for i, cfg in enumerate(joint_configs):
-        cfg.log_dir = "big_run"
-        cfg.tag += f"_{i}"
+    # joint_configs = [
+    #     copy.deepcopy(cfgs.joint_inst_cfg) for _ in range(5)
+    # ]
+    # for i, cfg in enumerate(joint_configs):
+    #     cfg.log_dir = "big_run"
+    #     cfg.tag += f"_{i}"
     
-    seq_configs = [copy.deepcopy(cfgs.just_xtoc_cfg) for _ in range(5)]
-    for i, cfg in enumerate(seq_configs):
-        cfg.log_dir = "big_run"
-        cfg.tag += f"_{i}"
+    # seq_configs = [copy.deepcopy(cfgs.just_xtoc_cfg) for _ in range(5)]
+    # for i, cfg in enumerate(seq_configs):
+    #     cfg.log_dir = "big_run"
+    #     cfg.tag += f"_{i}"
 
-    return joint_configs + seq_configs
+    # return joint_configs + seq_configs
 
 
 if __name__ == "__main__":
@@ -516,6 +555,12 @@ if __name__ == "__main__":
 
     secrets = get_secrets()
     wandb.login(key=secrets["wandb_key"])
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.backends.cudnn.deterministic = True
 
     train_switch(args)
     

@@ -54,6 +54,7 @@ class Experiment:
     data_dir: str = "CUB_masked_class"
     image_dir: str = "images"
     save_step: int = 100
+    load: Optional[str] = None # Load a model from a previous run, gives the location of the .pth file
 
     # Model
     multimodel: bool = False
@@ -95,6 +96,7 @@ class Experiment:
     reset_post_models: bool = False
     n_models: int = 1
     thin: bool = False # Whether to only change the last/first layers of th e
+    do_sep_train: bool = True # For basic multimodel runs, whether to train the models separately first
 
 
     quick: bool = False
@@ -116,7 +118,8 @@ class TTI_Config:
 
     eval_data: str = "test"  # whether to use test or val data
     batch_size: int = 16
-
+    seed: int = 1
+    
     use_sigmoid: bool = False
     attr_sparsity: int = 1
 

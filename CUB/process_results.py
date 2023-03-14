@@ -6,9 +6,9 @@ from typing import Tuple, List, Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cub_utils import download_from_aws, list_aws_files, upload_to_aws
-from cub_classes import TTI_Config, TTI_Output
-from tti import run_tti, graph_tti_output, graph_multi_tti_output
+from CUB.cub_utils import download_from_aws, list_aws_files, upload_to_aws
+from CUB.cub_classes import TTI_Config, TTI_Output
+from CUB.tti import run_tti, graph_tti_output, graph_multi_tti_output
 
 def get_most_recent(run_name: str) -> str:
     """Get the most recent run folder for a given run name."""
@@ -101,7 +101,11 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
 
 
 def get_results_pkls(runs_list: List[str], use_all: bool = False) -> List[TTI_Output]:
-    """Get the TTI results for a list of runs."""
+    """
+    Takes in a list of run names, takes either the most recent run or all timestamps,
+    where TTI has already been run and saved as ./tti_results.pkl, downloads these files from
+    AWS, and returns the TTI results as a list.
+    """
     # Get the most recent run for each run name
     if use_all:
         run_folders = []

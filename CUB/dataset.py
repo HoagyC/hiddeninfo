@@ -1,15 +1,17 @@
 """
-From yewsiang/ConceptBottleneck
+Largely derived from yewsiang/ConceptBottleneck
 """
 
+from datetime import datetime
 import os
 import pickle
 from pathlib import Path
+import random
 from typing import List
-from datetime import datetime
 
 from PIL import Image
 
+import numpy as np
 import torch
 import torchvision.transforms as transforms
 
@@ -201,10 +203,19 @@ def load_data(
         shuffle = False
         
     print(f"making dataloader where shuffle={shuffle} and drop_last={drop_last}")
+
+    g = torch.Generator()
+    g.manual_seed(args.seed)
+
     loader = DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=1
+        dataset, batch_size=args.batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=1, worker_init_fn=seed_worker, generator=g
     )
     return loader
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
