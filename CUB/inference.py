@@ -11,7 +11,7 @@ from sklearn.metrics import f1_score
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from CUB.dataset import load_data
+from CUB.dataset import load_data, CUBDataset
 from CUB.cub_classes import TTI_Config, Meters, N_CLASSES
 from CUB.analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
 
@@ -70,7 +70,8 @@ def run_eval(args: TTI_Config) -> Eval_Output:
     data_dir = os.path.join(args.base_dir, args.data_dir, args.eval_data + ".pkl")
     loader = load_data([data_dir], args)
 
-    dataset_len = len(loader.dataset)
+    dataset: CUBDataset = loader.dataset # type: ignore 
+    dataset_len = len(dataset) 
     n_models = model.args.n_models if args.multimodel else 1
     total_size = dataset_len * n_models
 

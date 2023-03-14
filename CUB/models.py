@@ -60,17 +60,20 @@ def ModelCtoY(args: Experiment) -> nn.Module:
 
 # Base class that all models inherit from
 class CUB_Model(nn.Module):
+    def __init__(self):
+        self.train_mode: str
 
-    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None) -> None:
-        pass
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None) -> \
+        Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        return None, None, None, None
 
     def generate_loss(self, 
-        attr_preds: torch.Tensor,
-        attr_labels: torch.Tensor,
-        class_preds: torch.Tensor, 
-        class_labels: torch.Tensor, 
-        aux_class_preds: torch.Tensor, 
-        aux_attr_preds: torch.Tensor,
+        attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
+        attr_labels: Optional[torch.Tensor], # batch_size x n_attributes
+        class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        class_labels: Optional[torch.Tensor], # batch_size
+        aux_class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        aux_attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
         mask: torch.Tensor,):
         pass
 
@@ -88,14 +91,14 @@ class Multimodel(CUB_Multimodel):
         self.post_models: nn.ModuleList
         self.reset_pre_models()
         self.reset_post_models()
-        self.train_mode = "separate"
+        self.train_mode: str = "separate"
         self.criterion = nn.CrossEntropyLoss()
         if self.args.weighted_loss:
             self.attr_criterion = make_weighted_criteria(args)
         else:
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
-        self.av_diff_same = []
-        self.av_diff_switch = []
+        self.av_diff_same: List[torch.Tensor] = []
+        self.av_diff_switch: List[torch.Tensor] = []
 
     def reset_pre_models(self) -> None:
         pre_models_list = [
@@ -166,17 +169,20 @@ class Multimodel(CUB_Multimodel):
     
     def generate_loss(
         self, 
-        attr_preds: torch.Tensor,
-        attr_labels: torch.Tensor,
-        class_preds: torch.Tensor, 
-        class_labels: torch.Tensor, 
-        aux_class_preds: torch.Tensor, 
-        aux_attr_preds: torch.Tensor,
+        attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
+        attr_labels: Optional[torch.Tensor], # batch_size x n_attributes
+        class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        class_labels: Optional[torch.Tensor], # batch_size
+        aux_class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        aux_attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
         mask: torch.Tensor,
     ):
         total_class_loss = 0.
         total_attr_loss = 0.
         
+        assert attr_preds is not None and attr_labels is not None and aux_attr_preds is not None
+        assert class_preds is not None and class_labels is not None and aux_class_preds is not None
+
         assert len(attr_preds) == len(aux_attr_preds) == len(class_preds) == len(aux_class_preds) == len(self.pre_models)
         for ndx in range(len(self.pre_models)):
             class_loss = self.criterion(class_preds[ndx], class_labels)
@@ -236,12 +242,12 @@ class SequentialModel(CUB_Model):
 
     def generate_loss(
         self,
-        attr_preds: torch.Tensor, # n_models x batch_size x n_attributes
-        attr_labels: torch.Tensor, # batch_size x n_attributes
-        class_preds: torch.Tensor, # n_models x batch_size x n_classes (but probably None)
-        class_labels: torch.Tensor, # batch_size
-        aux_class_preds: torch.Tensor, # n_models x batch_size x n_classes (but probably None)
-        aux_attr_preds: torch.Tensor, # n_models x batch_size x n_attributes
+        attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
+        attr_labels: Optional[torch.Tensor], # batch_size x n_attributes
+        class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        class_labels: Optional[torch.Tensor], # batch_size
+        aux_class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        aux_attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
         mask: torch.Tensor, # batch_size
     ):
         attr_preds = squeeze(attr_preds) # Removing the n_models dimension
@@ -251,6 +257,8 @@ class SequentialModel(CUB_Model):
 
         attr_loss = 0.
         if self.train_mode == "XtoC":
+            assert attr_preds is not None and attr_labels is not None and aux_attr_preds is not None
+            
             for i in range(len(self.attr_criterion)):
                 attr_loss += self.attr_criterion[i](
                     attr_preds[mask, i], attr_labels[mask, i]
@@ -259,6 +267,8 @@ class SequentialModel(CUB_Model):
             attr_loss /= len(self.attr_criterion)
 
         if self.train_mode == "CtoY":
+            assert class_preds is not None and class_labels is not None and aux_class_preds is not None
+
             class_loss = self.criterion(class_preds, class_labels[mask])
         else:
             class_loss = 0
@@ -307,18 +317,21 @@ class JointModel(CUB_Model):
 
     def generate_loss(
         self,
-        attr_preds: torch.Tensor, # n_models x batch_size x n_attributes
-        attr_labels: torch.Tensor, # batch_size x n_attributes
-        class_preds: torch.Tensor, # n_models x batch_size x n_classes (but probably None)
-        class_labels: torch.Tensor, # batch_size
-        aux_class_preds: torch.Tensor, # n_models x batch_size x n_classes (but probably None)
-        aux_attr_preds: torch.Tensor, # n_models x batch_size x n_attributes
+        attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
+        attr_labels: Optional[torch.Tensor], # batch_size x n_attributes
+        class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        class_labels: Optional[torch.Tensor], # batch_size
+        aux_class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        aux_attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
         mask: torch.Tensor, # batch_size
     ):
         attr_preds = squeeze(attr_preds) # Removing the n_models dimension
         aux_attr_preds = squeeze(aux_attr_preds)
         class_preds = squeeze(class_preds)
         aux_class_preds = squeeze(aux_class_preds)
+
+        assert attr_preds is not None and attr_labels is not None and aux_attr_preds is not None
+        assert class_preds is not None and class_labels is not None and aux_class_preds is not None
 
         class_loss = self.criterion(class_preds, class_labels)
         aux_class_loss = self.criterion(aux_class_preds, class_labels)
@@ -396,18 +409,21 @@ class IndependentModel(CUB_Model):
     
     def generate_loss(
         self,
-        attr_preds: torch.Tensor, # n_models x batch_size x n_attributes
-        attr_labels: torch.Tensor, # batch_size x n_attributes
-        class_preds: torch.Tensor, # n_models x batch_size x n_classes (but probably None)
-        class_labels: torch.Tensor, # batch_size
-        aux_class_preds: torch.Tensor, # n_models x batch_size x n_classes (but probably None)
-        aux_attr_preds: torch.Tensor, # n_models x batch_size x n_attributes
+        attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
+        attr_labels: Optional[torch.Tensor], # batch_size x n_attributes
+        class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        class_labels: Optional[torch.Tensor], # batch_size
+        aux_class_preds: Optional[torch.Tensor], # n_models x batch_size x n_classes (but probably None)
+        aux_attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
         mask: torch.Tensor, # batch_size
     ):
         attr_preds = squeeze(attr_preds) # Removing the n_models dimension
         aux_attr_preds = squeeze(aux_attr_preds)
         class_preds = squeeze(class_preds)
         aux_class_preds = squeeze(aux_class_preds)
+
+        assert attr_preds is not None and attr_labels is not None and aux_attr_preds is not None
+        assert class_preds is not None and class_labels is not None and aux_class_preds is not None
 
         attr_loss = 0.
         if self.train_mode == "XtoC":
@@ -430,7 +446,7 @@ class ThinMultimodel(CUB_Multimodel):
     def __init__(self, args: Experiment):
         super().__init__()
         self.args = args
-        self.pre_models = ModelXtoC(self.args) # This creates a model which is the same except for the last layer, which there is multiple copies of
+        self.pre_models = nn.ModuleList([ModelXtoC(self.args)]) # This creates a model which is the same except for the last layer, which there is multiple copies of
         self.reset_post_models() # Creates post models
         self.train_mode = "separate"
         self.criterion = nn.CrossEntropyLoss()
@@ -492,18 +508,22 @@ class ThinMultimodel(CUB_Multimodel):
     
     def generate_loss(
         self, 
-        attr_preds: torch.Tensor,
-        attr_labels: torch.Tensor,
-        class_preds: torch.Tensor, 
-        class_labels: torch.Tensor, 
-        aux_class_preds: torch.Tensor, 
-        aux_attr_preds: torch.Tensor,
+        attr_preds: Optional[torch.Tensor],
+        attr_labels: Optional[torch.Tensor],
+        class_preds: Optional[torch.Tensor], 
+        class_labels: Optional[torch.Tensor], 
+        aux_class_preds: Optional[torch.Tensor], 
+        aux_attr_preds: Optional[torch.Tensor],
         mask: torch.Tensor,
     ):
         total_class_loss = 0.
         total_attr_loss = 0.
-        
+
+        assert attr_preds is not None and attr_labels is not None and aux_attr_preds is not None
+        assert class_preds is not None and class_labels is not None and aux_class_preds is not None
+
         assert len(attr_preds) == len(aux_attr_preds) == len(class_preds) == len(aux_class_preds) == self.args.n_models
+
         for ndx in range(self.args.n_models):
             class_loss = self.criterion(class_preds[ndx], class_labels)
             aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)

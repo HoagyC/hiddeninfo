@@ -10,9 +10,6 @@ from vast_servers import get_servers_info, reboot_server
 
 VAST_AI_SERVERS = [(16612, 5), (14696, 4)]
 
-ATTN_COEFS = [0.1, 1, 10]
-ATTR_SPARSITIES = [1, 3, 10]
-run_params = list(product(ATTN_COEFS, ATTR_SPARSITIES))
 
 def setup_multiple(n_start: int = 0):
     server_list = server_list = [(s['ssh_port'], int(s['ssh_idx'])) for s in get_servers_info()]
@@ -121,8 +118,6 @@ def run_multiple(n_start: int = 0) -> None:
         f.close()
 
 
-
-
 def sync_multiple(n_start=0):
     # Run ssh-sync with each of the servers
     server_info = get_servers_info()
@@ -132,8 +127,6 @@ def sync_multiple(n_start=0):
         sync_cmd = f"make ssh-sync SSH_DESTINATION=root@ssh{num}.vast.ai SSH_PORT=" + str(port)
         print(f"Syncing server {server}")
         subprocess.run(sync_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-
 
 
 if __name__ == "__main__":

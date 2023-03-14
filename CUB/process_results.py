@@ -25,13 +25,13 @@ def process_run_name(model_file: str) -> Tuple[float, int, str]:
     model_name = split_name[-3]
     model_date = split_name[-2]
     # Get the sparsity and coef
-    coef, sparsity = model_name.split("-")
-    coef = float(coef.replace("sparsemultimodel", ""))
-    sparsity = int(sparsity)
+    coef_str, sparsity_str = model_name.split("-")
+    coef= float(coef_str.replace("sparsemultimodel", ""))
+    sparsity = int(sparsity_str)
     return coef, sparsity, model_date
 
 
-def create_tti_cfg(model_file: str, model_folder: str) -> Optional[TTI_Config]:
+def create_tti_cfg(model_file: str, model_folder: str) -> TTI_Config:
     """Create the TTI config based on the config.pkl of the original experiment."""
 
     download_from_aws([model_folder + "/config.pkl"])

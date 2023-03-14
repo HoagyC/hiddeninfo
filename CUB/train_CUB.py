@@ -116,9 +116,11 @@ def train(
 
     if not run_save_path.is_dir():
         run_save_path.mkdir(parents=True)
+
     wandb.init(project="distill_CUB", config=args.__dict__)
 
     if args.multimodel:
+        assert type(model) == CUB_Multimodel
         if args.reset_pre_models:
             model.reset_pre_models()
         if args.reset_post_models:
@@ -197,11 +199,11 @@ def train(
             args.tti_int > 0 and epoch_ndx % args.tti_int == 0 and args.n_attributes == N_ATTRIBUTES:
             model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
             torch.save(model, model_save_path)
-            upload_to_aws(s3_file_name=run_save_path / "latest_model.pth", local_file_name=model_save_path)
+            upload_to_aws(s3_file_name=str(run_save_path / "latest_model.pth"), local_file_name=model_save_path)
 
             tti_cfg = TTI_Config(
-                log_dir=run_save_path,
-                model_dir=model_save_path,
+                log_dir=str(run_save_path),
+                model_dir=str(model_save_path),
                 data_dir=args.data_dir,
                 multimodel=args.multimodel,
                 sigmoid=False,
@@ -249,31 +251,6 @@ def final_save(model: torch.nn.Module, run_path: Path, args: Experiment):
     upload_files = ["final_model.pth", "config.pkl", "log.txt"]
     for filename in upload_files:
         upload_to_aws(run_path / filename)
-
-
-def make_criteria(
-    args: Experiment,
-) -> Tuple[torch.nn.Module, Optional[List[torch.nn.Module]]]:
-    criterion = torch.nn.CrossEntropyLoss()
-
-    attr_criterion: Optional[List[torch.nn.Module]]
-
-    if args.use_attr and not args.no_img:
-        attr_criterion = []  # separate criterion (loss function) for each attribute
-        if args.weighted_loss:
-            train_data_path = os.path.join(args.base_dir, args.data_dir, "train.pkl")
-            imbalance = find_class_imbalance(train_data_path, True)
-            for ratio in imbalance:
-                attr_criterion.append(
-                    torch.nn.BCEWithLogitsLoss(weight=torch.FloatTensor([ratio]).cuda())
-                )
-        else:
-            for _ in range(args.n_attributes):
-                attr_criterion.append(torch.nn.CrossEntropyLoss())
-    else:
-        attr_criterion = None
-
-    return criterion, attr_criterion
 
 
 def write_metrics(
@@ -381,10 +358,12 @@ def train_multi(args: Experiment) -> None:
     # model.train_mode = "shuffle"
 
     if args.freeze_pre_models:
+        assert type(model.pre_models) == torch.nn.ModuleList
         for param in model.pre_models.parameters():
             param.requires_grad = False
     
     if args.freeze_post_models:
+        assert type(model.post_models) == torch.nn.ModuleList
         for param in model.post_models.parameters():
             param.requires_grad = False
 
