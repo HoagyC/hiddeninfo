@@ -3,6 +3,7 @@ Taken from yewsiang/ConceptBottlenecks
 """
 import os
 from typing import Optional, List, Tuple, Iterable
+from abc import ABC, abstractmethod
 
 import torch
 from torch import nn
@@ -59,14 +60,17 @@ def ModelCtoY(args: Experiment) -> nn.Module:
 
 
 # Base class that all models inherit from
-class CUB_Model(nn.Module):
+class CUB_Model(nn.Module, ABC):
     def __init__(self):
+        super().__init__()
         self.train_mode: str
 
+    @abstractmethod
     def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None) -> \
         Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
         return None, None, None, None
 
+    @abstractmethod
     def generate_loss(self, 
         attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
         attr_labels: Optional[torch.Tensor], # batch_size x n_attributes
@@ -78,10 +82,20 @@ class CUB_Model(nn.Module):
         pass
 
 class CUB_Multimodel(CUB_Model):
+    def __init__(self):
+        super().__init__()
+        self.pre_models: nn.ModuleList
+        self.post_models: nn.ModuleList
+
+        
+    @abstractmethod
     def reset_pre_models(self) -> None:
         pass
+
+    @abstractmethod
     def reset_post_models(self):
         pass
+
 
 class Multimodel(CUB_Multimodel):
     def __init__(self, args: Experiment):
@@ -295,6 +309,7 @@ class JointModel(CUB_Model):
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
 
         self.attr_loss_weight = args.attr_loss_weight
+        self.train_mode = "joint"
         print(self.second_model)
 
     def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None):
