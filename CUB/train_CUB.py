@@ -81,9 +81,9 @@ def run_epoch(
             loss.backward()
             optimizer.step()
             # Print total gradient change among all in premodel
-            assert isinstance(model, CUB_Multimodel)
-            print(sum([torch.sum(torch.abs(p.grad)) for p in model.pre_models.parameters() if p.grad is not None]))
-            print(sum([torch.sum(p) for p in model.pre_models.parameters()]))
+            # assert isinstance(model, CUB_Multimodel)
+            # print(sum([torch.sum(torch.abs(p.grad)) for p in model.pre_models.parameters() if p.grad is not None]))
+            # print(sum([torch.sum(p) for p in model.pre_models.parameters()]))
 
 
         meters.loss.update(loss.item(), inputs.size(0))
