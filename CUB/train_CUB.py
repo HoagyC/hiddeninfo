@@ -52,7 +52,6 @@ def run_epoch(
         model.train()
     else:
         model.eval()
-
     for data in loader:
         inputs, class_labels, attr_labels, batch_attr_mask = data
         if sum(batch_attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
@@ -84,6 +83,7 @@ def run_epoch(
             # Print total gradient change among all in premodel
             assert isinstance(model, CUB_Multimodel)
             print(sum([torch.sum(torch.abs(p.grad)) for p in model.pre_models.parameters() if p.grad is not None]))
+            print(sum([torch.sum(p) for p in model.pre_models.parameters()]))
 
 
         meters.loss.update(loss.item(), inputs.size(0))
@@ -117,8 +117,14 @@ def train(
     model.train()
     model = model.cuda()
 
+    print("total params", len(list(model.parameters())))
     params = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = make_optimizer(params, args)
+    print("trainable params", len(list(params)))
+    try:
+        params = filter(lambda p: p.requires_grad, model.parameters())
+        optimizer = make_optimizer(params, args)
+    except:
+        breakpoint()
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=args.scheduler_step, gamma=0.1
     )
@@ -226,7 +232,7 @@ def train(
             break
 
     final_save(model, run_save_path, args)
-    return epoch_ndx
+    return epoch_ndx + 1
 
 
 def final_save(model: torch.nn.Module, run_path: Path, args: Experiment):
@@ -347,11 +353,17 @@ def train_multi(args: Experiment) -> None:
         assert isinstance(model.pre_models, torch.nn.ModuleList)
         for param in model.pre_models.parameters():
             param.requires_grad = False
+    else:
+        for param in model.pre_models.parameters():
+            param.requires_grad = True
     
     if args.freeze_post_models:
         assert isinstance(model.post_models, torch.nn.ModuleList)
         for param in model.post_models.parameters():
             param.requires_grad = False
+    else:
+        for param in model.post_models.parameters():
+            param.requires_grad = True
 
     # Train again with shuffling and freezing
     train(model, args, init_epoch=elapsed_epochs, n_epochs=args.epochs[1])
@@ -489,17 +501,19 @@ def make_configs_list() -> List[Experiment]:
         cfgs.prepost_cfg,
         cfgs.postpre_cfg,
         copy.deepcopy(cfgs.multi_noreset_cfg),
+        copy.deepcopy(cfgs.multi_noreset_post_cfg),
     ]
 
     for cfg in configs:
         cfg.log_dir = "big_run"
         cfg.tti_int = 10
 
-    configs[6].n_models = 4
-    configs[6].epochs = [1, 1]
-    configs[6].batch_size = int(configs[6].batch_size / 2)
-    configs[6].tag += "_4models"
+    configs[6].epochs = [5, 5]
+    # configs[6].batch_size = int(configs[6].batch_size / 2)
     configs[6].tti_int = 0
+    configs[6].do_sep_train = True
+    configs[6].freeze_post_models = False
+    configs[6].freeze_pre_models = True
     return configs
 
     # # Make all output folders specific to this run
