@@ -81,7 +81,11 @@ def run_epoch(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        
+            # Print total gradient change among all in premodel
+            assert isinstance(model, CUB_Multimodel)
+            print(sum([torch.sum(torch.abs(p.grad)) for p in model.pre_models.parameters() if p.grad is not None]))
+
+
         meters.loss.update(loss.item(), inputs.size(0))
 
         if attr_preds is not None:
@@ -109,23 +113,7 @@ def train(
     args: Experiment,
     n_epochs: int,
     init_epoch: int = 0,
-):
-    print(f"Running {args.tag}")
-    now_str = datetime.now().strftime(DATETIME_FMT)
-    run_save_path = Path(args.log_dir) / args.tag / now_str
-
-    if not run_save_path.is_dir():
-        run_save_path.mkdir(parents=True)
-
-    wandb.init(project="distill_CUB", config=args.__dict__)
-
-    if args.multimodel:
-        assert type(model) == CUB_Multimodel
-        if args.reset_pre_models:
-            model.reset_pre_models()
-        if args.reset_post_models:
-            model.reset_post_models()
-        
+):      
     model.train()
     model = model.cuda()
 
@@ -153,6 +141,7 @@ def train(
         test_loader = load_data([test_data_path], args)
 
     for epoch_ndx in range(init_epoch, init_epoch + n_epochs):
+        print(f"Running epoch {epoch_ndx} with train mode {model.train_mode}")
         train_meters = Meters()
         val_meters = Meters()
 
@@ -198,7 +187,6 @@ def train(
         if not (args.exp in ["Independent", "Sequential", "JustXtoC"] and model.train_mode == "XtoC") and \
             args.tti_int > 0 and epoch_ndx % args.tti_int == 0 and args.n_attributes == N_ATTRIBUTES:
             model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
-            torch.save(model, model_save_path)
             upload_to_aws(s3_file_name=str(run_save_path / "latest_model.pth"), local_file_name=model_save_path)
 
             tti_cfg = TTI_Config(
@@ -220,8 +208,6 @@ def train(
                     ttilast = tti_results[-1][1],
                 )
             )
-
-
 
         if epoch_ndx <= stop_epoch:
             scheduler.step()
@@ -335,9 +321,9 @@ def train_multi(args: Experiment) -> None:
     if args.load is not None:
         model = torch.load(args.load)
         if args.thin:
-            assert type(model) == ThinMultimodel
+            assert isinstance(model, ThinMultimodel)
         else:
-            assert type(model) == Multimodel
+            assert isinstance(model, Multimodel)
     else:
         if args.thin:
             model = ThinMultimodel(args)
@@ -355,15 +341,15 @@ def train_multi(args: Experiment) -> None:
     if args.reset_pre_models:
         model.reset_pre_models()
     
-    # model.train_mode = "shuffle"
+    model.train_mode = "shuffle"
 
     if args.freeze_pre_models:
-        assert type(model.pre_models) == torch.nn.ModuleList
+        assert isinstance(model.pre_models, torch.nn.ModuleList)
         for param in model.pre_models.parameters():
             param.requires_grad = False
     
     if args.freeze_post_models:
-        assert type(model.post_models) == torch.nn.ModuleList
+        assert isinstance(model.post_models, torch.nn.ModuleList)
         for param in model.post_models.parameters():
             param.requires_grad = False
 
@@ -376,7 +362,7 @@ def train_switch(args):
     elif args.exp == "Joint":
         if args.load:
             model = torch.load(args.load)
-            assert type(model) == JointModel
+            assert isinstance(model, JointModel)
         else:
             model = JointModel(args)
         train(model, args, n_epochs=args.epochs[0])
@@ -394,7 +380,7 @@ def train_switch(args):
 def train_independent(args):
     if args.load:
         model = torch.load(args.load)
-        assert type(model) == IndependentModel
+        assert isinstance(model, IndependentModel)  
     else:   
         model = IndependentModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
@@ -404,7 +390,7 @@ def train_independent(args):
 def train_just_XtoC(args):
     if args.load:
         model = torch.load(args.load)
-        assert type(model) in [SequentialModel, IndependentModel]
+        assert isinstance(model, SequentialModel) or isinstance(model, IndependentModel)
     else:
         model = SequentialModel(args, train_mode="XtoC")
     
@@ -414,7 +400,7 @@ def train_just_XtoC(args):
 def train_sequential(args):
     if args.load:
         model = torch.load(args.load)
-        assert type(model) == SequentialModel
+        assert isinstance(model, SequentialModel)
     else:
         model = SequentialModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
@@ -425,17 +411,24 @@ def train_alternating(args):
     if args.load:
         model = torch.load(args.load)
         if args.thin:
-            assert type(model) == ThinMultimodel
+            assert isinstance(model, ThinMultimodel)
         else:
-            assert type(model) == Multimodel
+            assert isinstance(model, Multimodel)
     else:
         if args.thin:
             model = ThinMultimodel(args)
         else:
             model = Multimodel(args)
     
-    elapsed_epochs = 0
-    assert len(args.epochs) == args.n_alternating * 2, "Number of alternating epochs must match number of alternating models"
+    assert len(args.epochs) == (args.n_alternating * 2 + int(args.do_sep_train)), \
+        f"Number of alternating epochs is {len(args.epochs)} must be {(args.n_alternating * 2 + int(args.do_sep_train))}"
+
+    if args.do_sep_train:
+        model.train_mode = "separate"
+        elapsed_epochs = train(model, args, n_epochs=args.epochs[0])
+    else:
+        elapsed_epochs = 0
+
     for ndx in range(args.n_alternating):
         if args.freeze_first == "pre":
             model, elapsed_epochs = run_frozen_pre(args, model, args.epochs[ndx * 2], elapsed_epochs=elapsed_epochs)
@@ -489,15 +482,24 @@ def _save_CUB_result(train_result):
 
 def make_configs_list() -> List[Experiment]:
     configs = [
+        cfgs.multi_inst_cfg,
         cfgs.multi_inst_post_cfg,
-        copy.deepcopy(cfgs.multi_inst_post_cfg),
+        cfgs.multi_noreset_cfg,
+        cfgs.multi_noreset_post_cfg,
+        cfgs.prepost_cfg,
+        cfgs.postpre_cfg,
+        copy.deepcopy(cfgs.multi_noreset_cfg),
     ]
-    for cfg in configs:
-        cfg.tti_int = 10
-        cfg.reset_post_models = False
-    
-    configs[1].seed = 2
 
+    for cfg in configs:
+        cfg.log_dir = "big_run"
+        cfg.tti_int = 10
+
+    configs[6].n_models = 4
+    configs[6].epochs = [1, 1]
+    configs[6].batch_size = int(configs[6].batch_size / 2)
+    configs[6].tag += "_4models"
+    configs[6].tti_int = 0
     return configs
 
     # # Make all output folders specific to this run
@@ -540,6 +542,15 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.deterministic = True
+    
+    wandb.init(project="distill_CUB", config=args.__dict__)
+
+    print(f"Running {args.tag}")
+    now_str = datetime.now().strftime(DATETIME_FMT)
+    run_save_path = Path(args.log_dir) / args.tag / now_str
+
+    if not run_save_path.is_dir():
+        run_save_path.mkdir(parents=True)
 
     train_switch(args)
     

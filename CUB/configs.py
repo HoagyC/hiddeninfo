@@ -166,25 +166,27 @@ all_frozen = dataclasses.replace(
 )
 
 prepost_cfg = dataclasses.replace(
-    multiple_cfg3,
+    multi_inst_cfg,
     exp="Alternating",
     tag="prepost_test",
     n_alternating=2,
     freeze_first="pre",
-    alternating_epochs=[200, 50],
+    epochs=[150, 20, 20, 10, 10],
     data_dir="CUB_instance_masked",
     alternating_reset=False,
+    do_sep_train=True,
 )
 
 postpre_cfg = dataclasses.replace(
-    multiple_cfg3,
+    multi_inst_cfg,
     exp="Alternating",
     tag="postpre_test",
     n_alternating=2,
     freeze_first="post",
-    alternating_epochs=[200, 50],
+    epochs=[150, 20, 20, 10, 10],
     data_dir="CUB_instance_masked",
     alternating_reset=False,
+    do_sep_train=True,
 )
 
 seq_sparse_class_cfg = dataclasses.replace(
