@@ -49,9 +49,18 @@ def run_epoch(
     is_training: bool,
 ) -> None:
     if is_training:
+        # Revert batchnorm to training mode
         model.train()
+        for layer in model.modules():
+            if isinstance(layer, torch.nn.BatchNorm2d):
+                layer.momentum = 0.1
     else:
         model.eval()
+        for layer in model.modules():
+            # Set momentum to 1 so that running mean/var just use the current batch (its the opposite of usual momentum)
+            if isinstance(layer, torch.nn.BatchNorm2d):
+                layer.momentum = 1 
+
     for data in loader:
         inputs, class_labels, attr_labels, batch_attr_mask = data
         if sum(batch_attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
@@ -93,7 +102,7 @@ def run_epoch(
             attr_labels = attr_labels.repeat(args.n_models, 1, 1)
             if attr_preds.shape[1] != attr_labels.shape[1]:
                 attr_labels=attr_labels[batch_attr_mask]
-
+            
             attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds)
             attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels[:, :, :args.n_attributes])
             meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
@@ -193,6 +202,7 @@ def train(
         if not (args.exp in ["Independent", "Sequential", "JustXtoC"] and model.train_mode == "XtoC") and \
             args.tti_int > 0 and epoch_ndx % args.tti_int == 0 and args.n_attributes == N_ATTRIBUTES:
             model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
+            torch.save(model, run_save_path / f"{epoch_ndx}_model.pth")
             upload_to_aws(s3_file_name=str(run_save_path / "latest_model.pth"), local_file_name=model_save_path)
 
             tti_cfg = TTI_Config(
@@ -350,23 +360,33 @@ def train_multi(args: Experiment) -> None:
     model.train_mode = "shuffle"
 
     if args.freeze_pre_models:
-        assert isinstance(model.pre_models, torch.nn.ModuleList)
-        for param in model.pre_models.parameters():
-            param.requires_grad = False
+        freeze_pre_models(model)
     else:
-        for param in model.pre_models.parameters():
-            param.requires_grad = True
+        unfreeze_pre_models(model)
     
     if args.freeze_post_models:
-        assert isinstance(model.post_models, torch.nn.ModuleList)
-        for param in model.post_models.parameters():
-            param.requires_grad = False
+        freeze_post_models(model)
     else:
-        for param in model.post_models.parameters():
-            param.requires_grad = True
+        unfreeze_post_models(model)
 
     # Train again with shuffling and freezing
     train(model, args, init_epoch=elapsed_epochs, n_epochs=args.epochs[1])
+
+def freeze_pre_models(model: CUB_Multimodel) -> None:
+    for param in model.pre_models.parameters():
+        param.requires_grad = False
+
+def freeze_post_models(model: CUB_Multimodel) -> None:
+    for param in model.post_models.parameters():
+        param.requires_grad = False
+
+def unfreeze_pre_models(model: CUB_Multimodel) -> None:
+    for param in model.pre_models.parameters():
+        param.requires_grad = True
+
+def unfreeze_post_models(model: CUB_Multimodel) -> None:
+    for param in model.post_models.parameters():
+        param.requires_grad = True
 
 def train_switch(args):
     if args.exp == "Independent":
@@ -443,20 +463,18 @@ def train_alternating(args):
 
     for ndx in range(args.n_alternating):
         if args.freeze_first == "pre":
-            model, elapsed_epochs = run_frozen_pre(args, model, args.epochs[ndx * 2], elapsed_epochs=elapsed_epochs)
-            model, elapsed_epochs = run_frozen_post(args, model, args.epochs[(ndx * 2) + 1], elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_with_pre_frozen(args, model, args.epochs[ndx * 2], elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_with_post_frozen(args, model, args.epochs[(ndx * 2) + 1], elapsed_epochs=elapsed_epochs)
         elif args.freeze_first == "post":
-            model, elapsed_epochs = run_frozen_post(args, model, args.epochs[ndx * 2], elapsed_epochs=elapsed_epochs)
-            model, elapsed_epochs = run_frozen_pre(args, model, args.epochs[(ndx * 2) + 1], elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_with_post_frozen(args, model, args.epochs[ndx * 2], elapsed_epochs=elapsed_epochs)
+            model, elapsed_epochs = run_with_pre_frozen(args, model, args.epochs[(ndx * 2) + 1], elapsed_epochs=elapsed_epochs)
         else:
             raise ValueError(f"Freeze first {args.freeze_first} not recognized")
 
-def run_frozen_pre(args, model, epochs, elapsed_epochs=0):
+def run_with_post_frozen(args, model, epochs, elapsed_epochs=0):
     model.train_mode = "shuffle"
-    for param in model.pre_models.parameters():
-        param.requires_grad = True
-    for param in model.post_models.parameters():
-        param.requires_grad = False
+    freeze_post_models(model)
+    unfreeze_pre_models(model)
 
     if args.alternating_reset:
         model.reset_pre_models()
@@ -466,12 +484,10 @@ def run_frozen_pre(args, model, epochs, elapsed_epochs=0):
 
     return model, elapsed_epochs
 
-def run_frozen_post(args, model, epochs, elapsed_epochs=0):
+def run_with_pre_frozen(args, model, epochs, elapsed_epochs=0):
     model.train_mode = "shuffle"
-    for param in model.pre_models.parameters():
-        param.requires_grad = False
-    for param in model.post_models.parameters():
-        param.requires_grad = True
+    freeze_pre_models(model)
+    unfreeze_post_models(model)
 
     if args.alternating_reset:
         model.reset_post_models()
@@ -493,6 +509,7 @@ def _save_CUB_result(train_result):
 
 
 def make_configs_list() -> List[Experiment]:
+    # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
     configs = [
         cfgs.multi_inst_cfg,
         cfgs.multi_inst_post_cfg,
@@ -502,18 +519,20 @@ def make_configs_list() -> List[Experiment]:
         cfgs.postpre_cfg,
         copy.deepcopy(cfgs.multi_noreset_cfg),
         copy.deepcopy(cfgs.multi_noreset_post_cfg),
+        copy.deepcopy(cfgs.multi_noreset_post_cfg),
     ]
 
     for cfg in configs:
-        cfg.log_dir = "big_run"
-        cfg.tti_int = 10
+        cfg.tti_int = 0
 
-    configs[6].epochs = [5, 5]
-    # configs[6].batch_size = int(configs[6].batch_size / 2)
-    configs[6].tti_int = 0
-    configs[6].do_sep_train = True
-    configs[6].freeze_post_models = False
-    configs[6].freeze_pre_models = True
+    configs[6].epochs = [50, 50]
+    configs[7].n_models = 4
+    configs[7].batch_size = 8
+    configs[7].epochs = [20, 20]
+    configs[8].epochs = [5, 5]
+    configs[8].do_sep_train = False
+    configs[8].tti_int = 0
+    configs[8].n_models = 1
     return configs
 
     # # Make all output folders specific to this run
@@ -555,7 +574,11 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
-    torch.backends.cudnn.deterministic = True
+    if args.force_determinstic:
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
+        # Set environment variables CUBLAS_WORKSPACE_CONFIG=:4096:8 to avoid cuBLAS errors
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
     
     wandb.init(project="distill_CUB", config=args.__dict__)
 

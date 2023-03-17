@@ -159,6 +159,7 @@ def load_data(
     """
 
     is_training = any(["train.pkl" in f for f in pkl_paths])
+    print(f"Loading data from {pkl_paths} for {'training' if is_training else 'testing'}")
     if is_training:
         transform = transforms.Compose(
             [

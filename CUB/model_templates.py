@@ -3,7 +3,6 @@ InceptionV3 Network modified from https://github.com/pytorch/vision/blob/master/
 New changes: add softmax layer + option for freezing lower layers except fc
 """
 import os
-import random
 import time
 
 import torch

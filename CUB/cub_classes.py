@@ -81,6 +81,7 @@ class Experiment:
     attr_sparsity: int = 1 # Masks out the attributes of examples with likelihood 1 - 1/attr_sparsity
     class_sparsity: int = 1 # Masks out the attributes of all examples of a certain class with likelihood 1 - 1/class_sparsity
     batch_size: int = 64
+    force_deterministic: bool = True
 
     tti_int: int = 10 # Frequency of running TTI during run
 
@@ -119,7 +120,7 @@ class TTI_Config:
     eval_data: str = "test"  # whether to use test or val data
     batch_size: int = 16
     seed: int = 1
-    
+
     use_sigmoid: bool = False
     attr_sparsity: int = 1
 
