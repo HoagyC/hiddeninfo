@@ -55,12 +55,15 @@ def run_epoch(
         for layer in model.modules():
             if isinstance(layer, torch.nn.BatchNorm2d):
                 layer.momentum = 0.1
+                layer.track_running_stats = True
     else:
         model.eval()
         for layer in model.modules():
             # Set momentum to 1 so that running mean/var just use the current batch (its the opposite of usual momentum)
             if isinstance(layer, torch.nn.BatchNorm2d):
                 layer.momentum = 1 
+                layer.track_running_stats = False
+
     if args.report_cross_accuracies:
         cross_accs0 = []
         cross_accs1 = []
@@ -136,7 +139,7 @@ def run_epoch(
             # Collecting the n_model and batch size dimensions into one for the accuracy function
             class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
             meters.label_acc.update(class_acc[0], inputs.size(0))
-
+    
     if args.report_cross_accuracies:
         wandb.log(dict(epoch = epoch, cross_acc0 = np.mean(cross_accs0), cross_acc1 = np.mean(cross_accs1)))
 
@@ -361,6 +364,8 @@ def train_multi(args: Experiment) -> None:
     model: CUB_Multimodel
     if args.load is not None:
         model = torch.load(args.load)
+        assert isinstance(model, Multimodel)
+        model.args = args
         if args.thin:
             assert isinstance(model, ThinMultimodel)
         else:
@@ -420,6 +425,7 @@ def train_switch(args):
         if args.load:
             model = torch.load(args.load)
             assert isinstance(model, JointModel)
+            model.args=args
         else:
             model = JointModel(args)
         train(model, args, n_epochs=args.epochs[0])
@@ -438,6 +444,7 @@ def train_independent(args):
     if args.load:
         model = torch.load(args.load)
         assert isinstance(model, IndependentModel)  
+        model.args = args
     else:   
         model = IndependentModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
@@ -448,6 +455,7 @@ def train_just_XtoC(args):
     if args.load:
         model = torch.load(args.load)
         assert isinstance(model, SequentialModel) or isinstance(model, IndependentModel)
+        model.args = args
     else:
         model = SequentialModel(args, train_mode="XtoC")
     
@@ -458,6 +466,7 @@ def train_sequential(args):
     if args.load:
         model = torch.load(args.load)
         assert isinstance(model, SequentialModel)
+        model.args = args
     else:
         model = SequentialModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
@@ -471,6 +480,7 @@ def train_alternating(args):
             assert isinstance(model, ThinMultimodel)
         else:
             assert isinstance(model, Multimodel)
+        model.args = args
     else:
         if args.thin:
             model = ThinMultimodel(args)
@@ -536,28 +546,15 @@ def _save_CUB_result(train_result):
 def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
     configs = [
-        cfgs.multi_inst_cfg,
         cfgs.multi_inst_post_cfg,
         cfgs.multi_noreset_cfg,
         cfgs.multi_noreset_post_cfg,
         cfgs.prepost_cfg,
         cfgs.postpre_cfg,
-        copy.deepcopy(cfgs.multi_noreset_cfg),
-        copy.deepcopy(cfgs.multi_noreset_post_cfg),
-        copy.deepcopy(cfgs.multi_noreset_post_cfg),
     ]
 
-    for cfg in configs:
-        cfg.tti_int = 0
+    configs[0].report_cross_accuracies = True
 
-    configs[6].epochs = [50, 50]
-    configs[7].n_models = 4
-    configs[7].batch_size = 8
-    configs[7].epochs = [20, 20]
-    configs[8].epochs = [5, 5]
-    configs[8].do_sep_train = False
-    configs[8].tti_int = 0
-    configs[8].n_models = 1
     return configs
 
     # # Make all output folders specific to this run
@@ -599,7 +596,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
-    if args.force_determinstic:
+    if args.force_deterministic:
         torch.backends.cudnn.deterministic = True
         torch.use_deterministic_algorithms(True)
         # Set environment variables CUBLAS_WORKSPACE_CONFIG=:4096:8 to avoid cuBLAS errors

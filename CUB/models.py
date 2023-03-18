@@ -152,13 +152,9 @@ class Multimodel(CUB_Multimodel):
         
         for i, j in enumerate(post_model_indices):
             attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-            # other_attr_pred, other_aux_attr_pred = self.pre_models[j](inputs)
 
             attr_pred_input = torch.cat(attr_pred, dim=1)
             aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
-
-            # other_attr_pred_input = torch.cat(other_attr_pred, dim=1)
-            # other_aux_attr_pred_input = torch.cat(other_aux_attr_pred, dim=1)
 
             # diff = torch.sum(torch.abs(attr_pred_input - other_attr_pred_input))
             # if self.training:
@@ -173,6 +169,8 @@ class Multimodel(CUB_Multimodel):
 
             class_pred = self.post_models[j](attr_pred_input)
             aux_class_pred = self.post_models[j](aux_attr_pred_input)
+
+            other_class_pred = self.post_models[1 - j](attr_pred_input)
     
             attr_preds.append(attr_pred_input)
             aux_attr_preds.append(aux_attr_pred_input)

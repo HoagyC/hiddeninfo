@@ -12,6 +12,7 @@ from CUB.cub_classes import TTI_Config
 from CUB.inference import run_eval
 from CUB.configs import multi_inst_cfg
 from CUB.dataset import load_data
+from CUB.cub_utils import download_from_aws
 
 def get_attrs():
     seq_inst_path = "big_run/seq_inst/20230224-140619/final_model.pth"
@@ -36,6 +37,13 @@ def get_attrs():
 
 def compose_multi(models_list): # List of paths to models
     # Make multimodel from the two joint models
+    for path in models_list:
+         # Check if each path exists, if not, try to download from aws
+        if not os.path.exists(path):
+            has_downloaded = download_from_aws([path])
+            if not has_downloaded:
+                raise FileNotFoundError(f"Could not find {path} and could not download from aws")
+    
     sep_models = [torch.load(model_path) for model_path in models_list]
 
     multimodel = Multimodel(multi_inst_cfg)
@@ -130,4 +138,20 @@ def look_at_activations():
 
 
 if __name__ == "__main__":
-    look_at_activations()
+    joint_timestamps = [
+        "20230310-142237/",
+        "20230310-142319/",
+        "20230310-142350/",
+        "20230310-142359/"
+    ]
+    folder = "big_run/joint_inst_0_1_2_3_4/"
+    joint_paths = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps]
+
+    # compose_multi(joint_paths)
+
+    # Making multiple pairs of multimodels
+    joint_2paths1 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[:2]]
+    joint_2paths2 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[2:]]
+    compose_multi(joint_2paths1)
+    compose_multi(joint_2paths2)
+
