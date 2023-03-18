@@ -86,8 +86,8 @@ def run_epoch(
         if args.report_cross_accuracies:
             assert isinstance(model, CUB_Multimodel)
             assert args.n_models == 2
-            attr_pred0 = model.pre_models[0](inputs)
-            attr_pred1 = model.pre_models[1](inputs)
+            attr_pred0, _ = model.pre_models[0](inputs)
+            attr_pred1, _ = model.pre_models[1](inputs)
             attr_pred_input0 = torch.cat(attr_pred0, dim=1)
             attr_pred_input1 = torch.cat(attr_pred1, dim=1)
 
@@ -547,6 +547,7 @@ def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
     configs = [
         cfgs.multi_inst_post_cfg,
+        copy.deepcopy(cfgs.multi_inst_post_cfg),
         cfgs.multi_noreset_cfg,
         cfgs.multi_noreset_post_cfg,
         cfgs.prepost_cfg,
@@ -554,6 +555,8 @@ def make_configs_list() -> List[Experiment]:
     ]
 
     configs[0].report_cross_accuracies = True
+    configs[1].report_cross_accuracies = True
+    configs[1].seed = 2
 
     return configs
 
