@@ -47,6 +47,7 @@ def run_epoch(
     loader: torch.utils.data.DataLoader,
     meters: Meters,
     is_training: bool,
+    epoch: int = 0,
 ) -> None:
     if is_training:
         # Revert batchnorm to training mode
@@ -60,6 +61,9 @@ def run_epoch(
             # Set momentum to 1 so that running mean/var just use the current batch (its the opposite of usual momentum)
             if isinstance(layer, torch.nn.BatchNorm2d):
                 layer.momentum = 1 
+    if args.report_cross_accuracies:
+        cross_accs0 = []
+        cross_accs1 = []
 
     for data in loader:
         inputs, class_labels, attr_labels, batch_attr_mask = data
@@ -76,6 +80,23 @@ def run_epoch(
         batch_attr_mask = batch_attr_mask.cuda() if torch.cuda.is_available() else batch_attr_mask
         attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, batch_attr_mask)
 
+        if args.report_cross_accuracies:
+            assert isinstance(model, CUB_Multimodel)
+            assert args.n_models == 2
+            attr_pred0 = model.pre_models[0](inputs)
+            attr_pred1 = model.pre_models[1](inputs)
+            attr_pred_input0 = torch.cat(attr_pred0, dim=1)
+            attr_pred_input1 = torch.cat(attr_pred1, dim=1)
+
+            class_pred_cross0 = model.post_models[1](attr_pred_input0)
+            class_pred_cross1 = model.post_models[0](attr_pred_input1)
+
+            class_acc_cross0 = accuracy(class_pred_cross0.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
+            class_acc_cross1 = accuracy(class_pred_cross1.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
+
+            cross_accs0.append(class_acc_cross0[0].item())
+            cross_accs1.append(class_acc_cross1[0].item())
+            
         loss = model.generate_loss(
             attr_preds=attr_preds, 
             aux_attr_preds=aux_attr_preds, 
@@ -116,6 +137,8 @@ def run_epoch(
             class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
             meters.label_acc.update(class_acc[0], inputs.size(0))
 
+    if args.report_cross_accuracies:
+        wandb.log(dict(epoch = epoch, cross_acc0 = np.mean(cross_accs0), cross_acc1 = np.mean(cross_accs1)))
 
 def train(
     model: CUB_Model,
@@ -165,7 +188,8 @@ def train(
             optimizer,
             train_loader,
             train_meters,
-            is_training=True
+            is_training=True,
+            epoch=epoch_ndx,
         )
 
         run_epoch(
@@ -173,7 +197,8 @@ def train(
             optimizer,
             val_loader,
             val_meters,
-            is_training=False
+            is_training=False,
+            epoch=epoch_ndx,
         )
 
         if args.use_test:

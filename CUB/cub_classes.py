@@ -98,7 +98,7 @@ class Experiment:
     n_models: int = 1
     thin: bool = False # Whether to only change the last/first layers of th e
     do_sep_train: bool = True # For basic multimodel runs, whether to train the models separately first
-
+    report_cross_accuracies: bool = False # Whether to report the cross accuracies of the models
 
     quick: bool = False
 
