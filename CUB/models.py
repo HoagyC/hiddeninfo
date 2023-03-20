@@ -48,7 +48,8 @@ def ModelXtoC(args: Experiment) -> nn.Module:
         num_classes=args.num_classes,
         n_attributes=args.n_attributes,
         expand_dim=args.expand_dim,
-        thin_models=args.n_models if args.thin else 0
+        thin_models=args.n_models if args.thin else 0,
+        use_dropout=args.use_pre_dropout,
     )
 
 # Basic model for predicting classes from attributes
@@ -169,8 +170,6 @@ class Multimodel(CUB_Multimodel):
 
             class_pred = self.post_models[j](attr_pred_input)
             aux_class_pred = self.post_models[j](aux_attr_pred_input)
-
-            other_class_pred = self.post_models[1 - j](attr_pred_input)
     
             attr_preds.append(attr_pred_input)
             aux_attr_preds.append(aux_attr_pred_input)

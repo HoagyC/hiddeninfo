@@ -105,6 +105,7 @@ class Experiment:
     model_sigmoid: bool = True
     gen_pred_sigmoid: bool = False
     use_test: bool = False # Whether to also check test accuracy as we go
+    use_pre_dropout: bool = True # Whether to include the dropout function in inceptionv3 pre model
 
     n_alternating: int = 1 # How many times to alternate between pre and post models
     freeze_first: str = "pre" # Whether to freeze the first pre or post model, "pre" or "post"

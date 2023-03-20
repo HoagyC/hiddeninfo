@@ -95,7 +95,8 @@ class Inception3(nn.Module):
         expand_dim,
         aux_logits=True,
         transform_input=False,
-        thin_models=0
+        thin_models=0,
+        use_dropout=True,
     ):
         """
         Args:
@@ -133,6 +134,7 @@ class Inception3(nn.Module):
         self.Mixed_7a = InceptionD(768)
         self.Mixed_7b = InceptionE(1280)
         self.Mixed_7c = InceptionE(2048)
+        self.use_dropout = use_dropout
 
         self.all_fc = (
             nn.ModuleList()
@@ -216,7 +218,8 @@ class Inception3(nn.Module):
         # Adaptive average pooling
         x = F.adaptive_avg_pool2d(x, (1, 1))
         # N x 2048 x 1 x 1
-        x = F.dropout(x, training=self.training)
+        if self.use_dropout:
+            x = F.dropout(x, training=self.training)
         # N x 2048 x 1 x 1
         x = x.view(x.size(0), -1)
         if timing:

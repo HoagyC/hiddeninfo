@@ -141,7 +141,12 @@ def run_epoch(
             meters.label_acc.update(class_acc[0], inputs.size(0))
     
     if args.report_cross_accuracies:
-        wandb.log(dict(epoch = epoch, cross_acc0 = np.mean(cross_accs0), cross_acc1 = np.mean(cross_accs1)))
+        e_type = "train" if is_training else "val"
+        wandb.log({
+            "epoch": epoch, 
+            f"{e_type}_cross_acc0": np.mean(cross_accs0), 
+            f"{e_type}_cross_acc1": np.mean(cross_accs1),
+        })
 
 def train(
     model: CUB_Model,
@@ -557,6 +562,8 @@ def make_configs_list() -> List[Experiment]:
     configs[0].report_cross_accuracies = True
     configs[1].report_cross_accuracies = True
     configs[1].seed = 2
+    configs[0].use_pre_dropout = True
+    configs[1].use_pre_dropout = False
 
     return configs
 
