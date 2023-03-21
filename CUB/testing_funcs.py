@@ -1,6 +1,10 @@
 from datetime import datetime
 import os
 import sys
+from typing import List
+
+from matplotlib import pyplot as plt
+import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -136,22 +140,72 @@ def look_at_activations():
 
     breakpoint()
 
+def concat_wandb_runs():
+    # Concatenate the runs from wandb after training in separate stages
+
+    import wandb
+    api = wandb.Api()
+    project_str = "/distillrepr/distill_CUB/runs/"
+    run_ids = ["k1iluazx", "3qwc211z"]
+    paths = [project_str + run_id for run_id in run_ids]
+
+    # Get the run histories
+    dfs = []
+    for path in paths:
+        run = api.run(path)
+        data = run.history() # Returns a pandas dataframe
+        dfs.append(data)
+
+    # Concatenate them so that the epochs of the second run are after the first, so that the second run starts from epoch (last epoch of first run + 1)
+
+    # Add the total epochs of the first run to the second run's epochs
+    dfs[1]["epoch"] = dfs[1]["epoch"] + dfs[0]["epoch"].max() + 1
+    
+    # Concatenate the two dataframes
+    df = pd.concat(dfs)
+    
+
+    # Graph using matplotlib with the x axis being the epoch and the y axis having "train_acc", "val_acc", "train_cross_acc0"
+
+    # First check that the epochs are in order
+    assert df["epoch"].is_monotonic_increasing
+    # then check that the columns exist as expected
+    assert "train_acc" in df.columns, f"train_acc not in {df.columns}"
+    assert "val_acc" in df.columns, f"val_acc not in {df.columns}"
+    assert "train_cross_acc0" in df.columns, f"train_cross_acc0 not in {df.columns}"
+
+    # train_cross_acc0 is written on different lines to train_acc, so we need to collapse so there's one line for each value of epoch, making sure to ignore NaNs
+    df = df.groupby("epoch").mean()
+
+    # Plot the graph, with the x axis being the epoch and the y axis having "train_acc", "val_acc", "train_cross_acc0"
+    # Note that epoch is the index of the dataframe, so we don't need to specify it
+    df[150:].plot(y=["train_acc", "val_acc", "train_cross_acc0", "val_cross_acc0"])
+    print(df["train_cross_acc0"])
+    
+    # Save figure
+    plt.savefig("images/wandb_concat.png")
+    
 
 if __name__ == "__main__":
-    joint_timestamps = [
-        "20230310-142237/",
-        "20230310-142319/",
-        "20230310-142350/",
-        "20230310-142359/"
+    # joint_timestamps = [
+    #     "20230310-142237/",
+    #     "20230310-142319/",
+    #     "20230310-142350/",
+    #     "20230310-142359/"
+    # ]
+    # folder = "big_run/joint_inst_0_1_2_3_4/"
+    # joint_paths = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps]
+
+    # # compose_multi(joint_paths)
+
+    # # Making multiple pairs of multimodels
+    # joint_2paths1 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[:2]]
+    # joint_2paths2 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[2:]]
+    # compose_multi(joint_2paths1)
+    # compose_multi(joint_2paths2)
+
+    paths = [
+        "out/multiseq_p1.csv",
+        "out/multiseq_p2.csv",
     ]
-    folder = "big_run/joint_inst_0_1_2_3_4/"
-    joint_paths = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps]
-
-    # compose_multi(joint_paths)
-
-    # Making multiple pairs of multimodels
-    joint_2paths1 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[:2]]
-    joint_2paths2 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[2:]]
-    compose_multi(joint_2paths1)
-    compose_multi(joint_2paths2)
-
+    concat_wandb_runs()
