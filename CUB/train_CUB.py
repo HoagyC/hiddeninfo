@@ -11,6 +11,7 @@ from pathlib import Path
 import pickle
 import random
 import sys
+import time
 
 from typing import Iterable, List, Optional, Tuple, Union
 
@@ -35,7 +36,7 @@ from CUB.models import (
 from CUB.cub_classes import TTI_Config, Meters, Experiment, RunRecord, N_CLASSES, N_ATTRIBUTES
 import CUB.configs as cfgs
 
-from CUB.cub_utils import upload_to_aws, get_secrets
+from CUB.cub_utils import upload_to_aws, get_secrets, download_from_aws
 from CUB.tti import run_tti
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
@@ -49,6 +50,9 @@ def run_epoch(
     is_training: bool,
     epoch: int = 0,
 ) -> None:
+    timing = False
+    if timing:
+        start = time.time()
     if is_training:
         # Revert batchnorm to training mode
         model.train()
@@ -68,11 +72,19 @@ def run_epoch(
         cross_accs0 = []
         cross_accs1 = []
 
+    if timing:
+        print("Done epoch setup in {} seconds".format(time.time() - start))
+        start = time.time()
+
     for data in loader:
         inputs, class_labels, attr_labels, batch_attr_mask = data
         if sum(batch_attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
             print("Skipping batch, consider increasing batch size or decreasing sparsity")
             continue
+
+        if timing:
+            print("Received batch in {} seconds".format(time.time() - start))
+            start = time.time()
 
         attr_labels = [i.float() for i in attr_labels]
         attr_labels = torch.stack(attr_labels, dim=1)
@@ -81,7 +93,14 @@ def run_epoch(
         inputs = inputs.cuda() if torch.cuda.is_available() else inputs
         class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
         batch_attr_mask = batch_attr_mask.cuda() if torch.cuda.is_available() else batch_attr_mask
+        if timing:
+            print("Converted batch in {} seconds".format(time.time() - start))
+            start = time.time()
         attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, batch_attr_mask)
+
+        if timing:
+            print("Generated predictions in {} seconds".format(time.time() - start))
+            start = time.time()
 
         if args.report_cross_accuracies:
             assert isinstance(model, CUB_Multimodel)
@@ -109,6 +128,9 @@ def run_epoch(
             class_labels=class_labels,
             mask=batch_attr_mask
         )
+        if timing:
+            print("Generated loss in {} seconds".format(time.time() - start))
+            start = time.time()
         if is_training:
             optimizer.zero_grad()
             loss.backward()
@@ -120,6 +142,10 @@ def run_epoch(
 
 
         meters.loss.update(loss.item(), inputs.size(0))
+
+        if timing:
+            print("Backward pass in {} seconds".format(time.time() - start))
+            start = time.time()
 
         if attr_preds is not None:
             # Note that the first dimension in all outputs is the number of models, then batch size, then the rest of the dimensions
@@ -139,6 +165,10 @@ def run_epoch(
             # Collecting the n_model and batch size dimensions into one for the accuracy function
             class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
             meters.label_acc.update(class_acc[0], inputs.size(0))
+        
+        if timing:
+            print("Finished up batch in {} seconds".format(time.time() - start))
+            start = time.time()
     
     if args.report_cross_accuracies:
         e_type = "train" if is_training else "val"
@@ -442,6 +472,8 @@ def train_switch(args):
         train_alternating(args)
     elif args.exp == "JustXtoC":
         train_just_XtoC(args)
+    elif args.exp == "MultiSequential":
+        train_multi_sequential(args)
     else:
         raise ValueError(f"Experiment type {args.exp} not recognized")
 
@@ -477,6 +509,36 @@ def train_sequential(args):
     train(model, args, n_epochs=args.epochs[0])
     model.train_mode = "CtoY"
     train(model, args, n_epochs=args.epochs[1])
+
+def train_multi_sequential(args: Experiment) -> None:
+    model: CUB_Multimodel
+    if args.load is not None:
+        model = torch.load(args.load)
+        assert isinstance(model, Multimodel)
+        model.args = args
+        if args.thin:
+            assert isinstance(model, ThinMultimodel)
+        else:
+            assert isinstance(model, Multimodel)
+    else:
+        if args.thin:
+            model = ThinMultimodel(args)
+        else:
+            model = Multimodel(args)
+
+    args.class_loss_weight = 0.0
+    model.train_mode = "separate"
+    if args.do_sep_train:
+        elapsed_epochs = train(model, args, n_epochs=args.epochs[0])
+    else:
+        elapsed_epochs = 0
+
+    args.class_loss_weight = 1.0
+    freeze_pre_models(model)
+
+    # model.train_mode = "shuffle" CAREFUL - IT'S NOT SHUFFLING!
+
+    train(model, args, init_epoch=elapsed_epochs, n_epochs=args.epochs[1])
 
 def train_alternating(args):
     if args.load:
@@ -557,6 +619,7 @@ def make_configs_list() -> List[Experiment]:
         cfgs.multi_noreset_post_cfg,
         cfgs.prepost_cfg,
         cfgs.postpre_cfg,
+        cfgs.multi_seq_cfg, # 6
     ]
 
     configs[0].report_cross_accuracies = True
@@ -564,6 +627,10 @@ def make_configs_list() -> List[Experiment]:
     configs[1].seed = 2
     configs[0].use_pre_dropout = True
     configs[1].use_pre_dropout = False
+    configs[6].report_cross_accuracies = True
+    configs[6].do_sep_train = False
+    configs[6].tti_int = 0
+    configs[6].load = "out/multimodel_seq/20230320-185823/latest_model.pth"
 
     return configs
 
@@ -620,6 +687,10 @@ if __name__ == "__main__":
 
     if not run_save_path.is_dir():
         run_save_path.mkdir(parents=True)
+
+    # If the load file does not exist, try downloading from AWS
+    if not os.path.exists(args.load):
+        download_from_aws([args.load])
 
     train_switch(args)
     

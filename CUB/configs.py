@@ -165,6 +165,12 @@ all_frozen = dataclasses.replace(
     freeze_post_models=True,
 )
 
+multi_seq_cfg = dataclasses.replace(
+    multi_inst_cfg,
+    tag="multimodel_seq",
+    exp="MultiSequential",
+)
+
 prepost_cfg = dataclasses.replace(
     multi_inst_cfg,
     exp="Alternating",

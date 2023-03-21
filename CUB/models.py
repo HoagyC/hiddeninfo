@@ -215,7 +215,7 @@ class Multimodel(CUB_Multimodel):
             attr_loss /= len(self.attr_criterion)
             total_attr_loss += attr_loss
     
-        loss = (total_attr_loss * self.args.attr_loss_weight) + total_class_loss
+        loss = (total_attr_loss * self.args.attr_loss_weight) + (total_class_loss * self.args.class_loss_weight)
         return loss
     
 

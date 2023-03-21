@@ -76,6 +76,7 @@ class Experiment:
     optimizer: str = "SGD"
     scheduler_step: int = 1000
     attr_loss_weight: float = 1.0
+    class_loss_weight: float = 1.0
     lr: float = 1e-03
     weight_decay: float = 2e-4
     attr_sparsity: int = 1 # Masks out the attributes of examples with likelihood 1 - 1/attr_sparsity
