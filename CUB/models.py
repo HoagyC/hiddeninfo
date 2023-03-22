@@ -65,6 +65,7 @@ class CUB_Model(nn.Module, ABC):
     def __init__(self):
         super().__init__()
         self.train_mode: str
+        self.args: Experiment
 
     @abstractmethod
     def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None) -> \

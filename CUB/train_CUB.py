@@ -453,35 +453,18 @@ def unfreeze_post_models(model: CUB_Multimodel) -> None:
     for param in model.post_models.parameters():
         param.requires_grad = True
 
-def train_switch(args):
-    if args.exp == "Independent":
-        train_independent(args)
-    elif args.exp == "Joint":
-        if args.load:
-            model = torch.load(args.load)
-            assert isinstance(model, JointModel)
-            model.args=args
-        else:
-            model = JointModel(args)
-        train(model, args, n_epochs=args.epochs[0])
-    elif args.exp == "Multimodel":
-        train_multi(args)
-    elif args.exp == "Sequential":
-        train_sequential(args)
-    elif args.exp == "Alternating":
-        train_alternating(args)
-    elif args.exp == "JustXtoC":
-        train_just_XtoC(args)
-    elif args.exp == "MultiSequential":
-        train_multi_sequential(args)
-    else:
-        raise ValueError(f"Experiment type {args.exp} not recognized")
+def replace_model_properties(model: CUB_Multimodel, args: Experiment) -> None:
+    model.args = args
+    for pre_model in model.pre_models:
+        pre_model.use_dropout = args.use_pre_dropout
+        pre_model.aux_logits = args.use_aux
+
 
 def train_independent(args):
     if args.load:
         model = torch.load(args.load)
         assert isinstance(model, IndependentModel)  
-        model.args = args
+        replace_model_properties(model, args)
     else:   
         model = IndependentModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
@@ -492,7 +475,7 @@ def train_just_XtoC(args):
     if args.load:
         model = torch.load(args.load)
         assert isinstance(model, SequentialModel) or isinstance(model, IndependentModel)
-        model.args = args
+        replace_model_properties(model, args)
     else:
         model = SequentialModel(args, train_mode="XtoC")
     
@@ -503,7 +486,7 @@ def train_sequential(args):
     if args.load:
         model = torch.load(args.load)
         assert isinstance(model, SequentialModel)
-        model.args = args
+        replace_model_properties(model, args)
     else:
         model = SequentialModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
@@ -515,7 +498,7 @@ def train_multi_sequential(args: Experiment) -> None:
     if args.load is not None:
         model = torch.load(args.load)
         assert isinstance(model, Multimodel)
-        model.args = args
+        replace_model_properties(model, args)
         if args.thin:
             assert isinstance(model, ThinMultimodel)
         else:
@@ -547,7 +530,7 @@ def train_alternating(args):
             assert isinstance(model, ThinMultimodel)
         else:
             assert isinstance(model, Multimodel)
-        model.args = args
+        replace_model_properties(model, args)
     else:
         if args.thin:
             model = ThinMultimodel(args)
@@ -608,6 +591,30 @@ def _save_CUB_result(train_result):
     with train_result_path.open("wb") as f:
         print(train_result)
         pickle.dump(train_result, f)
+
+def train_switch(args):
+    if args.exp == "Independent":
+        train_independent(args)
+    elif args.exp == "Joint":
+        if args.load:
+            model = torch.load(args.load)
+            assert isinstance(model, JointModel)
+            model.args=args
+        else:
+            model = JointModel(args)
+        train(model, args, n_epochs=args.epochs[0])
+    elif args.exp == "Multimodel":
+        train_multi(args)
+    elif args.exp == "Sequential":
+        train_sequential(args)
+    elif args.exp == "Alternating":
+        train_alternating(args)
+    elif args.exp == "JustXtoC":
+        train_just_XtoC(args)
+    elif args.exp == "MultiSequential":
+        train_multi_sequential(args)
+    else:
+        raise ValueError(f"Experiment type {args.exp} not recognized")
 
 
 def make_configs_list() -> List[Experiment]:
