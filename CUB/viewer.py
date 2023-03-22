@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PIL import Image
 
-def view_image(data):
+def view_image(data, attr_names):
     """
     Takes an image that has been processed into a CUB dataset and displays it,
     along with its class and attribute labels.
@@ -35,9 +35,6 @@ def view_image(data):
     attribute_certainty = data["attribute_certainty"]
     uncertain_attribute_label = data["uncertain_attribute_label"]
 
-    attr_name_path = "CUB_200_2011/attributes/attributes.txt"
-    with open(attr_name_path, "r") as f:
-        attr_names = f.readlines()
     
     # import pdb; pdb.set_trace()
     # Write the names and whether they are active or not to the right of the image on the plot
@@ -56,12 +53,16 @@ def view_image(data):
 
 if __name__ == "__main__":
     # Load the dataset
-    data_path = "CUB_processed/train.pkl"
-    with open(data_path, "rb") as f:
-        dataset = pickle.load(f)
+    data_path = "CUB_instance_masked/train.pkl"
+    with open(data_path, "rb") as train_data_file:
+        dataset = pickle.load(train_data_file)
+
+    attr_name_path = "CUB_masked_class/attributes.txt"
+    with open(attr_name_path, "r") as attr_name_file:
+        attr_names = attr_name_file.readlines()
     
     # View an image
     while True:
         i = np.random.randint(0, len(dataset))
-        view_image(dataset[i])
-        time.sleep(2)
+        view_image(dataset[i], attr_names)
+        time.sleep(2) # Use this time to quit the program after closing an image

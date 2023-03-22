@@ -630,7 +630,8 @@ def make_configs_list() -> List[Experiment]:
     configs[6].report_cross_accuracies = True
     configs[6].do_sep_train = False
     configs[6].tti_int = 0
-    configs[6].load = "out/multimodel_seq/20230320-185823/latest_model.pth"
+    configs[6].load = "out/multimodel_seq/20230320-185823/final_model.pth"
+    configs[6].use_pre_dropout = False
 
     return configs
 
