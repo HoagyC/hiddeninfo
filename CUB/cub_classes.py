@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 
 BASE_DIR = "/root/hoagy-hiddeninfo-sync"
 
@@ -75,8 +75,8 @@ class Experiment:
     epochs: List[int] = dataclasses.field(default_factory=list)
     optimizer: str = "SGD"
     scheduler_step: int = 1000
-    attr_loss_weight: float = 1.0
-    class_loss_weight: float = 1.0
+    attr_loss_weight: Union[float, List[float]] = 1.0 # If a list, must be same length as n_models
+    class_loss_weight: Union[float, List[float]] = 1.0 # If a list, must be same length as n_models
     lr: float = 1e-03
     weight_decay: float = 2e-4
     attr_sparsity: int = 1 # Masks out the attributes of examples with likelihood 1 - 1/attr_sparsity

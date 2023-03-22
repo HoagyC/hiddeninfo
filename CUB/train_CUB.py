@@ -455,6 +455,7 @@ def unfreeze_post_models(model: CUB_Multimodel) -> None:
 
 def replace_model_properties(model: CUB_Multimodel, args: Experiment) -> None:
     model.args = args
+    model.init_loss_weights(args)
     for pre_model in model.pre_models:
         pre_model.use_dropout = args.use_pre_dropout
         pre_model.aux_logits = args.use_aux
@@ -621,7 +622,6 @@ def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
     configs = [
         cfgs.multi_inst_post_cfg,
-        copy.deepcopy(cfgs.multi_inst_post_cfg),
         cfgs.multi_noreset_cfg,
         cfgs.multi_noreset_post_cfg,
         cfgs.prepost_cfg,
@@ -630,15 +630,13 @@ def make_configs_list() -> List[Experiment]:
     ]
 
     configs[0].report_cross_accuracies = True
-    configs[1].report_cross_accuracies = True
-    configs[1].seed = 2
     configs[0].use_pre_dropout = True
-    configs[1].use_pre_dropout = False
-    configs[6].report_cross_accuracies = True
-    configs[6].do_sep_train = False
-    configs[6].tti_int = 0
-    configs[6].load = "out/multimodel_seq/20230320-185823/final_model.pth"
-    configs[6].use_pre_dropout = False
+    configs[0].attr_loss_weight = [0.5, 2]
+    configs[5].report_cross_accuracies = True
+    configs[5].do_sep_train = False
+    configs[5].tti_int = 0
+    configs[5].load = "out/multimodel_seq/20230320-185823/final_model.pth"
+    configs[5].use_pre_dropout = False
 
     return configs
 
@@ -697,7 +695,7 @@ if __name__ == "__main__":
         run_save_path.mkdir(parents=True)
 
     # If the load file does not exist, try downloading from AWS
-    if not os.path.exists(args.load):
+    if args.load and not os.path.exists(args.load):
         download_from_aws([args.load])
 
     train_switch(args)

@@ -98,6 +98,20 @@ class CUB_Multimodel(CUB_Model):
     def reset_post_models(self):
         pass
 
+    def init_loss_weights(self, args: Experiment) -> None:
+        self.class_loss_weights: List[float]
+        if isinstance(args.class_loss_weight, list):
+            assert len(args.class_loss_weight) == args.n_models
+            self.class_loss_weights = args.class_loss_weight
+        else:
+            self.class_loss_weights = [args.class_loss_weight] * args.n_models
+        
+        self.attr_loss_weights: List[float]
+        if isinstance(args.attr_loss_weight, list):
+            assert len(args.attr_loss_weight) == args.n_models
+            self.attr_loss_weights = args.attr_loss_weight
+        else:
+            self.attr_loss_weights = [args.attr_loss_weight] * args.n_models
 
 class Multimodel(CUB_Multimodel):
     def __init__(self, args: Experiment):
@@ -115,6 +129,7 @@ class Multimodel(CUB_Multimodel):
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
         self.av_diff_same: List[torch.Tensor] = []
         self.av_diff_switch: List[torch.Tensor] = []
+        self.init_loss_weights(args)
 
     def reset_pre_models(self) -> None:
         pre_models_list = [
@@ -200,7 +215,7 @@ class Multimodel(CUB_Multimodel):
             class_loss = self.criterion(class_preds[ndx], class_labels)
             aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
             class_loss += aux_class_loss * self.args.aux_loss_ratio
-            total_class_loss += class_loss
+            total_class_loss += class_loss * self.class_loss_weights[ndx]
             
             attr_loss = 0.
             for i in range(len(self.attr_criterion)):
@@ -214,9 +229,9 @@ class Multimodel(CUB_Multimodel):
                 attr_loss += aux_attr_loss * self.args.aux_loss_ratio
             
             attr_loss /= len(self.attr_criterion)
-            total_attr_loss += attr_loss
+            total_attr_loss += attr_loss * self.attr_loss_weights[ndx]
     
-        loss = (total_attr_loss * self.args.attr_loss_weight) + (total_class_loss * self.args.class_loss_weight)
+        loss = total_attr_loss + total_class_loss
         return loss
     
 
@@ -232,6 +247,7 @@ class SequentialModel(CUB_Model):
         else:
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
 
+        assert not isinstance(args.attr_loss_weight, list)
         self.attr_loss_weight = args.attr_loss_weight
         self.train_mode = train_mode
 
@@ -306,6 +322,7 @@ class JointModel(CUB_Model):
         else:
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
 
+        assert not isinstance(args.attr_loss_weight, list)
         self.attr_loss_weight = args.attr_loss_weight
         self.train_mode = "joint"
         print(self.second_model)
@@ -379,6 +396,7 @@ class IndependentModel(CUB_Model):
         else:
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
 
+        assert not isinstance(args.attr_loss_weight, list)
         self.attr_loss_weight = args.attr_loss_weight
         self.train_mode = train_mode
         self.train()
@@ -467,6 +485,7 @@ class ThinMultimodel(CUB_Multimodel):
             self.attr_criterion = make_weighted_criteria(args)
         else:
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
+        self.init_loss_weights(args)
 
 
     def reset_pre_models(self) -> None:
@@ -541,7 +560,7 @@ class ThinMultimodel(CUB_Multimodel):
             class_loss = self.criterion(class_preds[ndx], class_labels)
             aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
             class_loss += aux_class_loss * self.args.aux_loss_ratio
-            total_class_loss += class_loss
+            total_class_loss += class_loss * self.class_loss_weights[ndx]
             
             attr_loss = 0.
             for i in range(len(self.attr_criterion)):
@@ -555,7 +574,7 @@ class ThinMultimodel(CUB_Multimodel):
                 attr_loss += aux_attr_loss * self.args.aux_loss_ratio
             
             attr_loss /= len(self.attr_criterion)
-            total_attr_loss += attr_loss
+            total_attr_loss += attr_loss * self.attr_loss_weights[ndx]
     
-        loss = (total_attr_loss * self.args.attr_loss_weight) + total_class_loss
+        loss = total_attr_loss + total_class_loss
         return loss
