@@ -400,11 +400,12 @@ def train_multi(args: Experiment) -> None:
     if args.load is not None:
         model = torch.load(args.load)
         assert isinstance(model, Multimodel)
-        model.args = args
         if args.thin:
             assert isinstance(model, ThinMultimodel)
         else:
             assert isinstance(model, Multimodel)
+        replace_model_properties(model, args)
+
     else:
         if args.thin:
             model = ThinMultimodel(args)
@@ -626,17 +627,24 @@ def make_configs_list() -> List[Experiment]:
         cfgs.multi_noreset_post_cfg,
         cfgs.prepost_cfg,
         cfgs.postpre_cfg,
-        cfgs.multi_seq_cfg, # 6
+        cfgs.multi_seq_cfg, # 5
+        copy.deepcopy(cfgs.multi_inst_post_cfg),
+        copy.deepcopy(cfgs.multi_inst_post_cfg),
     ]
 
     configs[0].report_cross_accuracies = True
-    configs[0].use_pre_dropout = True
+    configs[0].use_pre_dropout = False
     configs[0].attr_loss_weight = [0.5, 2]
+
     configs[5].report_cross_accuracies = True
     configs[5].do_sep_train = False
-    configs[5].tti_int = 0
+    configs[5].tti_int = 10
     configs[5].load = "out/multimodel_seq/20230320-185823/final_model.pth"
     configs[5].use_pre_dropout = False
+
+    configs[6].report_cross_accuracies = True
+    configs[6].use_pre_dropout = False
+    configs[6].attr_loss_weight = [0.3, 3]
 
     return configs
 
