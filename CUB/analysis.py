@@ -1,5 +1,7 @@
 import os
 import sys
+from typing import List, Tuple
+
 import sklearn
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,6 +15,7 @@ from sklearn.metrics import (
     balanced_accuracy_score,
     classification_report,
 )
+import torch
 
 from CUB.cub_classes import AverageMeter
 
@@ -341,7 +344,7 @@ class Logger(object):
             self.file.close()
 
 
-def accuracy(output, target, topk=(1,)):
+def accuracy(output: torch.Tensor, target: torch.Tensor, topk: List[int]=[1]) -> List[torch.Tensor]:
     """
     Computes the precision@k for the specified values of k
     output and target are Torch tensors

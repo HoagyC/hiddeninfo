@@ -219,6 +219,15 @@ just_xtoc_cfg = dataclasses.replace(
     exp="JustXtoC"
 )
 
+multi_seq_tti_check_cfg = dataclasses.replace(
+    multi_seq_cfg,
+    report_cross_accuracies = True,
+    do_sep_train = False,
+    tti_int = 10,
+    load = "out/multimodel_seq/20230320-185823/final_model.pth",
+    use_pre_dropout = False,
+)
+
 # Making a new list of configs to test lots of different things
 raw_configs = [
     joint_inst_cfg, 

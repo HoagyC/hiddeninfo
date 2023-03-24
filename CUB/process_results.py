@@ -95,6 +95,7 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
         # Save results and graph
         with open(f"{model_folder}/tti_results.pkl", "wb") as f:
             pickle.dump(results, f)
+        
         upload_files = [f"{model_folder}/tti_results.pkl", f"{model_folder}/tti_results.png"]
         for filename in upload_files:
             upload_to_aws(filename)

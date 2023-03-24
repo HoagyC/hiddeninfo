@@ -51,13 +51,14 @@ def compose_multi(models_list): # List of paths to models
     sep_models = [torch.load(model_path) for model_path in models_list]
 
     multimodel = Multimodel(multi_inst_cfg)
+    breakpoint()
     multimodel.pre_models = nn.ModuleList([model.first_model for model in sep_models])
     multimodel.post_models = nn.ModuleList([model.second_model for model in sep_models])
 
     DATETIME_FMT = "%Y%m%d-%H%M%S"
     now_str = datetime.now().strftime(DATETIME_FMT)
 
-    save_dir = "big_run/multi_inst_joint/" + now_str
+    save_dir = "out/multi_attr_weight/" + now_str
     os.makedirs(save_dir, exist_ok=True)
 
     torch.save(multimodel, os.path.join(save_dir, "final_model.pth"))
@@ -187,25 +188,24 @@ def concat_wandb_runs():
     
 
 if __name__ == "__main__":
-    # joint_timestamps = [
-    #     "20230310-142237/",
-    #     "20230310-142319/",
-    #     "20230310-142350/",
-    #     "20230310-142359/"
-    # ]
-    # folder = "big_run/joint_inst_0_1_2_3_4/"
-    # joint_paths = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps]
+    timestamps = [
+        "20230322-174145/",
+        "20230322-183638/",
+    ]
 
-    # # compose_multi(joint_paths)
+    folder = "out/multimodel_post_inst/"
+    paths = [folder + timestamp + "latest_model.pth" for timestamp in timestamps]
+
+    compose_multi(paths)
 
     # # Making multiple pairs of multimodels
     # joint_2paths1 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[:2]]
     # joint_2paths2 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[2:]]
     # compose_multi(joint_2paths1)
-    # compose_multi(joint_2paths2)
 
-    paths = [
-        "out/multiseq_p1.csv",
-        "out/multiseq_p2.csv",
-    ]
-    concat_wandb_runs()
+
+    # paths = [
+    #     "out/multiseq_p1.csv",
+    #     "out/multiseq_p2.csv",
+    # ]
+    # concat_wandb_runs()

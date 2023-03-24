@@ -113,43 +113,34 @@ def run_eval(args: TTI_Config) -> Eval_Output:
         assert attr_preds.shape == (model.args.n_models, inputs.shape[0], args.n_attributes)    
         attr_preds_sigmoid = torch.nn.Sigmoid()(attr_preds)
 
-        try:
-            for i in range(args.n_attributes):
-                acc = binary_accuracy(
-                    attr_preds_sigmoid[:, :, i].reshape(-1), attr_labels[:, :, i].reshape(-1)
-                )
-                acc = acc.data.cpu().numpy()
-                # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
-                meters.attr_acc_tot.update(acc, inputs.size(0))
-                # keep track of accuracy of individual attributes
-                if args.feature_group_results:
-                    meters.attr_accs[i].update(acc, inputs.size(0))
-        except:
-            import pdb; pdb.set_trace()
-
+        for i in range(args.n_attributes):
+            acc = binary_accuracy(
+                attr_preds_sigmoid[:, :, i].reshape(-1), attr_labels[:, :, i].reshape(-1)
+            )
+            acc = acc.data.cpu().numpy()
+            # acc = accuracy(attr_outputs_sigmoid[i], attr_labels[:, i], topk=(1,))
+            meters.attr_acc_tot.update(acc, inputs.size(0))
+            # keep track of accuracy of individual attributes
+            if args.feature_group_results:
+                meters.attr_accs[i].update(acc, inputs.size(0))
+            
         # Store outputs
         n_examples = inputs.size(0)
 
-        try:
-            all_attr_preds[:, n_seen:n_seen + n_examples] = attr_preds.data.cpu().numpy()
-            all_attr_preds_sigmoid[:, n_seen:n_seen + n_examples] = attr_preds_sigmoid.data.cpu().numpy()
-            all_attr_labels[:, n_seen:n_seen + n_examples] = attr_labels.data.cpu().numpy()
+        all_attr_preds[:, n_seen:n_seen + n_examples] = attr_preds.data.cpu().numpy()
+        all_attr_preds_sigmoid[:, n_seen:n_seen + n_examples] = attr_preds_sigmoid.data.cpu().numpy()
+        all_attr_labels[:, n_seen:n_seen + n_examples] = attr_labels.data.cpu().numpy()
 
-            all_class_labels[:, n_seen:n_seen + n_examples] = class_labels.data.cpu().numpy()
-            all_class_logits[:, n_seen:n_seen + n_examples] = class_preds.detach().cpu().numpy()
-        except ValueError:
-            import pdb; pdb.set_trace()
-        
-        try:
-            # Get and store top K class predictions
-            topk_preds = class_preds.reshape(-1, N_CLASSES).topk(max(K), 1, True, True)[1].reshape(-1, inputs.size(0), max(K))
-            preds = class_preds.reshape(-1, N_CLASSES).topk(1, 1, True, True)[1].reshape(-1, inputs.size(0))
+        all_class_labels[:, n_seen:n_seen + n_examples] = class_labels.data.cpu().numpy()
+        all_class_logits[:, n_seen:n_seen + n_examples] = class_preds.detach().cpu().numpy()
 
-            top_class_preds[:, n_seen:n_seen + n_examples] = preds.detach().cpu().numpy()
-            topk_class_outputs[:, n_seen:n_seen + n_examples] = topk_preds.detach().cpu().numpy()
-            topk_class_labels[:,n_seen:n_seen + n_examples] = class_labels.unsqueeze(2).expand_as(topk_preds).cpu().numpy()
-        except:
-            import pdb; pdb.set_trace()
+        # Get and store top K class predictions
+        topk_preds = class_preds.reshape(-1, N_CLASSES).topk(max(K), 1, True, True)[1].reshape(-1, inputs.size(0), max(K))
+        preds = class_preds.reshape(-1, N_CLASSES).topk(1, 1, True, True)[1].reshape(-1, inputs.size(0))
+
+        top_class_preds[:, n_seen:n_seen + n_examples] = preds.detach().cpu().numpy()
+        topk_class_outputs[:, n_seen:n_seen + n_examples] = topk_preds.detach().cpu().numpy()
+        topk_class_labels[:,n_seen:n_seen + n_examples] = class_labels.unsqueeze(2).expand_as(topk_preds).cpu().numpy()
 
         # np.set_printoptions(threshold=sys.maxsize)
         n_seen += n_examples

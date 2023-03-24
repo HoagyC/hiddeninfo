@@ -112,6 +112,8 @@ class CUB_Multimodel(CUB_Model):
             self.attr_loss_weights = args.attr_loss_weight
         else:
             self.attr_loss_weights = [args.attr_loss_weight] * args.n_models
+        
+        print(f"Class loss weights: {self.class_loss_weights}, attr loss weights: {self.attr_loss_weights}")
 
 class Multimodel(CUB_Multimodel):
     def __init__(self, args: Experiment):
