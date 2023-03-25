@@ -134,8 +134,9 @@ def run_tti(args) -> List[Tuple[int, float, float]]:
         attr_group_dict = pickle.load(open(os.path.join(args.data_dir_raw, "attr_group_dict.pkl"), "rb"))
     else:
         make_basic_tti_objs(args)
+        raw_masked_attr_test_labels = pickle.load(open(os.path.join(args.data_dir_raw, "raw_masked_attr_test_labels.pkl"), "rb"))
+        attr_group_dict = pickle.load(open(os.path.join(args.data_dir_raw, "attr_group_dict.pkl"), "rb"))
     
-
     # Run one epoch, and get the class and concept vector for each image
     eval_output = run_eval(args) # Returns Eval_Output object, bascially namedtuple of np arrays
     
