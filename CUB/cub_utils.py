@@ -130,6 +130,8 @@ def download_folder_from_aws(folder_name: str, force_redownload: bool = False) -
     s3_resource = boto3.resource('s3', aws_access_key_id=secrets["access_key"], aws_secret_access_key=secrets["secret_key"])
     bucket = s3_resource.Bucket(BUCKET_NAME) 
     for obj in bucket.objects.filter(Prefix = folder_name):
+        if not force_redownload and os.path.exists(obj.key):
+            continue
         try:
             if not os.path.exists(os.path.dirname(obj.key)):
                 os.makedirs(os.path.dirname(obj.key))

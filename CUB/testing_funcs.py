@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import shutil
 import sys
 from typing import List
 
@@ -11,12 +12,12 @@ import torch.nn as nn
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from CUB.models import Multimodel
+from CUB.models import Multimodel, CUB_Multimodel
 from CUB.cub_classes import TTI_Config
 from CUB.inference import run_eval
 from CUB.configs import multi_inst_cfg
 from CUB.dataset import load_data
-from CUB.cub_utils import download_from_aws
+from CUB.cub_utils import download_from_aws, download_folder_from_aws
 
 def get_attrs():
     seq_inst_path = "big_run/seq_inst/20230224-140619/final_model.pth"
@@ -185,27 +186,93 @@ def concat_wandb_runs():
     
     # Save figure
     plt.savefig("images/wandb_concat.png")
+
+
+def save_all_premodels(runs_s3_loc: List[str]):
+    '''
+    Downloading the various premodels that are saved in AWS S3,
+    checking their attr_loss_weight and whether they have use_dropout=True,
+    then saving them all in a clearly labelled folder in AWS S3
+    '''
+    new_save_folder = "attr_dropout_base"
+    os.makedirs(new_save_folder, exist_ok=True)
+
+    for run in runs_s3_loc:
+        download_folder_from_aws(run) # Downloads to the same folder as in s3
+        model_path = run + "latest_model.pth"
+        config_pkl = run + "config.pkl"
+        model: CUB_Multimodel
+        model = torch.load(model_path)
+        attr_loss_weight = model.args.attr_loss_weight
+        uses_dropout = model.args.use_pre_dropout
+
+        if not isinstance(attr_loss_weight, list):
+            attr_loss_weight = [attr_loss_weight] * 2 # Models are all n_model=2 but earlier models only had one attr_loss_weight
+        
+        # Save the premodel
+        for ndx, premodel in enumerate(model.pre_models):
+            weight_str = str(attr_loss_weight[ndx]).replace(".", "_")
+            if model.args.exp == "MultiSequential":
+                weight_str = "sep"
+            premodel_folder = f"{new_save_folder}/premodel_attr_loss_weight_{weight_str}_drop_{uses_dropout}"
+            if os.path.exists(premodel_folder):
+                print(f"File {premodel_folder} already exists, skipping")
+                continue
+
+            os.makedirs(premodel_folder, exist_ok=True)
+            config_path = os.path.join(premodel_folder, "config.pkl")
+            shutil.copyfile(config_pkl, config_path)
+
+            premodel_path = os.path.join(premodel_folder, "premodel.pth")
+            torch.save(premodel, premodel_path)
     
 
+
+
 if __name__ == "__main__":
-    timestamps = [
-        "20230322-174145/",
-        "20230322-183638/",
+    run_s3_locs = [
+        "out/multi_attr_loss_weight_0.1,10_drop/20230324-183105/",
+        "out/multi_attr_loss_weight_0.1,10/20230324-183145/",
+        "out/multi_attr_loss_weight_0.2,5_drop/20230324-182851/",
+        "out/multi_attr_loss_weight_0.2,5/20230324-183119/",
+        "out/multi_attr_loss_weight_0.3,3_drop/20230324-180429/",
+        "out/multi_attr_loss_weight_0.5,2_drop/20230324-182823/",
+        "out/multimodel_post_inst/20230323-165608/",
+        "out/multimodel_post_inst/20230323-165611/",
+        "out/multimodel_seq/20230320-185823/", # seq 1 and 1 drop
+        "out/multimodel_post_inst/20230320-124841/", # multi 1 and 1 drop
+        "out/multimodel_post_inst/20230320-130430/", # multi 1 and 1 no drop
     ]
 
-    folder = "out/multimodel_post_inst/"
-    paths = [folder + timestamp + "latest_model.pth" for timestamp in timestamps]
-
-    compose_multi(paths)
-
-    # # Making multiple pairs of multimodels
-    # joint_2paths1 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[:2]]
-    # joint_2paths2 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[2:]]
-    # compose_multi(joint_2paths1)
+    save_all_premodels(run_s3_locs)
 
 
-    # paths = [
-    #     "out/multiseq_p1.csv",
-    #     "out/multiseq_p2.csv",
-    # ]
-    # concat_wandb_runs()
+### Old scripts graveyard
+# timestamps = [
+#     "20230322-174145/",
+#     "20230322-183638/",
+# ]
+
+# folder = "out/multimodel_post_inst/"
+# paths = [folder + timestamp + "latest_model.pth" for timestamp in timestamps]
+
+# compose_multi(paths)
+
+# # Making multiple pairs of multimodels
+# joint_2paths1 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[:2]]
+# joint_2paths2 = [folder + timestamp + "latest_model.pth" for timestamp in joint_timestamps[2:]]
+# compose_multi(joint_2paths1)
+
+
+# paths = [
+#     "out/multiseq_p1.csv",
+#     "out/multiseq_p2.csv",
+# ]
+# concat_wandb_runs()
+
+
+
+
+
+
+
