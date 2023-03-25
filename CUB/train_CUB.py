@@ -113,8 +113,8 @@ def run_epoch(
             class_pred_cross0 = model.post_models[1](attr_pred_input0)
             class_pred_cross1 = model.post_models[0](attr_pred_input1)
 
-            class_acc_cross0 = accuracy(class_pred_cross0.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
-            class_acc_cross1 = accuracy(class_pred_cross1.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
+            class_acc_cross0 = accuracy(class_pred_cross0.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
+            class_acc_cross1 = accuracy(class_pred_cross1.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
 
             cross_accs0.append(class_acc_cross0[0].item())
             cross_accs1.append(class_acc_cross1[0].item())
@@ -163,7 +163,7 @@ def run_epoch(
             if class_preds.shape[1] != class_labels.shape[1]:
                 class_labels=class_labels[batch_attr_mask]
             # Collecting the n_model and batch size dimensions into one for the accuracy function
-            class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=(1,))
+            class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
             meters.label_acc.update(class_acc[0], inputs.size(0))
         
         if timing:
@@ -283,8 +283,9 @@ def train(
                     dict(
                     epoch = epoch_ndx,
                     tti0 = tti_results[0][1],
-                    tti10 = tti_results[10][1],
                     ttilast = tti_results[-1][1],
+                    tti0_top5 = tti_results[0][2],
+                    ttilast_top5 = tti_results[-1][2],
                 )
             )
 
@@ -623,28 +624,43 @@ def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
     configs = [
         cfgs.multi_inst_post_cfg,
-        cfgs.multi_noreset_cfg,
-        cfgs.multi_noreset_post_cfg,
-        cfgs.prepost_cfg,
-        cfgs.postpre_cfg,
-        cfgs.multi_seq_cfg, # 5
         copy.deepcopy(cfgs.multi_inst_post_cfg),
         copy.deepcopy(cfgs.multi_inst_post_cfg),
+        copy.deepcopy(cfgs.multi_inst_post_cfg),
+        copy.deepcopy(cfgs.multi_inst_post_cfg),
+        copy.deepcopy(cfgs.multi_inst_post_cfg),
+        cfgs.multi_seq_cfg,
     ]
 
-    configs[0].report_cross_accuracies = True
-    configs[0].use_pre_dropout = False
-    configs[0].attr_loss_weight = [0.5, 2]
+    for cfg in configs:
+        cfg.report_cross_accuracies = True
 
-    configs[5].report_cross_accuracies = True
-    configs[5].do_sep_train = False
-    configs[5].tti_int = 10
-    configs[5].load = "out/multimodel_seq/20230320-185823/final_model.pth"
+    configs[0].attr_loss_weight = [0.3, 3]
+    configs[0].use_pre_dropout = True
+    configs[0].tag = f"multi_attr_loss_weight_{configs[0].attr_loss_weight[0]},{configs[0].attr_loss_weight[1]}_drop"
+
+    configs[1].attr_loss_weight = [0.5, 2]
+    configs[1].use_pre_dropout = True
+    configs[1].tag = f"multi_attr_loss_weight_{configs[1].attr_loss_weight[0]},{configs[1].attr_loss_weight[1]}_drop"
+
+    configs[2].attr_loss_weight = [0.2, 5]
+    configs[2].use_pre_dropout = True
+    configs[2].tag = f"multi_attr_loss_weight_{configs[2].attr_loss_weight[0]},{configs[2].attr_loss_weight[1]}_drop"
+
+    configs[3].attr_loss_weight = [0.1, 10]
+    configs[3].use_pre_dropout = True
+    configs[3].tag = f"multi_attr_loss_weight_{configs[3].attr_loss_weight[0]},{configs[3].attr_loss_weight[1]}_drop"
+    
+    configs[4].attr_loss_weight = [0.2, 5]
+    configs[4].use_pre_dropout = False
+    configs[4].tag = f"multi_attr_loss_weight_{configs[4].attr_loss_weight[0]},{configs[4].attr_loss_weight[1]}"
+
+    configs[5].attr_loss_weight = [0.1, 10]
     configs[5].use_pre_dropout = False
+    configs[5].tag = f"multi_attr_loss_weight_{configs[5].attr_loss_weight[0]},{configs[5].attr_loss_weight[1]}"
 
-    configs[6].report_cross_accuracies = True
+    configs[6].tag = "multi_seq_no_dropout"
     configs[6].use_pre_dropout = False
-    configs[6].attr_loss_weight = [0.3, 3]
 
     return configs
 
