@@ -36,7 +36,7 @@ from CUB.models import (
 from CUB.cub_classes import TTI_Config, Meters, Experiment, RunRecord, N_CLASSES, N_ATTRIBUTES
 import CUB.configs as cfgs
 
-from CUB.cub_utils import upload_to_aws, get_secrets, download_from_aws
+from CUB.cub_utils import upload_to_aws, get_secrets, download_from_aws, list_aws_files
 from CUB.tti import run_tti
 
 DATETIME_FMT = "%Y%m%d-%H%M%S"
@@ -399,19 +399,9 @@ def make_optimizer(params: Iterable, args: Experiment) -> torch.optim.Optimizer:
 def train_multi(args: Experiment) -> None:
     model: CUB_Multimodel
     if args.load is not None:
-        model = torch.load(args.load)
-        assert isinstance(model, Multimodel)
-        if args.thin:
-            assert isinstance(model, ThinMultimodel)
-        else:
-            assert isinstance(model, Multimodel)
-        replace_model_properties(model, args)
-
+        model = load_model(args, ThinMultimodel if args.thin else Multimodel)
     else:
-        if args.thin:
-            model = ThinMultimodel(args)
-        else:
-            model = Multimodel(args)
+        model = Multimodel(args) if not args.thin else ThinMultimodel(args)
 
     if args.do_sep_train:
         model.train_mode = "separate"
@@ -465,9 +455,7 @@ def replace_model_properties(model: CUB_Multimodel, args: Experiment) -> None:
 
 def train_independent(args):
     if args.load:
-        model = torch.load(args.load)
-        assert isinstance(model, IndependentModel)  
-        replace_model_properties(model, args)
+        model = load_model(args, IndependentModel)
     else:   
         model = IndependentModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
@@ -476,9 +464,7 @@ def train_independent(args):
 
 def train_just_XtoC(args):
     if args.load:
-        model = torch.load(args.load)
-        assert isinstance(model, SequentialModel) or isinstance(model, IndependentModel)
-        replace_model_properties(model, args)
+        model = load_model(args, Union[SequentialModel, IndependentModel])
     else:
         model = SequentialModel(args, train_mode="XtoC")
     
@@ -487,9 +473,7 @@ def train_just_XtoC(args):
 
 def train_sequential(args):
     if args.load:
-        model = torch.load(args.load)
-        assert isinstance(model, SequentialModel)
-        replace_model_properties(model, args)
+        model = load_model(args, SequentialModel)
     else:
         model = SequentialModel(args, train_mode="XtoC")
     train(model, args, n_epochs=args.epochs[0])
@@ -499,18 +483,9 @@ def train_sequential(args):
 def train_multi_sequential(args: Experiment) -> None:
     model: CUB_Multimodel
     if args.load is not None:
-        model = torch.load(args.load)
-        assert isinstance(model, Multimodel)
-        replace_model_properties(model, args)
-        if args.thin:
-            assert isinstance(model, ThinMultimodel)
-        else:
-            assert isinstance(model, Multimodel)
+        model = load_model(args, ThinMultimodel if args.thin else Multimodel)
     else:
-        if args.thin:
-            model = ThinMultimodel(args)
-        else:
-            model = Multimodel(args)
+        model = Multimodel(args) if not args.thin else ThinMultimodel(args)
 
     args.class_loss_weight = 0.0
     model.train_mode = "separate"
@@ -528,17 +503,9 @@ def train_multi_sequential(args: Experiment) -> None:
 
 def train_alternating(args):
     if args.load:
-        model = torch.load(args.load)
-        if args.thin:
-            assert isinstance(model, ThinMultimodel)
-        else:
-            assert isinstance(model, Multimodel)
-        replace_model_properties(model, args)
+        model = load_model(args, ThinMultimodel if args.thin else Multimodel)
     else:
-        if args.thin:
-            model = ThinMultimodel(args)
-        else:
-            model = Multimodel(args)
+        model = Multimodel(args) if not args.thin else ThinMultimodel(args)
     
     assert len(args.epochs) == (args.n_alternating * 2 + int(args.do_sep_train)), \
         f"Number of alternating epochs is {len(args.epochs)} must be {(args.n_alternating * 2 + int(args.do_sep_train))}"
@@ -586,6 +553,14 @@ def run_with_pre_frozen(args, model, epochs, elapsed_epochs=0):
     return model, elapsed_epochs
 
 
+
+def load_model(args, model_type):
+    model = torch.load(args.load)
+    assert isinstance(model, model_type)
+    replace_model_properties(model, args)
+    return model
+
+
 def _save_CUB_result(train_result):
     now_str = datetime.now().strftime(DATETIME_FMT)
     train_result_path = RESULTS_DIR / train_result.tag / now_str / "train-result.pickle"
@@ -622,45 +597,17 @@ def train_switch(args):
 
 def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
-    configs = [
-        cfgs.multi_inst_post_cfg,
-        copy.deepcopy(cfgs.multi_inst_post_cfg),
-        copy.deepcopy(cfgs.multi_inst_post_cfg),
-        copy.deepcopy(cfgs.multi_inst_post_cfg),
-        copy.deepcopy(cfgs.multi_inst_post_cfg),
-        copy.deepcopy(cfgs.multi_inst_post_cfg),
-        cfgs.multi_seq_cfg,
-    ]
+    configs = []
 
-    for cfg in configs:
-        cfg.report_cross_accuracies = True
+    for ndx in range(20):
+        configs.append(copy.deepcopy(cfgs.multi_inst_post_cfg))
+        configs[-1].tag += f"_attr_loss_weight_{ndx}"
+        configs[-1].attr_loss_weight = ndx / 10
+        configs[-1].report_cross_accuracies = False
+        configs[-1].n_models = 1
+        configs[-1].do_sep_train = False
+        configs[-1].load = "attr_dropout_base/premodel_attr_loss_weight_0_1_drop_False/base_model.pth"
 
-    configs[0].attr_loss_weight = [0.3, 3]
-    configs[0].use_pre_dropout = True
-    configs[0].tag = f"multi_attr_loss_weight_{configs[0].attr_loss_weight[0]},{configs[0].attr_loss_weight[1]}_drop"
-
-    configs[1].attr_loss_weight = [0.5, 2]
-    configs[1].use_pre_dropout = True
-    configs[1].tag = f"multi_attr_loss_weight_{configs[1].attr_loss_weight[0]},{configs[1].attr_loss_weight[1]}_drop"
-
-    configs[2].attr_loss_weight = [0.2, 5]
-    configs[2].use_pre_dropout = True
-    configs[2].tag = f"multi_attr_loss_weight_{configs[2].attr_loss_weight[0]},{configs[2].attr_loss_weight[1]}_drop"
-
-    configs[3].attr_loss_weight = [0.1, 10]
-    configs[3].use_pre_dropout = True
-    configs[3].tag = f"multi_attr_loss_weight_{configs[3].attr_loss_weight[0]},{configs[3].attr_loss_weight[1]}_drop"
-    
-    configs[4].attr_loss_weight = [0.2, 5]
-    configs[4].use_pre_dropout = False
-    configs[4].tag = f"multi_attr_loss_weight_{configs[4].attr_loss_weight[0]},{configs[4].attr_loss_weight[1]}"
-
-    configs[5].attr_loss_weight = [0.1, 10]
-    configs[5].use_pre_dropout = False
-    configs[5].tag = f"multi_attr_loss_weight_{configs[5].attr_loss_weight[0]},{configs[5].attr_loss_weight[1]}"
-
-    configs[6].tag = "multi_seq_no_dropout"
-    configs[6].use_pre_dropout = False
 
     return configs
 

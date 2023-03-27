@@ -123,7 +123,7 @@ def make_basic_tti_objs(args) -> None:
         pickle.dump(attr_group_dict, f)
     
 
-def run_tti(args) -> List[Tuple[int, float, float]]:
+def run_tti(args: TTI_Config) -> List[Tuple[int, float, float]]:
     """
     Returns pairs of (n, score) where n is a number of attributes
     and score is the accuracy when n attributes are intervened on
@@ -253,7 +253,7 @@ def run_tti(args) -> List[Tuple[int, float, float]]:
             class_acc_top5 = np.mean(correct_top5_t)
             all_class_acc_top5.append(class_acc_top5 * 100) # convert to percent
 
-            if args.multimodel:
+            if args.multimodel and model.args.n_models > 1:
                 _, mix_predictions = class_outputs_mix.topk(k=1, dim=1)
                 mix_predictions = mix_predictions.data.cpu().numpy().squeeze()
                 if ndx == 0:
