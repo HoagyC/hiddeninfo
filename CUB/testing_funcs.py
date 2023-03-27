@@ -17,7 +17,7 @@ from CUB.cub_classes import TTI_Config
 from CUB.inference import run_eval
 from CUB.configs import multi_inst_cfg
 from CUB.dataset import load_data
-from CUB.cub_utils import download_from_aws, download_folder_from_aws
+from CUB.cub_utils import download_from_aws, download_folder_from_aws, upload_to_aws
 
 def get_attrs():
     seq_inst_path = "big_run/seq_inst/20230224-140619/final_model.pth"
@@ -205,6 +205,8 @@ def save_all_premodels(runs_s3_loc: List[str]):
         model = torch.load(model_path)
         attr_loss_weight = model.args.attr_loss_weight
         uses_dropout = model.args.use_pre_dropout
+        
+        print(f"Model {model_path} has attr_loss_weight {attr_loss_weight} and uses_dropout {uses_dropout}")
 
         if not isinstance(attr_loss_weight, list):
             attr_loss_weight = [attr_loss_weight] * 2 # Models are all n_model=2 but earlier models only had one attr_loss_weight
@@ -214,17 +216,24 @@ def save_all_premodels(runs_s3_loc: List[str]):
             weight_str = str(attr_loss_weight[ndx]).replace(".", "_")
             if model.args.exp == "MultiSequential":
                 weight_str = "sep"
-            premodel_folder = f"{new_save_folder}/premodel_attr_loss_weight_{weight_str}_drop_{uses_dropout}"
-            if os.path.exists(premodel_folder):
-                print(f"File {premodel_folder} already exists, skipping")
+            model_folder = f"{new_save_folder}/premodel_attr_loss_weight_{weight_str}_drop_{uses_dropout}"
+            if os.path.exists(model_folder):
+                print(f"File {model_folder} already exists, skipping")
                 continue
 
-            os.makedirs(premodel_folder, exist_ok=True)
-            config_path = os.path.join(premodel_folder, "config.pkl")
+            os.makedirs(model_folder, exist_ok=True)
+            config_path = os.path.join(model_folder, "config.pkl")
             shutil.copyfile(config_pkl, config_path)
 
-            premodel_path = os.path.join(premodel_folder, "premodel.pth")
-            torch.save(premodel, premodel_path)
+            model_path = os.path.join(model_folder, "base_model.pth")
+            args = model.args
+            args.n_models = 1
+            args.attr_loss_weight = attr_loss_weight[ndx]
+            args.use_pre_dropout = uses_dropout
+
+            new_model = Multimodel(args)
+            new_model.pre_models = nn.ModuleList([premodel])
+            torch.save(model, model_path)
     
 
 
@@ -237,14 +246,16 @@ if __name__ == "__main__":
         "out/multi_attr_loss_weight_0.2,5/20230324-183119/",
         "out/multi_attr_loss_weight_0.3,3_drop/20230324-180429/",
         "out/multi_attr_loss_weight_0.5,2_drop/20230324-182823/",
-        "out/multimodel_post_inst/20230323-165608/",
-        "out/multimodel_post_inst/20230323-165611/",
+        "out/multimodel_post_inst/20230323-165608/", # [0.5, 2] no drop
+        "out/multimodel_post_inst/20230323-165611/", # [0.3, 3] no drop
         "out/multimodel_seq/20230320-185823/", # seq 1 and 1 drop
+        "out/multi_seq_no_dropout/20230325-174548/", # seq 1 and 1 no drop
         "out/multimodel_post_inst/20230320-124841/", # multi 1 and 1 drop
         "out/multimodel_post_inst/20230320-130430/", # multi 1 and 1 no drop
     ]
 
     save_all_premodels(run_s3_locs)
+    upload_to_aws("attr_dropout_base")
 
 
 ### Old scripts graveyard
