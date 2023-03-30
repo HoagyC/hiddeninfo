@@ -35,12 +35,17 @@ def squeeze(x: Optional[torch.Tensor], dim: int = 0):
     return x.squeeze(dim)
 
 # Basic model for predicting attributes from images
-def ModelXtoC(args: Experiment) -> nn.Module:
+def ModelXtoC(args: Experiment, use_dropout: Optional[bool] = None) -> nn.Module:
     """
     Model for predicting attributes from images.
     Takes in an image and outputs a list of outputs for each attribute,
     where the output is a vector of size (batch_size, 1).
     """
+    if use_dropout is None:
+        assert isinstance(args.use_pre_dropout, bool)
+        use_dropout = args.use_pre_dropout
+
+    print("Using Inception v3 with dropout: ", use_dropout)
     return inception_v3(
         pretrained=args.pretrained,
         freeze=False,
@@ -49,7 +54,7 @@ def ModelXtoC(args: Experiment) -> nn.Module:
         n_attributes=args.n_attributes,
         expand_dim=args.expand_dim,
         thin_models=args.n_models if args.thin else 0,
-        use_dropout=args.use_pre_dropout,
+        use_dropout=use_dropout,
     )
 
 # Basic model for predicting classes from attributes
@@ -112,6 +117,13 @@ class CUB_Multimodel(CUB_Model):
             self.attr_loss_weights = args.attr_loss_weight
         else:
             self.attr_loss_weights = [args.attr_loss_weight] * args.n_models
+
+        self.dropouts: List[bool]
+        if isinstance(args.use_pre_dropout, list):
+            assert len(args.use_pre_dropout) == args.n_models
+            self.dropouts = args.use_pre_dropout
+        else:   
+            self.dropouts = [args.use_pre_dropout] * args.n_models
         
         print(f"Class loss weights: {self.class_loss_weights}, attr loss weights: {self.attr_loss_weights}")
 
@@ -121,6 +133,7 @@ class Multimodel(CUB_Multimodel):
         self.args = args
         self.pre_models: nn.ModuleList
         self.post_models: nn.ModuleList
+        self.init_loss_weights(args)
         self.reset_pre_models()
         self.reset_post_models()
         self.train_mode: str = "separate"
@@ -131,12 +144,11 @@ class Multimodel(CUB_Multimodel):
             self.attr_criterion = [torch.nn.CrossEntropyLoss() for _ in range(args.n_attributes)]
         self.av_diff_same: List[torch.Tensor] = []
         self.av_diff_switch: List[torch.Tensor] = []
-        self.init_loss_weights(args)
 
     def reset_pre_models(self) -> None:
         pre_models_list = [
-            ModelXtoC(self.args)
-            for _ in range(self.args.n_models)
+            ModelXtoC(self.args, use_dropout=self.dropouts[i])
+            for i in range(self.args.n_models)
         ]
         self.pre_models = nn.ModuleList(pre_models_list)
 

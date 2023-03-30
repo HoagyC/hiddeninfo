@@ -121,8 +121,6 @@ def download_from_aws(files: List[str], force_redownload: bool = False) -> bool:
             all_correct = False
 
     return all_correct
-    
-
 
 
 def download_folder_from_aws(folder_name: str, force_redownload: bool = False) -> None:

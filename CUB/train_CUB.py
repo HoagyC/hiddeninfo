@@ -482,12 +482,12 @@ def train_sequential(args):
 
 def train_multi_sequential(args: Experiment) -> None:
     model: CUB_Multimodel
+    args.class_loss_weight = 0.0
     if args.load is not None:
         model = load_model(args, ThinMultimodel if args.thin else Multimodel)
     else:
         model = Multimodel(args) if not args.thin else ThinMultimodel(args)
 
-    args.class_loss_weight = 0.0
     model.train_mode = "separate"
     if args.do_sep_train:
         elapsed_epochs = train(model, args, n_epochs=args.epochs[0])
@@ -496,7 +496,7 @@ def train_multi_sequential(args: Experiment) -> None:
 
     args.class_loss_weight = 1.0
     freeze_pre_models(model)
-
+    model.init_loss_weights(args)
     # model.train_mode = "shuffle" CAREFUL - IT'S NOT SHUFFLING!
 
     train(model, args, init_epoch=elapsed_epochs, n_epochs=args.epochs[1])
@@ -597,43 +597,11 @@ def train_switch(args):
 
 def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
-    configs = []
-
-    for ndx in range(20):
-        configs.append(copy.deepcopy(cfgs.multi_inst_post_cfg))
-        configs[-1].tag += f"_attr_loss_weight_{ndx}"
-        configs[-1].attr_loss_weight = ndx / 10
-        configs[-1].report_cross_accuracies = False
-        configs[-1].n_models = 1
-        configs[-1].do_sep_train = False
-        configs[-1].load = "attr_dropout_base/premodel_attr_loss_weight_0_1_drop_False/base_model.pth"
-
+    configs = [cfgs.multi_noreset_post_cfg]
+    configs[0].use_pre_dropout = [False, True]
+    configs[0].report_cross_accuracies = True
 
     return configs
-
-    # # Make all output folders specific to this run
-    # for cfg in configs:
-    #     cfg.log_dir = "big_run"
-    #     cfg.tag += "_sparse"
-    #     cfg.attr_sparsity = 5
-
-    #     # If attrs are sparse, can increase batch if not training end-to-end
-    #     if cfg.exp in ["Sequential", "Independent"]:
-    #         cfg.batch_size *= cfg.attr_sparsity
-
-    # joint_configs = [
-    #     copy.deepcopy(cfgs.joint_inst_cfg) for _ in range(5)
-    # ]
-    # for i, cfg in enumerate(joint_configs):
-    #     cfg.log_dir = "big_run"
-    #     cfg.tag += f"_{i}"
-    
-    # seq_configs = [copy.deepcopy(cfgs.just_xtoc_cfg) for _ in range(5)]
-    # for i, cfg in enumerate(seq_configs):
-    #     cfg.log_dir = "big_run"
-    #     cfg.tag += f"_{i}"
-
-    # return joint_configs + seq_configs
 
 
 if __name__ == "__main__":

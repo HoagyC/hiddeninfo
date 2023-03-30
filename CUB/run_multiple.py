@@ -143,4 +143,5 @@ if __name__ == "__main__":
     elif len(sys.argv) > 1 and sys.argv[1] == "run":
         run_multiple(n_start)
     else:
-        print("Invalid command. Valid commands are: sync, setup, kill, run")
+        print(
+            "Invalid command. Valid commands are: sync, setup, kill, run")
