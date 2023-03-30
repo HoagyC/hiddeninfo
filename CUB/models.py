@@ -177,34 +177,32 @@ class Multimodel(CUB_Multimodel):
         else:
             raise ValueError(f"Invalid train mode {self.train_mode}")
         
-        if not hasattr(self, "av_diff_same"):
-            self.av_diff_same = []
-            self.av_diff_switch = []
-        
-        for i, j in enumerate(post_model_indices):
-            attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-
-            attr_pred_input = torch.cat(attr_pred, dim=1)
-            aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
-
-            # diff = torch.sum(torch.abs(attr_pred_input - other_attr_pred_input))
-            # if self.training:
-            #     if i == j:
-            #         self.av_diff_same.append(diff.detach())
-            #     else:
-            #         self.av_diff_switch.append(diff.detach())
+        if self.train_mode == "average":
+            for pre_model in self.pre_models:
+                attr_pred, aux_attr_pred = pre_model(inputs)
+                attr_preds.append(attr_pred)
+                aux_attr_preds.append(aux_attr_pred)
             
-            # if len(self.av_diff_switch) % 100 == 0 and self.training and len(self.av_diff_switch) > 0:
-            #     print(f"Average diff same: {torch.mean(torch.stack(self.av_diff_same))}")
-            #     print(f"Average diff switch: {torch.mean(torch.stack(self.av_diff_switch))}")
+            attr_preds_input = torch.stack(attr_preds).mean(dim=0)
+            aux_attr_preds_input = torch.stack(aux_attr_preds).mean(dim=0)
+            for post_model in self.post_models:
+                class_preds.append(post_model(attr_preds_input))
+                aux_class_preds.append(post_model(aux_attr_preds_input))
 
-            class_pred = self.post_models[j](attr_pred_input)
-            aux_class_pred = self.post_models[j](aux_attr_pred_input)
-    
-            attr_preds.append(attr_pred_input)
-            aux_attr_preds.append(aux_attr_pred_input)
-            class_preds.append(class_pred)
-            aux_class_preds.append(aux_class_pred)
+        else:
+            for i, j in enumerate(post_model_indices):
+                attr_pred, aux_attr_pred = self.pre_models[i](inputs)
+
+                attr_pred_input = torch.cat(attr_pred, dim=1)
+                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
+
+                class_pred = self.post_models[j](attr_pred_input)
+                aux_class_pred = self.post_models[j](aux_attr_pred_input)
+        
+                attr_preds.append(attr_pred_input)
+                aux_attr_preds.append(aux_attr_pred_input)
+                class_preds.append(class_pred)
+                aux_class_preds.append(aux_class_pred)
 
         return torch.stack(attr_preds), torch.stack(aux_attr_preds), torch.stack(class_preds), torch.stack(aux_class_preds)
     

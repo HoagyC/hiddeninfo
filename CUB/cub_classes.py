@@ -83,6 +83,7 @@ class Experiment:
     class_sparsity: int = 1 # Masks out the attributes of all examples of a certain class with likelihood 1 - 1/class_sparsity
     batch_size: int = 64
     force_deterministic: bool = True
+    use_averaging: bool = False
 
     tti_int: int = 10 # Frequency of running TTI during run
 

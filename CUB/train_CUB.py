@@ -597,10 +597,18 @@ def train_switch(args):
 
 def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
-    configs = [cfgs.multi_noreset_post_cfg]
-    configs[0].use_pre_dropout = [False, True]
-    configs[0].report_cross_accuracies = True
-
+    alt_cfg = dataclasses.replace(
+        cfgs.multi_inst_cfg,
+        exp="Alternating",
+        tag="pre_post_0.2nd,1.0nd",
+        n_alternating=1,
+        freeze_first="pre",
+        epochs = [50, 50],
+        alternating_reset=False,
+        do_sep_train=False,
+        load="out/multi_attr_weight/20230330-163624/final_model.pth"
+    )
+    configs = [alt_cfg]
     return configs
 
 
