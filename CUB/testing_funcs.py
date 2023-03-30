@@ -1,9 +1,13 @@
 from datetime import datetime
+import functools
+import itertools
 import os
+import pickle
 import shutil
 import sys
 from typing import List
 
+import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd
 
@@ -39,34 +43,23 @@ def get_attrs():
     seq_eval =run_eval(seq_tti_config)
     print("Joint inst")
 
-def compose_premodels(models_list):
-    for path in models_list:
+def download_model_locs(model_locs):
+    for path in model_locs:
          # Check if each path exists, if not, try to download from aws
         if not os.path.exists(path):
             has_downloaded = download_from_aws([path])
             if not has_downloaded:
                 raise FileNotFoundError(f"Could not find {path} and could not download from aws")
+
+def compose_multimodels(models_list):
+    download_model_locs(models_list)
 
     sep_models = [torch.load(model_path) for model_path in models_list]
     multimodel = Multimodel(multi_inst_cfg) 
 
     # Compose the different model.pre_model objects, which are nn.Modulelist objects into the new multimodel
-    
-def compose_multi(models_list): # List of paths to models
-    # Make multimodel from the two joint models
-    for path in models_list:
-         # Check if each path exists, if not, try to download from aws
-        if not os.path.exists(path):
-            has_downloaded = download_from_aws([path])
-            if not has_downloaded:
-                raise FileNotFoundError(f"Could not find {path} and could not download from aws")
-    
-    sep_models = [torch.load(model_path) for model_path in models_list]
-
-    multimodel = Multimodel(multi_inst_cfg)
-    breakpoint()
-    multimodel.pre_models = nn.ModuleList([model.first_model for model in sep_models])
-    multimodel.post_models = nn.ModuleList([model.second_model for model in sep_models])
+    multimodel.pre_models = functools.reduce(lambda x, y: x + y, [m.pre_models for m in sep_models], nn.ModuleList())
+    multimodel.post_models = functools.reduce(lambda x, y: x + y, [m.post_models for m in sep_models], nn.ModuleList())
 
     DATETIME_FMT = "%Y%m%d-%H%M%S"
     now_str = datetime.now().strftime(DATETIME_FMT)
@@ -75,6 +68,92 @@ def compose_multi(models_list): # List of paths to models
     os.makedirs(save_dir, exist_ok=True)
 
     torch.save(multimodel, os.path.join(save_dir, "final_model.pth"))
+
+
+def get_concept_entropy(loader: DataLoader):
+    # Get the per-concept entropy of the dataset
+    device = torch.device("cpu")
+
+    all_labels = torch.zeros((len(loader.dataset), 109), dtype=torch.float32) # type: ignore 
+
+    n_examples = 0
+    for batch in loader:
+        _, _, attr_labels, _ = batch
+        attr_labels = [i.float() for i in attr_labels]
+        attr_labels = torch.stack(attr_labels, dim=1)
+        attr_labels = attr_labels.to(device)
+        all_labels[n_examples:n_examples + attr_labels.shape[0]] = attr_labels
+    
+        n_examples += attr_labels.shape[0]
+    
+    # Now we have all the labels, we can get the entropy
+    # Get the number of examples per concept
+    concept_counts = all_labels.sum(dim=0)
+    concept_probs = concept_counts / len(loader.dataset) # type: ignore
+
+    # Add/subtract a small number if prob = 0 or prob = 1 to avoid log(0)
+    concept_probs[concept_probs == 0] = 1e-6
+    concept_probs[concept_probs == 1] = 1 - 1e-6
+    concept_true_entropy = -concept_probs * torch.log2(concept_probs)
+    concept_false_entropy = -(1 - concept_probs) * torch.log2(1 - concept_probs)
+
+    concept_entropy = concept_true_entropy + concept_false_entropy
+    return concept_entropy
+
+def entropy_test_fn(prob: np.ndarray):
+    # Testing function for the entropy calcs
+    # Should be near 0 at 0 or 1, =1 at 0.5, and convex in between
+    concept_true_entropy = -prob * np.log2(prob)
+    concept_false_entropy = -(1 - prob) * np.log2(1 - prob)
+
+    concept_entropy = concept_true_entropy + concept_false_entropy
+
+    return concept_entropy
+    
+def compose_multi(models_list: List[str], tag: str = "multi_attr_weight"): # List of paths to models
+    # Make multimodel from the two joint models
+    download_model_locs(models_list)
+    
+    sep_models = [torch.load(model_path) for model_path in models_list]
+
+    multimodel = Multimodel(multi_inst_cfg)
+    multimodel.pre_models = nn.ModuleList([model.first_model for model in sep_models])
+    multimodel.post_models = nn.ModuleList([model.second_model for model in sep_models])
+
+    DATETIME_FMT = "%Y%m%d-%H%M%S"
+    now_str = datetime.now().strftime(DATETIME_FMT)
+
+    save_dir = os.path.join("out", tag, now_str)
+    os.makedirs(save_dir, exist_ok=True)
+
+    torch.save(multimodel, os.path.join(save_dir, "final_model.pth"))
+
+def get_diffs_by_concept(dataloader: DataLoader, seq_model: Multimodel, joint_model: Multimodel):
+    # Check where the largest difference between the two models is, in terms of their concept vectors
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    n_examples = 0
+    diffs = torch.zeros(joint_model.args.n_attributes).to(device)
+
+    with torch.no_grad():
+        for batch in dataloader:
+            inputs, _, _, _ = batch # class_labels, attr_labels, mask
+
+            inputs = inputs.to(device)
+
+            seq_concepts, _ = seq_model.pre_models[0](inputs) # Blank is the aux preds
+            seq_concepts = torch.cat(seq_concepts, dim=1)
+
+            joint_concepts, _ = joint_model.pre_models[0](inputs) # Blank is the aux preds
+            joint_concepts = torch.cat(joint_concepts, dim=1)
+
+            diff = (seq_concepts - joint_concepts).abs().mean(dim=0) # Getting the average absolute difference for each concept
+            diffs += diff
+            n_examples += inputs.shape[0]
+    
+    diffs /= n_examples
+    return diffs.to("cpu").numpy()
+    
 
 
 def look_at_activations():
@@ -364,12 +443,89 @@ def test_separation(model_loc, args: Experiment):
 
     print(f"Accuracy: {correct / total}")
 
+def make_loader(loader_loc: str):
+    args = multi_inst_cfg
+    return load_data([loader_loc], args)
+
 
 if __name__ == "__main__":
-    model_loc = "out/multimodel_post_inst/20230320-130430/latest_model.pth"
-    args = multi_inst_cfg
+    if sys.argv[1] == "compose":
+        model_locs = [
+            "attr_dropout_base/premodel_attr_loss_weight_0_2_drop_False/base_model.pth",
+            "attr_dropout_base/premodel_attr_loss_weight_1_0_drop_False/base_model.pth"
+        ]
+        compose_multimodels(model_locs)
+    elif sys.argv[1] == "test_diffs":
+        # Test the differences between the models
 
-    test_separation(model_loc, args)
+        # Load the seq model
+        seq_model_loc = "attr_dropout_base/premodel_attr_loss_weight_sep_drop_False/base_model.pth"
+
+        train_loader = make_loader("CUB_instance_masked/train.pkl")
+        val_loader = make_loader("CUB_instance_masked/val.pkl")  
+                           
+        download_model_locs([seq_model_loc])
+        seq_model = torch.load(seq_model_loc)
+
+        entropies = get_concept_entropy(train_loader)
+
+        dropouts = ["False", "True"]
+        weights = ["0_1","0_2", "0_3", "0_5", "1_0", "2", "3", "5", "10"]
+        results = []
+
+        for (weight, dropout) in itertools.product(weights, dropouts):
+            # Load the solo model
+            solo_model_loc = f"attr_dropout_base/premodel_attr_loss_weight_{weight}_drop_{dropout}/base_model.pth"
+            download_model_locs([solo_model_loc])
+            solo_model = torch.load(solo_model_loc)
+
+            # Test the difference in the premodels
+            train_diff = get_diffs_by_concept(train_loader, seq_model, solo_model)
+            val_diff = get_diffs_by_concept(val_loader, seq_model, solo_model)
+
+            # Get the correlation coefficients between the differences and the concept entropies
+            train_coef = np.corrcoef(entropies, train_diff)[0, 1]
+            val_coef = np.corrcoef(entropies, val_diff)[0, 1]
+
+            results.append((weight, dropout, train_coef, val_coef))
+
+            del solo_model
+
+            print(f"Done with weight {weight}, dropout {dropout}")
+
+        print(results)
+        os.makedirs("out", exist_ok=True)
+        pickle.dump(results, open("out/attr_loss_weight_diffs.pkl", "wb"))
+        upload_to_aws("out/attr_loss_weight_diffs.pkl")
+    
+    elif sys.argv[1] == "plot_ent_graph":
+        results = pickle.load(open("out/attr_loss_weight_diffs.pkl", "rb"))
+
+        # Plotting a bar graph with the results for train and val correlations
+        weights = ["0_1","0_2", "0_3", "0_5", "1_0", "2", "3", "5", "10"]
+        dropouts = ["False", "True"]
+
+        labels = [f"{x[0]}_{x[1]}" for x in results]
+        train_corrs = [x[2] for x in results]
+        val_corrs = [x[3] for x in results]
+
+        plt.figure(figsize=(9, 8))
+        plt.bar(range(len(results)), train_corrs, width=0.2, label="Train")
+
+        # Put labels on xaxis of bar graph
+        plt.xticks(range(len(results)), labels, rotation=45)
+
+        plt.bar([x + 0.2 for x in range(len(results))], val_corrs, width=0.2, label="Val")
+        plt.legend()
+
+        plt.title("Correlation between concept entropy and difference in premodel predictions") 
+        plt.xlabel("Premodel parameters")
+        plt.ylabel("Correlation coefficient")
+
+        plt.savefig("out/attr_loss_weight_diffs.png")
+        upload_to_aws("out/attr_loss_weight_diffs.png")
+
+    
 
 ### Old scripts graveyard
 # timestamps = [
@@ -411,3 +567,9 @@ if __name__ == "__main__":
 
 # save_all_premodels(run_s3_locs)
 # upload_to_aws("attr_dropout_base")
+
+
+# model_loc = "out/multimodel_post_inst/20230320-130430/latest_model.pth"
+# args = multi_inst_cfg
+
+# test_separation(model_loc, args)
