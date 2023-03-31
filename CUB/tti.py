@@ -16,7 +16,7 @@ from matplotlib.figure import Figure
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from CUB.cub_classes import Experiment, TTI_Output, N_CLASSES, N_ATTRIBUTES_RAW
+from CUB.cub_classes import Experiment, TTI_Output, N_CLASSES, N_ATTRIBUTES_RAW, N_ATTRIBUTES
 from CUB.inference import run_eval
 
 def get_stage2_pred(a_hat, model):
@@ -149,7 +149,7 @@ def run_tti(args: Experiment) -> List[Tuple[int, float, float]]:
         ptl_95 = ddict(lambda: args.intervene_vals[1])
 
     else:
-        for attr_idx in range(args.n_attributes):
+        for attr_idx in range(N_ATTRIBUTES):
             ptl_5[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, :, attr_idx], 5)
             ptl_95[attr_idx] = np.percentile(eval_output.attr_pred_outputs[:, :, attr_idx], 95)
         
@@ -157,12 +157,12 @@ def run_tti(args: Experiment) -> List[Tuple[int, float, float]]:
     correct_attr_outputs = np.zeros_like(eval_output.attr_pred_outputs)
     # Whether to replace using the class data ie using the majority voting transform or the raw data
     if args.replace_class: # shapes here are (n_models, n_examples, n_attributes)
-        for attr_idx in range(args.n_attributes):
+        for attr_idx in range(N_ATTRIBUTES):
             correct_attr_outputs[:, :, attr_idx] = np.where(
                 eval_output.attr_true_labels[:, :, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
             )
     else:
-        for attr_idx in range(args.n_attributes):
+        for attr_idx in range(N_ATTRIBUTES):
             correct_attr_outputs[:, :, attr_idx] = np.where(
                 raw_masked_attr_test_labels[:, :, attr_idx] == 0, ptl_5[attr_idx], ptl_95[attr_idx]
             )

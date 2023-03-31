@@ -4,8 +4,8 @@ from typing import Optional, List, Tuple, Union
 BASE_DIR = "/root/hoagy-hiddeninfo-sync"
 
 N_CLASSES = 200
-N_ATTRIBUTES_RAW = 312
-N_ATTRIBUTES = 109
+N_ATTRIBUTES_RAW = 312 # Number of attr labels for each image in the raw dataset
+N_ATTRIBUTES = 109 # Number of attr labels after removing ones used less than 10 times
 
 class AverageMeter(object):
     """
@@ -58,8 +58,8 @@ class Experiment:
 
     # Model
     multimodel: bool = False
-    n_attributes: int = 109
-    num_classes: int = 200
+    n_attributes: int = N_ATTRIBUTES # Width of the concept vector, can be greater but not less than N_ATTRIBUTES
+    num_classes: int = N_CLASSES
     expand_dim: int = 500
     use_relu: bool = False
     use_sigmoid: bool = False
@@ -114,7 +114,6 @@ class Experiment:
 
     # TTI
     tti_int: int = 10 # run TTI every _ epochs, set to 0 to disable
-    tti_log_dir: str = "."  # where results are stored
     tti_model_dir: str = ""
     tti_eval_data: str = "test"  # whether to use test or val data
     flat_intervene: bool = True

@@ -4,7 +4,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from CUB.cub_classes import Experiment, TTI_Config
+from CUB.cub_classes import Experiment
 
 ind_cfg = Experiment(
     tag="ind_XtoC",
@@ -12,13 +12,6 @@ ind_cfg = Experiment(
     epochs=[1000, 1000],
     lr=0.01,
     weighted_loss="multiple"
-)
-
-base_ind_tti_cfg = TTI_Config(
-    n_trials=5,
-    replace_class=True,
-    use_sigmoid=True,
-    log_dir="TTI_ind",
 )
 
 

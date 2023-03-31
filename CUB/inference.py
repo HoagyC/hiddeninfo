@@ -83,7 +83,7 @@ def run_eval(args: Experiment) -> Eval_Output:
     topk_class_labels = np.zeros((n_models, dataset_len, max(K)), dtype=np.int32)
     topk_class_outputs = np.zeros((n_models, dataset_len, max(K)), dtype=np.int32)
 
-    all_attr_labels = np.zeros((n_models, dataset_len, args.n_attributes), dtype=np.int32)
+    all_attr_labels = np.zeros((n_models, dataset_len, N_ATTRIBUTES), dtype=np.int32)
     all_attr_preds = np.zeros((n_models, dataset_len, args.n_attributes), dtype=np.float32)
     all_attr_preds_sigmoid = np.zeros((n_models, dataset_len, args.n_attributes), dtype=np.float32)
 
@@ -155,43 +155,10 @@ def run_eval(args: Experiment) -> Eval_Output:
     assert type(meters) == Eval_Meter_Acc
     print("Average attribute accuracy: %.5f" % meters.attr_acc_tot.avg)
     all_attr_preds_int = all_attr_preds_sigmoid >= 0.5
+    breakpoint()
 
-    # Ignoring for now as not using feature_group_results
-    if args.feature_group_results:
-        n = len(all_attr_labels)
-        all_attr_acc, all_attr_f1 = [], []
-        for i in range(args.n_attributes):
-            acc_meter = meters.attr_accs[i]
-            attr_acc = float(acc_meter.avg)
-            attr_preds = [
-                all_attr_preds_int[j]
-                for j in range(n)
-                if j % args.n_attributes == i
-            ]
-            attr_labels = [
-                all_attr_labels[j] for j in range(n) if j % args.n_attributes == i
-            ]
-            attr_f1 = f1_score(attr_labels, attr_preds)
-            all_attr_acc.append(attr_acc)
-            all_attr_f1.append(attr_f1)
-
-        bins = np.arange(0, 1.01, 0.1)
-        acc_bin_ids = np.digitize(np.array(all_attr_acc) / 100.0, bins)
-        acc_counts_per_bin = [
-            np.sum(acc_bin_ids == (i + 1)) for i in range(len(bins))
-        ]
-        f1_bin_ids = np.digitize(np.array(all_attr_f1), bins)
-        f1_counts_per_bin = [
-            np.sum(f1_bin_ids == (i + 1)) for i in range(len(bins))
-        ]
-        print("Accuracy bins:")
-        print(acc_counts_per_bin)
-        print("F1 bins:")
-        print(f1_counts_per_bin)
-        np.savetxt(os.path.join(args.log_dir, "concepts.txt"), f1_counts_per_bin)
-
-    balanced_acc, report = multiclass_metric(all_attr_preds_int.flatten(), all_attr_labels.flatten())
-    f1 = f1_score(all_attr_labels.flatten(), all_attr_preds_int.flatten())
+    balanced_acc, report = multiclass_metric(all_attr_preds_int[:, :, :N_ATTRIBUTES].flatten(), all_attr_labels.flatten())
+    f1 = f1_score(all_attr_labels.flatten(), all_attr_preds_int[:, :, :N_ATTRIBUTES].flatten())
     print(
         "Total 1's predicted:",
         sum(np.array(all_attr_preds_sigmoid) >= 0.5)

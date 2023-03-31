@@ -31,22 +31,6 @@ def process_run_name(model_file: str) -> Tuple[float, int, str]:
     return coef, sparsity, model_date
 
 
-# def create_tti_cfg(model_file: str, model_folder: str) -> TTI_Config:
-#     """Create the TTI config based on the config.pkl of the original experiment."""
-
-#     download_from_aws([model_folder + "/config.pkl"])
-#     with open(model_folder + "/config.pkl", "rb") as f:
-#         exp_cfg = pickle.load(f)
-
-#     tti_config = TTI_Config(
-#         log_dir=model_folder,
-#         model_dir=model_file,
-#         multimodel=exp_cfg.multimodel,
-#         data_dir=exp_cfg.data_dir,
-#     )
-
-#     return tti_config
-
 def process_results(runs_list: List[str], process_all: bool = False, reprocess: bool = False) -> None:
     """Process TTI results for a list of runs and upload results and graphs to AWS."""
     # Get the most recent run for each run name
