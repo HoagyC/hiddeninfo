@@ -85,8 +85,6 @@ class Experiment:
     force_deterministic: bool = True
     use_averaging: bool = False
 
-    tti_int: int = 10 # Frequency of running TTI during run
-
     freeze: bool = False
     weighted_loss: str = ""
     uncertain_labels: bool = False
@@ -114,40 +112,19 @@ class Experiment:
     alternating_reset: bool = True 
     alternating_epochs: List[int] = dataclasses.field(default_factory=list)
 
-
-@dataclasses.dataclass
-class TTI_Config:
-    log_dir: str = "."  # where results are stored
-    model_dir: str = ""
-
-    eval_data: str = "test"  # whether to use test or val data
-    batch_size: int = 16
-    seed: int = 1
-
-    use_sigmoid: bool = False
-    attr_sparsity: int = 1
-
-    base_dir: str = BASE_DIR
-    data_dir: str = "CUB_masked_class"  # directory to the data used for evaluation
-    data_dir_raw: str = "CUB_processed"  # directory to the raw data
-    n_attributes: int = 109
-    image_dir: str = "images"  # test image folder to run inference on
-
-    # whether to print out performance of individual atttributes
-    feature_group_results: bool = False
-    # Whether to correct with class or instance level values
-    replace_class: bool = True
-
-    n_trials: int = 1  # Number of trials to run, when mode is random
-    n_groups: int = 28  # n. groups of attributes (28 enums with ~10 options = 312 attrs)
-    multimodel: bool = True # whether to use the multimodel architecture
-    multimodel_type: str = "separate" # Will run them separately if "separate", or will average the logits if "mixture"
-    sigmoid: bool = False
-    model_sigmoid: bool = False
-
+    # TTI
+    tti_int: int = 10 # run TTI every _ epochs, set to 0 to disable
+    tti_log_dir: str = "."  # where results are stored
+    tti_model_dir: str = ""
+    tti_eval_data: str = "test"  # whether to use test or val data
     flat_intervene: bool = True
     intervene_vals: Tuple[float, float] = (-3, 3) # If intervening with a flat value, what is it?
-
+    n_trials: int = 1 # How many times to run TTI
+    n_groups: int = 28  # n. groups of attributes (28 enums with ~10 options = 312 attrs)
+    data_dir_raw: str = "CUB_processed"  # directory to the raw data
+    feature_group_results: bool = False  # whether to print out performance of individual atttributes
+    replace_class: bool = True # Whether to correct with class-averaged or instance level values
+    multimodel_type: str = "separate" # Will run them separately if "separate", or will average the logits if "mixture"
 
 @dataclasses.dataclass
 class TTI_Output:

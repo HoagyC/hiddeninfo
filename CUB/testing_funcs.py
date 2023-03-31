@@ -17,31 +17,11 @@ import torch.nn as nn
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from CUB.models import Multimodel, CUB_Multimodel
-from CUB.cub_classes import TTI_Config, Experiment
+from CUB.cub_classes import Experiment
 from CUB.inference import run_eval
 from CUB.configs import multi_inst_cfg
 from CUB.dataset import load_data, DataLoader
 from CUB.cub_utils import download_from_aws, download_folder_from_aws, upload_to_aws
-
-def get_attrs():
-    seq_inst_path = "big_run/seq_inst/20230224-140619/final_model.pth"
-    joint_inst_path = "big_run/joint_inst/20230224-124648/final_model.pth"
-    joint_inst_sparse_path = "big_run/joint_inst_sparse/20230227-161614/final_model.pth"
-
-    seq_inst_model = torch.load(seq_inst_path)
-    joint_inst_model = torch.load(joint_inst_path)
-    joint_inst_sparse_model = torch.load(joint_inst_sparse_path)
-
-    seq_tti_config = TTI_Config(
-        log_dir=seq_inst_path.split("/")[:-1],
-        model_dir=seq_inst_path,
-        multimodel=False,
-        data_dir="CUB_instance_masked",
-    )
-
-    print("Seq inst")
-    seq_eval =run_eval(seq_tti_config)
-    print("Joint inst")
 
 def download_model_locs(model_locs):
     for path in model_locs:

@@ -12,7 +12,7 @@ from sklearn.metrics import f1_score
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from CUB.dataset import load_data, CUBDataset
-from CUB.cub_classes import TTI_Config, Meters, N_CLASSES
+from CUB.cub_classes import Meters, N_CLASSES, N_ATTRIBUTES, Experiment
 from CUB.analysis import AverageMeter, multiclass_metric, accuracy, binary_accuracy
 
 K = [1, 3, 5]  # top k class accuracies to compute
@@ -39,7 +39,7 @@ class Eval_Output:
     wrong_idx: np.ndarray
 
 
-def run_eval(args: TTI_Config) -> Eval_Output:
+def run_eval(args: Experiment) -> Eval_Output:
     """
     Run inference using model (and model2 if bottleneck)
     Returns: (for notebook analysis)
@@ -53,8 +53,8 @@ def run_eval(args: TTI_Config) -> Eval_Output:
     """
 
     # Load models
-    print(args.model_dir)
-    model = torch.load(args.model_dir)
+    print(args.tti_model_dir)
+    model = torch.load(args.tti_model_dir)
     model.eval()
 
     # Add meters for the overall attr_acc and (optional) for each attr
@@ -67,7 +67,7 @@ def run_eval(args: TTI_Config) -> Eval_Output:
     if args.feature_group_results:
         meters.attr_accs = [AverageMeter() for _ in range(args.n_attributes)]
 
-    data_dir = os.path.join(args.base_dir, args.data_dir, args.eval_data + ".pkl")
+    data_dir = os.path.join(args.base_dir, args.data_dir, args.tti_eval_data + ".pkl")
     loader = load_data([data_dir], args)
 
     dataset: CUBDataset = loader.dataset # type: ignore 
@@ -113,7 +113,7 @@ def run_eval(args: TTI_Config) -> Eval_Output:
         assert attr_preds.shape == (model.args.n_models, inputs.shape[0], args.n_attributes)    
         attr_preds_sigmoid = torch.nn.Sigmoid()(attr_preds)
 
-        for i in range(args.n_attributes):
+        for i in range(N_ATTRIBUTES):
             acc = binary_accuracy(
                 attr_preds_sigmoid[:, :, i].reshape(-1), attr_labels[:, :, i].reshape(-1)
             )

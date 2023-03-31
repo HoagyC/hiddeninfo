@@ -16,7 +16,7 @@ from matplotlib.figure import Figure
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from CUB.cub_classes import TTI_Config, TTI_Output, N_CLASSES, N_ATTRIBUTES_RAW
+from CUB.cub_classes import Experiment, TTI_Output, N_CLASSES, N_ATTRIBUTES_RAW
 from CUB.inference import run_eval
 
 def get_stage2_pred(a_hat, model):
@@ -123,7 +123,7 @@ def make_basic_tti_objs(args) -> None:
         pickle.dump(attr_group_dict, f)
     
 
-def run_tti(args: TTI_Config) -> List[Tuple[int, float, float]]:
+def run_tti(args: Experiment) -> List[Tuple[int, float, float]]:
     """
     Returns pairs of (n, score) where n is a number of attributes
     and score is the accuracy when n attributes are intervened on
@@ -168,7 +168,7 @@ def run_tti(args: TTI_Config) -> List[Tuple[int, float, float]]:
             )
 
     # Get main model and attr -> label model
-    model = torch.load(args.model_dir)
+    model = torch.load(args.tti_model_dir)
     
     # Check that number of attributes matches between the 'raw' data and the class aggregated data
     assert len(raw_masked_attr_test_labels) == eval_output.attr_true_labels.shape[1], "len(instance_attr_labels): %d, len(eval_output.attr_labels): %d" % (

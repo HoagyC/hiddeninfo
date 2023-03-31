@@ -33,7 +33,7 @@ from CUB.models import (
     CUB_Model,
     CUB_Multimodel
 )
-from CUB.cub_classes import TTI_Config, Meters, Experiment, RunRecord, N_CLASSES, N_ATTRIBUTES
+from CUB.cub_classes import Meters, Experiment, RunRecord, N_CLASSES, N_ATTRIBUTES
 import CUB.configs as cfgs
 
 from CUB.cub_utils import upload_to_aws, get_secrets, download_from_aws, list_aws_files
@@ -153,8 +153,8 @@ def run_epoch(
             if attr_preds.shape[1] != attr_labels.shape[1]:
                 attr_labels=attr_labels[batch_attr_mask]
             
-            attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds)
-            attr_acc = binary_accuracy(attr_pred_sigmoids, attr_labels[:, :, :args.n_attributes])
+            attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds) # Shape (n_models, batch_size, N_ATTRIBUTES)
+            attr_acc = binary_accuracy(attr_pred_sigmoids[:, :, :N_ATTRIBUTES], attr_labels) # Only first N_ATTRIBUTES in case we're extending to have 'free' attrs
             meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
         
         if class_preds is not None:
@@ -263,22 +263,16 @@ def train(
             test_meters=test_meters,
         )
         if not (args.exp in ["Independent", "Sequential", "JustXtoC"] and model.train_mode == "XtoC") and \
-            args.tti_int > 0 and epoch_ndx % args.tti_int == 0 and args.n_attributes == N_ATTRIBUTES:
+            args.tti_int > 0 and epoch_ndx % args.tti_int == 0:
             model_save_path = run_save_path / f"{epoch_ndx}_model.pth"
             torch.save(model, run_save_path / f"{epoch_ndx}_model.pth")
             upload_to_aws(s3_file_name=str(run_save_path / "latest_model.pth"), local_file_name=model_save_path)
 
-            tti_cfg = TTI_Config(
-                log_dir=str(run_save_path),
-                model_dir=str(model_save_path),
-                data_dir=args.data_dir,
-                multimodel=args.multimodel,
-                sigmoid=False,
-                model_sigmoid=False,
-                seed=args.seed,
-            )
+            args.tti_log_dir = str(run_save_path)
+            args.tti_model_dir = str(model_save_path)
 
-            tti_results = run_tti(tti_cfg)
+            tti_results = run_tti(args)
+
             wandb.log(
                     dict(
                     epoch = epoch_ndx,
@@ -599,16 +593,18 @@ def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
     alt_cfg = dataclasses.replace(
         cfgs.multi_inst_cfg,
-        exp="Alternating",
+        exp="Multimodel",
         tag="pre_post_0.2nd,1.0nd",
         n_alternating=1,
         freeze_first="pre",
         epochs = [50, 50],
         alternating_reset=False,
-        do_sep_train=False,
+        do_sep_train=True,
         load="out/multi_attr_weight/20230330-163624/final_model.pth"
     )
-    configs = [alt_cfg]
+    configs = [alt_cfg, cfgs.multi_inst_cfg]
+    configs[1].report_cross_accuracies = True
+    configs[1].n_attributes = configs[1].n_attributes + 10
     return configs
 
 

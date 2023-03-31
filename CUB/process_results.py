@@ -7,7 +7,7 @@ from typing import Tuple, List, Optional
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from CUB.cub_utils import download_from_aws, list_aws_files, upload_to_aws
-from CUB.cub_classes import TTI_Config, TTI_Output
+from CUB.cub_classes import TTI_Output
 from CUB.tti import run_tti, graph_tti_output, graph_multi_tti_output
 
 def get_most_recent(run_name: str) -> str:
@@ -31,22 +31,21 @@ def process_run_name(model_file: str) -> Tuple[float, int, str]:
     return coef, sparsity, model_date
 
 
-def create_tti_cfg(model_file: str, model_folder: str) -> TTI_Config:
-    """Create the TTI config based on the config.pkl of the original experiment."""
+# def create_tti_cfg(model_file: str, model_folder: str) -> TTI_Config:
+#     """Create the TTI config based on the config.pkl of the original experiment."""
 
-    download_from_aws([model_folder + "/config.pkl"])
-    with open(model_folder + "/config.pkl", "rb") as f:
-        exp_cfg = pickle.load(f)
+#     download_from_aws([model_folder + "/config.pkl"])
+#     with open(model_folder + "/config.pkl", "rb") as f:
+#         exp_cfg = pickle.load(f)
 
-    tti_config = TTI_Config(
-        log_dir=model_folder,
-        model_dir=model_file,
-        multimodel=exp_cfg.multimodel,
-        data_dir=exp_cfg.data_dir,
-        multimodel_type="mixture",
-    )
+#     tti_config = TTI_Config(
+#         log_dir=model_folder,
+#         model_dir=model_file,
+#         multimodel=exp_cfg.multimodel,
+#         data_dir=exp_cfg.data_dir,
+#     )
 
-    return tti_config
+#     return tti_config
 
 def process_results(runs_list: List[str], process_all: bool = False, reprocess: bool = False) -> None:
     """Process TTI results for a list of runs and upload results and graphs to AWS."""
@@ -76,15 +75,19 @@ def process_results(runs_list: List[str], process_all: bool = False, reprocess: 
 
 
         # Create the TTI config
-        tti_config = create_tti_cfg(model_file, model_folder)
-        if not tti_config.multimodel: # careful, it's now saving in results_mix, and is setting tti_conf.multitype to mixture
+        with open(model_folder + "/config.pkl", "rb") as f:
+            exp_cfg = pickle.load(f)
+        exp_cfg.tti_log_dir = model_folder
+        exp_cfg.tti_model_dir = model_file
+
+        if not exp_cfg.multimodel: # careful, it's now saving in results_mix, and is setting tti_conf.multitype to mixture
             continue
 
         # Download the model
         download_from_aws([model_file])
 
         tti_config = dataclasses.replace(
-            tti_config,
+            exp_cfg,
             sigmoid=False,
             model_sigmoid=False,
         )
