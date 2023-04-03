@@ -17,11 +17,12 @@ import torch.nn as nn
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from CUB.models import Multimodel, CUB_Multimodel
-from CUB.cub_classes import Experiment
+from CUB.cub_classes import Experiment, N_CLASSES
 from CUB.inference import run_eval
 from CUB.configs import multi_inst_cfg
 from CUB.dataset import load_data, DataLoader
-from CUB.cub_utils import download_from_aws, download_folder_from_aws, upload_to_aws
+from CUB.cub_utils import download_from_aws, download_folder_from_aws, upload_to_aws, list_aws_files
+from CUB.analysis import accuracy
 
 def download_model_locs(model_locs):
     for path in model_locs:
@@ -423,16 +424,163 @@ def test_separation(model_loc, args: Experiment):
 
     print(f"Accuracy: {correct / total}")
 
+
+def test_cross_accuracies(model_loc_list: List[str]):
+    # Function should get the pairwise cross accuracies between all models in the list
+    # By this we mean the accuracy of the overall model when model A generates the concept vector
+    # and model B takes it as input and predicts the class
+
+    args = multi_inst_cfg
+
+    # Get the train and val loaders
+    train_loader = make_loader(os.path.join(args.base_dir, args.data_dir, "train.pkl"))
+    val_loader = make_loader(os.path.join(args.base_dir, args.data_dir, "val.pkl"))
+
+    # Download the data
+    download_from_aws(model_loc_list)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    train_cross_acc_matrix = np.zeros((len(model_loc_list), len(model_loc_list)))
+    val_cross_acc_matrix = np.zeros((len(model_loc_list), len(model_loc_list)))
+
+    for model_a_loc in model_loc_list:
+        print(f"Testing model {model_a_loc} against all others")
+        # Load the model
+        model_a: Multimodel = torch.load(model_a_loc)
+        model_a.eval()
+        if torch.cuda.is_available():
+            model_a.cuda()
+
+        with torch.no_grad():
+            for model_b_loc in model_loc_list:
+                print(f"Testing model against {model_b_loc}")
+                train_cross_acc = []
+                val_cross_acc = []
+
+                model_b: Multimodel = torch.load(model_b_loc)
+                model_b.eval()
+                if torch.cuda.is_available():
+                    model_b.cuda()
+
+                for batch in train_loader:
+                    # Get the data
+                    input_images, class_labels, _, _ = batch # Blanks are attribute labels, mask
+                    input_images = input_images.to(device)
+                    class_labels = class_labels.to(device)
+
+                    # Get the concept vectors
+                    concept_vec, _ = model_a.pre_models[0](input_images) # Blank is aux concept vec
+                    concept_vec_input = torch.cat(concept_vec, dim=1)
+
+                    # Get the predictions
+                    class_preds = model_b.post_models[0](concept_vec_input)
+
+                    # Get the accuracy
+                    train_cross_acc_batch = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
+                    train_cross_acc.append(train_cross_acc_batch[0].item())
+                
+                print(f"Train cross accuracy is {np.mean(train_cross_acc)}")
+
+                train_cross_acc_matrix[model_loc_list.index(model_a_loc), model_loc_list.index(model_b_loc)] = np.mean(train_cross_acc)
+
+                for batch in val_loader:
+                    # Get the data
+                    input_images, class_labels, _, _ = batch # Blanks are attribute labels, mask
+                    input_images = input_images.to(device)
+                    class_labels = class_labels.to(device)
+
+                    # Get the concept vectors
+                    concept_vec, _ = model_a.pre_models[0](input_images) # Blank is aux concept vec
+                    concept_vec_input = torch.cat(concept_vec, dim=1)
+
+                    # Get the predictions
+                    class_preds = model_b.post_models[0](concept_vec_input)
+
+                    # Get the accuracy
+                    val_cross_acc_batch = accuracy(class_preds, class_labels, topk=[1])
+                    val_cross_acc.append(val_cross_acc_batch[0].item())
+                    if val_cross_acc_batch[0].item() > 100:
+                        print("Accuracy is greater than 1")
+                        breakpoint()
+                
+                print(f"val cross accuracy is {np.mean(val_cross_acc)}")
+
+                val_cross_acc_matrix[model_loc_list.index(model_a_loc), model_loc_list.index(model_b_loc)] = np.mean(val_cross_acc)
+
+                del model_b
+            del model_a
+    
+    # Save the cross accuracies
+    print(train_cross_acc_matrix)
+    print(val_cross_acc_matrix)
+    pickle.dump((model_loc_list, train_cross_acc_matrix), open("train_cross_acc_matrix.pkl", "wb"))
+    pickle.dump((model_loc_list, val_cross_acc_matrix), open("val_cross_acc_matrix.pkl", "wb"))
+    upload_to_aws("train_cross_acc_matrix.pkl")
+    upload_to_aws("val_cross_acc_matrix.pkl")
+
+
+
 def make_loader(loader_loc: str):
     args = multi_inst_cfg
     return load_data([loader_loc], args)
 
 
+def make_cross_acc_graph(ax, data_m, is_train: bool = True, transpose: bool = True):
+    attr_weights = [0.1, 0.2, 0.3, 0.5, 1, 2, 3, 5, 10, 20]
+    labels = [str(x) for x in attr_weights]
+    labels[-1] = "Sequential"
+
+    train_val_str = "Train" if is_train else "Val"
+
+    if transpose:
+        data_m = data_m.T
+
+    for ndx, row in enumerate(data_m):
+        ax.plot(attr_weights, row, label=labels[ndx])
+    
+    ax.set_xscale("log")
+    ax.set_xticks(attr_weights)
+    ax.set_xticklabels(labels)
+
+    constant_in_line_str = "c->c" if transpose else "i->c"
+    constant_long_str = "concept->class" if transpose else "image->concept"
+    vary_across_x_str = "i->c" if transpose else "c->c"
+    vary_long_str = "image->concept" if transpose else "concept->class"
+
+    ax.legend(title=f"Attr loss weight {constant_in_line_str}")
+    ax.set_xlabel(f"Attr loss weight {vary_long_str}")
+
+    ax.axhline(y=data_m[-1, -1], color="black", linestyle="--")
+
+    ax.set_ylabel(f"{train_val_str} top 1 class accuracy")
+
+    ax.set_title(f"{train_val_str} cross accuracies ({constant_long_str} fixed)")
+
+def visualise_matrix(train_m: np.ndarray, val_m: np.ndarray) -> None:
+    # First, cut out all odd-indexed rows and columns
+    train_nodrop_m = train_m[::2, ::2]
+    val_nodrop_m = val_m[::2, ::2]
+
+
+
+    # Make four plots, two for train and two for val, one with a line per premodel and one with a line per postmodel
+    fig, axs = plt.subplots(1, 2, figsize=(12, 7))
+
+    make_cross_acc_graph(axs[0], train_nodrop_m, is_train=True, transpose=False)
+    make_cross_acc_graph(axs[1], train_nodrop_m, is_train=True, transpose=True)
+    # make_cross_acc_graph(axs[1, 0], val_nodrop_m, is_train=False, transpose=False)
+    # make_cross_acc_graph(axs[1, 1], val_nodrop_m, is_train=False, transpose=True)
+
+    plt.savefig("images/cross_accs_train.png")
+
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "compose":
         model_locs = [
-            "attr_dropout_base/premodel_attr_loss_weight_0_2_drop_False/base_model.pth",
-            "attr_dropout_base/premodel_attr_loss_weight_1_0_drop_False/base_model.pth"
+            "attr_dropout_base/premodel_attr_loss_weight_0_2_drop_False/20230327-162955/final_model.pth",
+            "attr_dropout_base/premodel_attr_loss_weight_1_0_drop_False/20230327-175814/final_model.pth"
         ]
         compose_multimodels(model_locs)
     elif sys.argv[1] == "test_diffs":
@@ -463,6 +611,16 @@ if __name__ == "__main__":
             train_diff = get_diffs_by_concept(train_loader, seq_model, solo_model)
             val_diff = get_diffs_by_concept(val_loader, seq_model, solo_model)
 
+            # Plot a scatter plot of the differences and the concept entropies
+            fig, ax = plt.subplots(1, 1, figsize=(7, 7))
+            ax.scatter(entropies, train_diff, label="Train")
+            ax.scatter(entropies, val_diff, label="Val")
+            ax.set_xlabel("Concept entropy")
+            ax.set_ylabel("Difference in premodel")
+            ax.legend()
+            ax.set_title(f"Attr loss weight {weight}, dropout {dropout}")
+            plt.savefig(f"images/diff_scatter_{weight}_{dropout}.png")
+
             # Get the correlation coefficients between the differences and the concept entropies
             train_coef = np.corrcoef(entropies, train_diff)[0, 1]
             val_coef = np.corrcoef(entropies, val_diff)[0, 1]
@@ -473,18 +631,15 @@ if __name__ == "__main__":
 
             print(f"Done with weight {weight}, dropout {dropout}")
 
-        print(results)
-        os.makedirs("out", exist_ok=True)
-        pickle.dump(results, open("out/attr_loss_weight_diffs.pkl", "wb"))
-        upload_to_aws("out/attr_loss_weight_diffs.pkl")
+        # print(results)
+        # os.makedirs("out", exist_ok=True)
+        # pickle.dump(results, open("out/attr_loss_weight_diffs.pkl", "wb"))
+        # upload_to_aws("out/attr_loss_weight_diffs.pkl")
     
     elif sys.argv[1] == "plot_ent_graph":
         results = pickle.load(open("out/attr_loss_weight_diffs.pkl", "rb"))
 
         # Plotting a bar graph with the results for train and val correlations
-        weights = ["0_1","0_2", "0_3", "0_5", "1_0", "2", "3", "5", "10"]
-        dropouts = ["False", "True"]
-
         labels = [f"{x[0]}_{x[1]}" for x in results]
         train_corrs = [x[2] for x in results]
         val_corrs = [x[3] for x in results]
@@ -504,6 +659,31 @@ if __name__ == "__main__":
 
         plt.savefig("out/attr_loss_weight_diffs.png")
         upload_to_aws("out/attr_loss_weight_diffs.png")
+    
+    elif sys.argv[1] == "test_cross_acc":
+        model_locs = []
+
+        dropouts = ["False", "True"]
+        weights = ["0_1", "0_2", "0_3", "0_5", "1_0", "2", "3", "5", "10", "sep"]
+
+        for (weight, dropout) in itertools.product(weights, dropouts):
+            # Load the solo model
+            model_folder = f"attr_dropout_base/premodel_attr_loss_weight_{weight}_drop_{dropout}"
+            print(model_folder)
+            folder_files = list_aws_files(model_folder)
+            # Get the file with "2023" in it
+            model_date_folder = [x for x in folder_files if "2023" in x][0]
+            model_name = "final_model.pth"
+            model_loc = os.path.join(model_date_folder, model_name)
+            model_locs.append(model_loc)
+
+        test_cross_accuracies(model_locs)
+
+    elif sys.argv[1] == "vis_mat":
+        val_rows, val_cross_m = pickle.load(open("out/train_cross_acc_matrix.pkl", "rb"))
+        train_rows, train_cross_m = pickle.load(open("out/val_cross_acc_matrix.pkl", "rb"))
+
+        visualise_matrix(train_cross_m, val_cross_m)
 
     
 

@@ -42,7 +42,7 @@ def view_image(data, attr_names):
     # Display the image
     fig, axs = plt.subplots(1, 2, figsize=(10, 10))
     axs[0].imshow(img)
-    axs[1].text(0.5, 0.2, '\n'.join([a for n, a in enumerate(attr_names) if attribute_label[n]]), wrap=True, horizontalalignment='center', fontsize=12)
+    axs[1].text(0.5, 0.2, '\n'.join([a for n, a in enumerate(attr_names) if attribute_label[n]]), wrap=True, horizontalalignment='center', fontsize=12, linespacing=0.4)
     axs[1].get_xaxis().set_visible(False)
     axs[1].get_yaxis().set_visible(False)
     plt.axis("off")

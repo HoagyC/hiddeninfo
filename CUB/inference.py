@@ -155,7 +155,6 @@ def run_eval(args: Experiment) -> Eval_Output:
     assert type(meters) == Eval_Meter_Acc
     print("Average attribute accuracy: %.5f" % meters.attr_acc_tot.avg)
     all_attr_preds_int = all_attr_preds_sigmoid >= 0.5
-    breakpoint()
 
     balanced_acc, report = multiclass_metric(all_attr_preds_int[:, :, :N_ATTRIBUTES].flatten(), all_attr_labels.flatten())
     f1 = f1_score(all_attr_labels.flatten(), all_attr_preds_int[:, :, :N_ATTRIBUTES].flatten())

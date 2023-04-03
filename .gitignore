@@ -23,6 +23,7 @@ CUB/attr_ndxs.py
 
 multilog/
 big_run
+attr_dropout_base/
 
 CUB/tti_inv.py
 CUB/.ipynb_checkpoints/

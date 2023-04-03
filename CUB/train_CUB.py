@@ -268,7 +268,6 @@ def train(
             torch.save(model, run_save_path / f"{epoch_ndx}_model.pth")
             upload_to_aws(s3_file_name=str(run_save_path / "latest_model.pth"), local_file_name=model_save_path)
 
-            args.tti_log_dir = str(run_save_path)
             args.tti_model_dir = str(model_save_path)
 
             tti_results = run_tti(args)
@@ -593,18 +592,34 @@ def make_configs_list() -> List[Experiment]:
     # Note that 'post' means we are training the postmodels and freezing (and maybe resetting) the premodels
     alt_cfg = dataclasses.replace(
         cfgs.multi_inst_cfg,
-        exp="Multimodel",
+        exp="Alternating",
         tag="pre_post_0.2nd,1.0nd",
         n_alternating=1,
-        freeze_first="pre",
+        freeze_first="post",
         epochs = [50, 50],
         alternating_reset=False,
-        do_sep_train=True,
-        load="out/multi_attr_weight/20230330-163624/final_model.pth"
+        do_sep_train=False,
+        load="out/multi_attr_weight/20230331-141923/final_model.pth"
     )
-    configs = [alt_cfg, cfgs.multi_inst_cfg]
+    configs = [
+        alt_cfg, 
+        cfgs.multi_inst_cfg, 
+        copy.deepcopy(cfgs.multi_inst_cfg),
+        copy.deepcopy(cfgs.multi_inst_cfg)
+    ]
     configs[1].report_cross_accuracies = True
     configs[1].n_attributes = configs[1].n_attributes + 10
+
+    configs[2].report_cross_accuracies = False
+    configs[2].tag = "attr_dropout_base/premodel_attr_loss_weight_sep_drop_False"
+    configs[2].do_sep_train = True
+    configs[2].n_models = 1
+    configs[2].exp = "MultiSequential"
+    configs[2].use_pre_dropout = False
+
+    configs[3].epochs = [1000,150]
+    configs[3].report_cross_accuracies = True
+    configs[3].pretrained = False
     return configs
 
 
