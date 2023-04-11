@@ -123,10 +123,8 @@ def get_diffs_by_concept(dataloader: DataLoader, seq_model: Multimodel, joint_mo
             inputs = inputs.to(device)
 
             seq_concepts, _ = seq_model.pre_models[0](inputs) # Blank is the aux preds
-            seq_concepts = torch.cat(seq_concepts, dim=1)
 
             joint_concepts, _ = joint_model.pre_models[0](inputs) # Blank is the aux preds
-            joint_concepts = torch.cat(joint_concepts, dim=1)
 
             diff = (seq_concepts - joint_concepts).abs().mean(dim=0) # Getting the average absolute difference for each concept
             diffs += diff
@@ -183,11 +181,6 @@ def look_at_activations():
             del(model) # Clear memory
             print(f"Done with model {model_path.split('/')[-3]}")
 
-
-    seq_attrs = torch.cat(seq_attrs, dim=1)
-    seq_sparse_attrs = torch.cat(seq_sparse_attrs, dim=1)
-    joint_attrs = torch.cat(joint_attrs, dim=1)
-    multi_attrs = torch.cat(multi_attrs, dim=1)
 
     # Looking at the difference between the two joint models
     seq_attrs = seq_attrs[0]
@@ -365,8 +358,7 @@ def test_separation(model_loc, args: Experiment):
 
             for premodel in model.pre_models:
                 concept_vector, _ = premodel(input_image)
-                concept_vector_t = torch.cat(concept_vector, dim=1)
-                concept_vectors.append(concept_vector_t)
+                concept_vectors.append(concept_vector)
 
             # Concatenate the concept vectors into a tensor with first dim with length 2*batch_size
             concept_vector = torch.cat(concept_vectors, dim=0)
@@ -401,8 +393,7 @@ def test_separation(model_loc, args: Experiment):
             concept_vectors = []
             for premodel in model.pre_models:
                 concept_vector, _ = premodel(input_image)
-                concept_vector_t = torch.cat(concept_vector, dim=1)
-                concept_vectors.append(concept_vector_t)
+                concept_vectors.append(concept_vector)
 
             # Concatenate the concept vectors into a tensor with first dim with length 2*batch_size
             concept_vector = torch.cat(concept_vectors, dim=0)
@@ -471,10 +462,9 @@ def test_cross_accuracies(model_loc_list: List[str]):
 
                     # Get the concept vectors
                     concept_vec, _ = model_a.pre_models[0](input_images) # Blank is aux concept vec
-                    concept_vec_input = torch.cat(concept_vec, dim=1)
 
                     # Get the predictions
-                    class_preds = model_b.post_models[0](concept_vec_input)
+                    class_preds = model_b.post_models[0](concept_vec)
 
                     # Get the accuracy
                     train_cross_acc_batch = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
@@ -492,10 +482,9 @@ def test_cross_accuracies(model_loc_list: List[str]):
 
                     # Get the concept vectors
                     concept_vec, _ = model_a.pre_models[0](input_images) # Blank is aux concept vec
-                    concept_vec_input = torch.cat(concept_vec, dim=1)
 
                     # Get the predictions
-                    class_preds = model_b.post_models[0](concept_vec_input)
+                    class_preds = model_b.post_models[0](concept_vec)
 
                     # Get the accuracy
                     val_cross_acc_batch = accuracy(class_preds, class_labels, topk=[1])

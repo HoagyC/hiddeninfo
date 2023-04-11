@@ -213,14 +213,11 @@ class Multimodel(CUB_Multimodel):
         else:
             for i, j in enumerate(post_model_indices):
                 attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-                if self.args.model == "inceptionv3":
-                    attr_pred = torch.cat(attr_pred, dim=1)
                 class_pred = self.post_models[j](attr_pred)
                 
                 attr_preds.append(attr_pred)
                 class_preds.append(class_pred)
                 if self.args.use_aux:
-                    aux_attr_pred = torch.cat(aux_attr_pred, dim=1)
                     aux_class_pred = self.post_models[j](aux_attr_pred)
                     aux_attr_preds.append(aux_attr_pred)
                     aux_class_preds.append(aux_class_pred)
@@ -299,17 +296,15 @@ class SequentialModel(CUB_Model):
 
         # Attr preds are list of tensors, need to concat them with batch as d0
         # Detach to prevent gradients from flowing back to first model
-        attr_preds_input = torch.cat(attr_preds, dim=1)
-        aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1)
 
         if self.train_mode == "CtoY":
-            class_preds = self.second_model(attr_preds_input.detach())
-            aux_class_preds = self.second_model(aux_attr_preds_input.detach())
+            class_preds = self.second_model(attr_preds.detach())
+            aux_class_preds = self.second_model(aux_attr_preds.detach())
             
         else:
             class_preds, aux_class_preds = None, None
         
-        return unsqueeze(attr_preds_input), unsqueeze(aux_attr_preds_input), unsqueeze(class_preds), unsqueeze(aux_class_preds)
+        return unsqueeze(attr_preds), unsqueeze(aux_attr_preds), unsqueeze(class_preds), unsqueeze(aux_class_preds)
 
     def generate_loss(
         self,
@@ -373,20 +368,16 @@ class JointModel(CUB_Model):
     def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None):
         attr_preds, aux_attr_preds = self.first_model(inputs)
 
-        # Attr preds are list of tensors, need to concat them with batch as d0
-        attr_preds_input = torch.cat(attr_preds, dim=1)
-        aux_attr_preds_input = torch.cat(aux_attr_preds, dim=1)
-
         if self.args.gen_pred_sigmoid:
             # Apply a sigmoid to the input tensors
-            attr_preds_input = torch.sigmoid(attr_preds_input)
-            aux_attr_preds_input = torch.sigmoid(aux_attr_preds_input)
+            attr_preds_input = torch.sigmoid(attr_preds)
+            aux_attr_preds_input = torch.sigmoid(aux_attr_preds)
     
         class_preds = self.second_model(attr_preds_input)
         aux_class_preds = self.second_model(aux_attr_preds_input)
 
         # Add extra dimension for consistency with multimodels
-        return unsqueeze(torch.cat(attr_preds, dim=1)), unsqueeze(torch.cat(aux_attr_preds, dim=1)), unsqueeze(class_preds), unsqueeze(aux_class_preds)
+        return unsqueeze(attr_preds), unsqueeze(aux_attr_preds), unsqueeze(class_preds), unsqueeze(aux_class_preds)
 
     def generate_loss(
         self,
@@ -449,24 +440,18 @@ class IndependentModel(CUB_Model):
         if straight_through:
             attr_preds, aux_attr_preds = self.first_model(inputs)
 
-            # Attr preds are list of tensors, need to concat them with batch as d0
-            attr_preds = torch.cat(attr_preds, dim=1)
-            aux_attr_preds = torch.cat(aux_attr_preds, dim=1)
-
             # Apply a sigmoid to the input tensors
             attr_preds_input = torch.sigmoid(attr_preds)
             aux_attr_preds_input = torch.sigmoid(aux_attr_preds)
 
-            class_preds = self.second_model(attr_preds_input)
-            aux_class_preds = self.second_model(aux_attr_preds_input)
+            class_preds = self.second_model(attr_preds)
+            aux_class_preds = self.second_model(aux_attr_preds)
 
 
         else:
             if self.train_mode == "XtoC":
                 try:
                     attr_preds, aux_attr_preds = self.first_model(inputs[mask])
-                    attr_preds = torch.cat(attr_preds, dim=1)
-                    aux_attr_preds = torch.cat(aux_attr_preds, dim=1)
                 except:
                     import pdb; pdb.set_trace()
             else:
@@ -570,11 +555,8 @@ class ThinMultimodel(CUB_Multimodel):
             raise ValueError(f"Invalid train mode {self.train_mode}")
 
         for i, j in enumerate(post_model_indices):
-            attr_pred_input = torch.cat(attr_preds[i], dim=1)
-            aux_attr_pred_input = torch.cat(aux_attr_preds[i], dim=1)
-
-            class_pred = self.post_models[j](attr_pred_input)
-            aux_class_pred = self.post_models[j](aux_attr_pred_input)
+            class_pred = self.post_models[j](attr_preds)
+            aux_class_pred = self.post_models[j](aux_attr_preds)
     
             class_preds.append(class_pred)
             aux_class_preds.append(aux_class_pred)

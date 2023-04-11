@@ -107,9 +107,6 @@ def run_epoch(
             assert args.n_models == 2
             attr_pred0, _ = model.pre_models[0](inputs)
             attr_pred1, _ = model.pre_models[1](inputs)
-            if args.model == "inceptionv3":
-                attr_pred0 = torch.cat(attr_pred0, dim=1)
-                attr_pred1 = torch.cat(attr_pred1, dim=1)
 
             class_pred_cross0 = model.post_models[1](attr_pred0)
             class_pred_cross1 = model.post_models[0](attr_pred1)

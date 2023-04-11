@@ -129,6 +129,8 @@ class Inception3(nn.Module):
         # N x 768 x 17 x 17
         if self.aux_logits:
             out_aux = self.AuxLogits(x)
+        else:
+            out_aux = None
         if timing:
             print("Finished forward pass up to aux in {} seconds".format(time.time() - start))
             start = time.time()
@@ -160,14 +162,18 @@ class Inception3(nn.Module):
                 out.append(out_n)
             if timing:
                 print("Finished fcs in {} seconds".format(time.time() - start))
-            return out, [out_aux for _ in range(self.thin_models)]
+            
+            aux_ret = [out_aux for _ in range(self.thin_models)]
+            return torch.cat(out, dim=1), torch.cat(aux_ret, dim=1)
         else:
             out = []
             for fc in self.all_fc:
                 out.append(fc(x))
             if timing:
                 print("Finished fcs in {} seconds".format(time.time() - start))
-            return out, out_aux
+            
+            out_aux = torch.cat(out_aux, dim=1) if out_aux is not None else None
+            return torch.cat(out, dim=1), out_aux
 
     def load_partial_state_dict(self, state_dict):
         """
