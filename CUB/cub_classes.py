@@ -57,6 +57,7 @@ class Experiment:
     load: Optional[str] = None # Load a model from a previous run, gives the location of the .pth file
 
     # Model
+    model: str = "inceptionv3" # Options: "inceptionv3", "resnet50"
     multimodel: bool = False
     n_attributes: int = N_ATTRIBUTES # Width of the concept vector, can be greater but not less than N_ATTRIBUTES
     num_classes: int = N_CLASSES
@@ -64,7 +65,7 @@ class Experiment:
     use_relu: bool = False
     use_sigmoid: bool = False
     pretrained: bool = True
-    use_aux: bool = True
+    use_aux: bool = True # Whether to use the auxiliary loss from aux_logits
     post_model_dropout: Optional[float] = None
 
     min_lr = 1e-04

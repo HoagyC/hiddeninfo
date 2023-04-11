@@ -107,11 +107,12 @@ def run_epoch(
             assert args.n_models == 2
             attr_pred0, _ = model.pre_models[0](inputs)
             attr_pred1, _ = model.pre_models[1](inputs)
-            attr_pred_input0 = torch.cat(attr_pred0, dim=1)
-            attr_pred_input1 = torch.cat(attr_pred1, dim=1)
+            if args.model == "inceptionv3":
+                attr_pred0 = torch.cat(attr_pred0, dim=1)
+                attr_pred1 = torch.cat(attr_pred1, dim=1)
 
-            class_pred_cross0 = model.post_models[1](attr_pred_input0)
-            class_pred_cross1 = model.post_models[0](attr_pred_input1)
+            class_pred_cross0 = model.post_models[1](attr_pred0)
+            class_pred_cross1 = model.post_models[0](attr_pred1)
 
             class_acc_cross0 = accuracy(class_pred_cross0.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
             class_acc_cross1 = accuracy(class_pred_cross1.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
@@ -605,6 +606,7 @@ def make_configs_list() -> List[Experiment]:
         alt_cfg, 
         cfgs.multi_inst_cfg, 
         copy.deepcopy(cfgs.multi_inst_cfg),
+        copy.deepcopy(cfgs.multi_inst_cfg),
         copy.deepcopy(cfgs.multi_inst_cfg)
     ]
     configs[1].report_cross_accuracies = True
@@ -620,6 +622,11 @@ def make_configs_list() -> List[Experiment]:
     configs[3].epochs = [1000,150]
     configs[3].report_cross_accuracies = True
     configs[3].pretrained = False
+    configs[3].load = "out/multimodel_inst/20230402-125452/latest_model.pth"
+    configs[3].tag = "no_pretrained"
+
+    configs[4].model = "resnet50"
+    configs[4].use_aux = False
     return configs
 
 

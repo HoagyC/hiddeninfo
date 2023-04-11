@@ -8,7 +8,8 @@ from abc import ABC, abstractmethod
 import torch
 from torch import nn
 
-from CUB.model_templates import MLP, inception_v3, FC
+from CUB.model_templates import MLP, inception_v3, resnet50_model
+from CUB.base_models.fully_connected import FC
 from CUB.cub_classes import Experiment
 from CUB.dataset import find_class_imbalance
 
@@ -45,17 +46,23 @@ def ModelXtoC(args: Experiment, use_dropout: Optional[bool] = None) -> nn.Module
         assert isinstance(args.use_pre_dropout, bool)
         use_dropout = args.use_pre_dropout
 
-    print("Using Inception v3 with dropout: ", use_dropout)
-    return inception_v3(
-        pretrained=args.pretrained,
-        freeze=False,
-        aux_logits=True,
-        num_classes=args.num_classes,
-        n_attributes=args.n_attributes,
-        expand_dim=args.expand_dim,
-        thin_models=args.n_models if args.thin else 0,
-        use_dropout=use_dropout,
-    )
+    if args.model == "resnet50":
+        return resnet50_model(args)
+    
+    elif args.model == "inception_v3":
+        print("Using Inception v3 with dropout: ", use_dropout)
+        return inception_v3(
+            pretrained=args.pretrained,
+            freeze=False,
+            aux_logits=True,
+            num_classes=args.num_classes,
+            n_attributes=args.n_attributes,
+            expand_dim=args.expand_dim,
+            thin_models=args.n_models if args.thin else 0,
+            use_dropout=use_dropout,
+        )
+    else:
+        raise ValueError(f"Model {args.model} not supported, use resnet50 or inception_v3")
 
 # Basic model for predicting classes from attributes
 def ModelCtoY(args: Experiment) -> nn.Module:
@@ -160,7 +167,8 @@ class Multimodel(CUB_Multimodel):
 
         self.post_models = nn.ModuleList(post_models_list)
 
-    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None):
+    def generate_predictions(self, inputs: torch.Tensor, attr_labels: torch.Tensor, mask: torch.Tensor, straight_through=None) -> \
+        Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor, Optional[torch.Tensor]]:
         attr_preds = []
         aux_attr_preds = []
         class_preds = []
@@ -181,30 +189,36 @@ class Multimodel(CUB_Multimodel):
             for pre_model in self.pre_models:
                 attr_pred, aux_attr_pred = pre_model(inputs)
                 attr_preds.append(attr_pred)
-                aux_attr_preds.append(aux_attr_pred)
+                if self.args.use_aux:
+                    aux_attr_preds.append(aux_attr_pred)
             
             attr_preds_input = torch.stack(attr_preds).mean(dim=0)
-            aux_attr_preds_input = torch.stack(aux_attr_preds).mean(dim=0)
+            if self.args.use_aux:
+                aux_attr_preds_input = torch.stack(aux_attr_preds).mean(dim=0)
             for post_model in self.post_models:
                 class_preds.append(post_model(attr_preds_input))
-                aux_class_preds.append(post_model(aux_attr_preds_input))
+                if self.args.use_aux:
+                    aux_class_preds.append(post_model(aux_attr_preds_input))
 
         else:
             for i, j in enumerate(post_model_indices):
                 attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-
-                attr_pred_input = torch.cat(attr_pred, dim=1)
-                aux_attr_pred_input = torch.cat(aux_attr_pred, dim=1)
-
-                class_pred = self.post_models[j](attr_pred_input)
-                aux_class_pred = self.post_models[j](aux_attr_pred_input)
-        
-                attr_preds.append(attr_pred_input)
-                aux_attr_preds.append(aux_attr_pred_input)
+                if self.args.model == "inceptionv3":
+                    attr_pred = torch.cat(attr_pred, dim=1)
+                class_pred = self.post_models[j](attr_pred)
+                
+                attr_preds.append(attr_pred)
                 class_preds.append(class_pred)
-                aux_class_preds.append(aux_class_pred)
+                if self.args.use_aux:
+                    aux_attr_pred = torch.cat(aux_attr_pred, dim=1)
+                    aux_class_pred = self.post_models[j](aux_attr_pred)
+                    aux_attr_preds.append(aux_attr_pred)
+                    aux_class_preds.append(aux_class_pred)
 
-        return torch.stack(attr_preds), torch.stack(aux_attr_preds), torch.stack(class_preds), torch.stack(aux_class_preds)
+        if self.args.use_aux:
+            return torch.stack(attr_preds), torch.stack(aux_attr_preds), torch.stack(class_preds), torch.stack(aux_class_preds)
+        else:
+            return torch.stack(attr_preds), None, torch.stack(class_preds), None
     
     def generate_loss(
         self, 
@@ -219,13 +233,17 @@ class Multimodel(CUB_Multimodel):
         total_class_loss = 0.
         total_attr_loss = 0.
         
-        assert attr_preds is not None and attr_labels is not None and aux_attr_preds is not None
-        assert class_preds is not None and class_labels is not None and aux_class_preds is not None
+        assert attr_preds is not None and attr_labels is not None
+        assert class_preds is not None and class_labels is not None
 
-        assert len(attr_preds) == len(aux_attr_preds) == len(class_preds) == len(aux_class_preds) == len(self.pre_models)
+        assert len(attr_preds) == len(class_preds) == len(self.pre_models)
         for ndx in range(len(self.pre_models)):
             class_loss = self.criterion(class_preds[ndx], class_labels)
-            aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
+            if self.args.use_aux:
+                assert aux_class_preds is not None
+                aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
+            else:
+                aux_class_loss = 0.
             class_loss += aux_class_loss * self.args.aux_loss_ratio
             total_class_loss += class_loss * self.class_loss_weights[ndx]
             
@@ -234,10 +252,13 @@ class Multimodel(CUB_Multimodel):
                 attr_loss += self.attr_criterion[i](
                     attr_preds[ndx, mask, i], attr_labels[mask, i] # Masking attr losses
                 )
-
-                aux_attr_loss = self.attr_criterion[i](
-                    aux_attr_preds[ndx, mask, i], attr_labels[mask, i] # Masking attr losses
-                )
+                if self.args.use_aux:
+                    assert aux_attr_preds is not None
+                    aux_attr_loss = self.attr_criterion[i](
+                        aux_attr_preds[ndx, mask, i], attr_labels[mask, i] # Masking attr losses
+                    )
+                else:
+                    aux_attr_loss = 0.
                 attr_loss += aux_attr_loss * self.args.aux_loss_ratio
             
             attr_loss /= len(self.attr_criterion)
