@@ -36,25 +36,30 @@ def squeeze(x: Optional[torch.Tensor], dim: int = 0):
     return x.squeeze(dim)
 
 # Basic model for predicting attributes from images
-def ModelXtoC(args: Experiment, use_dropout: Optional[bool] = None) -> nn.Module:
+def ModelXtoC(args: Experiment, use_dropout: Optional[bool] = None, model_str: Optional[str] = None) -> nn.Module:
     """
     Model for predicting attributes from images.
     Takes in an image and outputs a list of outputs for each attribute,
     where the output is a vector of size (batch_size, 1).
     """
+    if model_str is None:
+        assert isinstance(args.model, str)
+        model_str = args.model
+
     if use_dropout is None:
         assert isinstance(args.use_pre_dropout, bool)
         use_dropout = args.use_pre_dropout
 
-    if args.model == "resnet50":
-        return resnet50_model(args)
+    if model_str == "resnet50":
+        print("Using ResNet50 with dropout: ", use_dropout)
+        return resnet50_model(args, weight_n=args.pretrained_weight_n)
     
-    elif args.model == "inception_v3":
+    elif model_str == "inception_v3":
         print("Using Inception v3 with dropout: ", use_dropout)
         return inception_v3(
             pretrained=args.pretrained,
             freeze=False,
-            aux_logits=True,
+            aux_logits=args.use_aux,
             num_classes=args.num_classes,
             n_attributes=args.n_attributes,
             expand_dim=args.expand_dim,
@@ -62,7 +67,7 @@ def ModelXtoC(args: Experiment, use_dropout: Optional[bool] = None) -> nn.Module
             use_dropout=use_dropout,
         )
     else:
-        raise ValueError(f"Model {args.model} not supported, use resnet50 or inception_v3")
+        raise ValueError(f"Model {model_str} not supported, use resnet50 or inception_v3")
 
 # Basic model for predicting classes from attributes
 def ModelCtoY(args: Experiment) -> nn.Module:
@@ -153,8 +158,13 @@ class Multimodel(CUB_Multimodel):
         self.av_diff_switch: List[torch.Tensor] = []
 
     def reset_pre_models(self) -> None:
+        if isinstance(self.args.model, list):
+            assert len(self.args.model) == self.args.n_models
+        else:
+            self.args.model = [self.args.model] * self.args.n_models
+    
         pre_models_list = [
-            ModelXtoC(self.args, use_dropout=self.dropouts[i])
+            ModelXtoC(self.args, use_dropout=self.dropouts[i], model_str=self.args.model[i])
             for i in range(self.args.n_models)
         ]
         self.pre_models = nn.ModuleList(pre_models_list)

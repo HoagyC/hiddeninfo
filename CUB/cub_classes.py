@@ -57,7 +57,8 @@ class Experiment:
     load: Optional[str] = None # Load a model from a previous run, gives the location of the .pth file
 
     # Model
-    model: str = "inceptionv3" # Options: "inceptionv3", "resnet50"
+    model: Union[str, List[str]] = "inceptionv3" # Options: "inceptionv3", "resnet50"
+    pretrained_weight_n: int = 1 # If using a resnet with multiple options for weights, which to use
     multimodel: bool = False
     n_attributes: int = N_ATTRIBUTES # Width of the concept vector, can be greater but not less than N_ATTRIBUTES
     num_classes: int = N_CLASSES

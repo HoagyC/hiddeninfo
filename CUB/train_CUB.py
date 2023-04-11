@@ -625,8 +625,11 @@ def make_configs_list() -> List[Experiment]:
     configs[3].load = "out/multimodel_inst/20230402-125452/latest_model.pth"
     configs[3].tag = "no_pretrained"
 
-    configs[4].model = "resnet50"
+    configs[4].model = ["resnet50", "inception_v3"]
+    configs[4].tag = "resnet50_inceptionv3"
+    configs[4].report_cross_accuracies = True
     configs[4].use_aux = False
+    configs[4].batch_size = 16
     return configs
 
 

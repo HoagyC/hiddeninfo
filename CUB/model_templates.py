@@ -46,7 +46,7 @@ class MLP(nn.Module):
         x = self.linear2(x)
         return x
 
-def resnet50_model(args: Experiment):
+def resnet50_model(args: Experiment, weight_n: int = 1):
     ## List of kwargs that are used in the inception model
     # n_attributes, # args.n_attributes
     # expand_dim, # args.expand_dim
@@ -56,7 +56,13 @@ def resnet50_model(args: Experiment):
     # use_dropout=True, # use_dropout
     assert args.use_aux == False
         
-    weights = ResNet50_Weights.IMAGENET1K_V1
+    if weight_n == 1:
+        weights = ResNet50_Weights.IMAGENET1K_V1
+    elif weight_n == 2:
+        weights = ResNet50_Weights.IMAGENET1K_V2
+    else:
+        weights = None
+    
     model = resnet50(
         num_classes=args.n_attributes,
         weights=weights,
