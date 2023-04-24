@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 
+from torch.profiler import profile, record_function, ProfilerActivity
 import torch
 import wandb
 
@@ -50,131 +51,135 @@ def run_epoch(
     is_training: bool,
     epoch: int = 0,
 ) -> None:
-    timing = False
-    if timing:
-        start = time.time()
-    if is_training:
-        # Revert batchnorm to training mode
-        model.train()
-        for layer in model.modules():
-            if isinstance(layer, torch.nn.BatchNorm2d):
-                layer.momentum = 0.1
-                layer.track_running_stats = True
-    else:
-        model.eval()
-        for layer in model.modules():
-            # Set momentum to 1 so that running mean/var just use the current batch (its the opposite of usual momentum)
-            if isinstance(layer, torch.nn.BatchNorm2d):
-                layer.momentum = 1 
-                layer.track_running_stats = False
+    with profile(activities=[ProfilerActivity.CPU], record_shapes=True, use_cuda=True) as prof:
+        with record_function("model_inference"):
+            timing = False
+            if timing:
+                start = time.time()
+            if is_training:
+                # Revert batchnorm to training mode
+                model.train()
+                for layer in model.modules():
+                    if isinstance(layer, torch.nn.BatchNorm2d):
+                        layer.momentum = 0.1
+                        layer.track_running_stats = True
+            else:
+                model.eval()
+                for layer in model.modules():
+                    # Set momentum to 1 so that running mean/var just use the current batch (its the opposite of usual momentum)
+                    if isinstance(layer, torch.nn.BatchNorm2d):
+                        layer.momentum = 1 
+                        layer.track_running_stats = False
 
-    if args.report_cross_accuracies:
-        cross_accs0 = []
-        cross_accs1 = []
+            if args.report_cross_accuracies:
+                cross_accs0 = []
+                cross_accs1 = []
 
-    if timing:
-        print("Done epoch setup in {} seconds".format(time.time() - start))
-        start = time.time()
+            if timing:
+                print("Done epoch setup in {} seconds".format(time.time() - start))
+                start = time.time()
 
-    for data in loader:
-        inputs, class_labels, attr_labels, batch_attr_mask = data
-        if sum(batch_attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
-            print("Skipping batch, consider increasing batch size or decreasing sparsity")
-            continue
+            for data in loader:
+                inputs, class_labels, attr_labels, batch_attr_mask = data
+                if sum(batch_attr_mask) < 2 and hasattr(model, "train_mode") and model.train_mode in ["XtoC", "CtoY"]:
+                    print("Skipping batch, consider increasing batch size or decreasing sparsity")
+                    continue
 
-        if timing:
-            print("Received batch in {} seconds".format(time.time() - start))
-            start = time.time()
+                if timing:
+                    print("Received batch in {} seconds".format(time.time() - start))
+                    start = time.time()
 
-        attr_labels = [i.float() for i in attr_labels]
-        attr_labels = torch.stack(attr_labels, dim=1)
+                attr_labels = [i.float() for i in attr_labels]
+                attr_labels = torch.stack(attr_labels, dim=1)
 
-        attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
-        inputs = inputs.cuda() if torch.cuda.is_available() else inputs
-        class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
-        batch_attr_mask = batch_attr_mask.cuda() if torch.cuda.is_available() else batch_attr_mask
-        if timing:
-            print("Converted batch in {} seconds".format(time.time() - start))
-            start = time.time()
-        attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, batch_attr_mask)
+                attr_labels = attr_labels.cuda() if torch.cuda.is_available() else attr_labels
+                inputs = inputs.cuda() if torch.cuda.is_available() else inputs
+                class_labels = class_labels.cuda() if torch.cuda.is_available() else class_labels
+                batch_attr_mask = batch_attr_mask.cuda() if torch.cuda.is_available() else batch_attr_mask
+                if timing:
+                    print("Converted batch in {} seconds".format(time.time() - start))
+                    start = time.time()
+                attr_preds, aux_attr_preds, class_preds, aux_class_preds = model.generate_predictions(inputs, attr_labels, batch_attr_mask)
 
-        if timing:
-            print("Generated predictions in {} seconds".format(time.time() - start))
-            start = time.time()
+                if timing:
+                    print("Generated predictions in {} seconds".format(time.time() - start))
+                    start = time.time()
 
-        if args.report_cross_accuracies:
-            assert isinstance(model, CUB_Multimodel)
-            assert args.n_models == 2
-            attr_pred0, _ = model.pre_models[0](inputs)
-            attr_pred1, _ = model.pre_models[1](inputs)
+                if args.report_cross_accuracies:
+                    with torch.no_grad():
+                        assert isinstance(model, CUB_Multimodel)
+                        assert args.n_models == 2
+                        attr_pred0, _ = model.pre_models[0](inputs)
+                        attr_pred1, _ = model.pre_models[1](inputs)
 
-            class_pred_cross0 = model.post_models[1](attr_pred0)
-            class_pred_cross1 = model.post_models[0](attr_pred1)
+                        class_pred_cross0 = model.post_models[1](attr_pred0)
+                        class_pred_cross1 = model.post_models[0](attr_pred1)
 
-            class_acc_cross0 = accuracy(class_pred_cross0.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
-            class_acc_cross1 = accuracy(class_pred_cross1.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
+                        class_acc_cross0 = accuracy(class_pred_cross0.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
+                        class_acc_cross1 = accuracy(class_pred_cross1.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
 
-            cross_accs0.append(class_acc_cross0[0].item())
-            cross_accs1.append(class_acc_cross1[0].item())
+                        cross_accs0.append(class_acc_cross0[0].item())
+                        cross_accs1.append(class_acc_cross1[0].item())
+                    
+                loss = model.generate_loss(
+                    attr_preds=attr_preds, 
+                    aux_attr_preds=aux_attr_preds, 
+                    class_preds=class_preds,
+                    aux_class_preds=aux_class_preds, 
+                    attr_labels=attr_labels, 
+                    class_labels=class_labels,
+                    mask=batch_attr_mask
+                )
+                if timing:
+                    print("Generated loss in {} seconds".format(time.time() - start))
+                    start = time.time()
+                if is_training:
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    # Print total gradient change among all in premodel
+                    # assert isinstance(model, CUB_Multimodel)
+                    # print(sum([torch.sum(torch.abs(p.grad)) for p in model.pre_models.parameters() if p.grad is not None]))
+                    # print(sum([torch.sum(p) for p in model.pre_models.parameters()]))
+
+
+                meters.loss.update(loss.item(), inputs.size(0))
+
+                if timing:
+                    print("Backward pass in {} seconds".format(time.time() - start))
+                    start = time.time()
+
+                with torch.no_grad():
+                    if attr_preds is not None:
+                        # Note that the first dimension in all outputs is the number of models, then batch size, then the rest of the dimensions
+                        label_ndxs = model.make_batch_ndxs(model.args.batch_size, batch_attr_mask)
+                        attr_labels = torch.cat([attr_labels[label_ndxs[i]] for i in range(args.n_models)], dim=0)
+                        
+                        attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds) # Shape (n_models, batch_size, N_ATTRIBUTES)
+                        # Collecting the n_model and batch size dimensions into one for the accuracy function, ie flattening the first two dimensions
+                        attr_pred_sigmoids = attr_pred_sigmoids.reshape(-1, N_ATTRIBUTES)
+                
+                        attr_acc = binary_accuracy(attr_pred_sigmoids[:, :N_ATTRIBUTES], attr_labels) # Only first N_ATTRIBUTES in case we're extending to have 'free' attrs
+                        meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
+                    
+                    if class_preds is not None:            
+                        # CoLlecting the n_model and batch size dimensions into one for the accuracy function
+                        class_labels = torch.cat([class_labels[label_ndxs[i]] for i in range(args.n_models)], dim=0)
+                        class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
+                        meters.label_acc.update(class_acc[0], inputs.size(0))
+                
+                if timing:
+                    print("Finished up batch in {} seconds".format(time.time() - start))
+                    start = time.time()
             
-        loss = model.generate_loss(
-            attr_preds=attr_preds, 
-            aux_attr_preds=aux_attr_preds, 
-            class_preds=class_preds,
-            aux_class_preds=aux_class_preds, 
-            attr_labels=attr_labels, 
-            class_labels=class_labels,
-            mask=batch_attr_mask
-        )
-        if timing:
-            print("Generated loss in {} seconds".format(time.time() - start))
-            start = time.time()
-        if is_training:
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            # Print total gradient change among all in premodel
-            # assert isinstance(model, CUB_Multimodel)
-            # print(sum([torch.sum(torch.abs(p.grad)) for p in model.pre_models.parameters() if p.grad is not None]))
-            # print(sum([torch.sum(p) for p in model.pre_models.parameters()]))
-
-
-        meters.loss.update(loss.item(), inputs.size(0))
-
-        if timing:
-            print("Backward pass in {} seconds".format(time.time() - start))
-            start = time.time()
-
-        if attr_preds is not None:
-            # Note that the first dimension in all outputs is the number of models, then batch size, then the rest of the dimensions
-            attr_labels = attr_labels.repeat(args.n_models, 1, 1)
-            if attr_preds.shape[1] != attr_labels.shape[1]:
-                attr_labels=attr_labels[batch_attr_mask]
-            
-            attr_pred_sigmoids = torch.nn.Sigmoid()(attr_preds) # Shape (n_models, batch_size, N_ATTRIBUTES)
-            attr_acc = binary_accuracy(attr_pred_sigmoids[:, :, :N_ATTRIBUTES], attr_labels) # Only first N_ATTRIBUTES in case we're extending to have 'free' attrs
-            meters.concept_acc.update(attr_acc.data.cpu().numpy(), inputs.size(0))
-        
-        if class_preds is not None:
-            class_labels = class_labels.repeat(args.n_models, 1)
-            
-            if class_preds.shape[1] != class_labels.shape[1]:
-                class_labels=class_labels[batch_attr_mask]
-            # Collecting the n_model and batch size dimensions into one for the accuracy function
-            class_acc = accuracy(class_preds.reshape(-1, N_CLASSES), class_labels.reshape(-1), topk=[1])
-            meters.label_acc.update(class_acc[0], inputs.size(0))
-        
-        if timing:
-            print("Finished up batch in {} seconds".format(time.time() - start))
-            start = time.time()
-    
-    if args.report_cross_accuracies:
-        e_type = "train" if is_training else "val"
-        wandb.log({
-            "epoch": epoch, 
-            f"{e_type}_cross_acc0": np.mean(cross_accs0), 
-            f"{e_type}_cross_acc1": np.mean(cross_accs1),
-        })
+            if args.report_cross_accuracies:
+                e_type = "train" if is_training else "val"
+                wandb.log({
+                    "epoch": epoch, 
+                    f"{e_type}_cross_acc0": np.mean(cross_accs0), 
+                    f"{e_type}_cross_acc1": np.mean(cross_accs1),
+                })
+    print(prof.key_averages().table(sort_by="self_cpu_time_total", row_limit=10))
 
 def train(
     model: CUB_Model,
@@ -604,7 +609,8 @@ def make_configs_list() -> List[Experiment]:
         cfgs.multi_inst_cfg, 
         copy.deepcopy(cfgs.multi_inst_cfg),
         copy.deepcopy(cfgs.multi_inst_cfg),
-        copy.deepcopy(cfgs.multi_inst_cfg)
+        copy.deepcopy(cfgs.multi_inst_cfg),
+        copy.deepcopy(cfgs.multi_inst_cfg),
     ]
     configs[1].report_cross_accuracies = True
     configs[1].n_attributes = configs[1].n_attributes + 10
@@ -622,11 +628,15 @@ def make_configs_list() -> List[Experiment]:
     configs[3].load = "out/multimodel_inst/20230402-125452/latest_model.pth"
     configs[3].tag = "no_pretrained"
 
-    configs[4].model = ["resnet50", "inception_v3"]
+    configs[4].model = ["resnet50", "resnet50"]
     configs[4].tag = "resnet50_inceptionv3"
     configs[4].report_cross_accuracies = True
     configs[4].use_aux = False
     configs[4].batch_size = 16
+    configs[4].pretrained_weight_n = [1,2]
+
+    configs[5].diff_order = False
+    configs[5].batch_size = configs[5].batch_size // 2
     return configs
 
 

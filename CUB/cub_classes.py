@@ -57,8 +57,8 @@ class Experiment:
     load: Optional[str] = None # Load a model from a previous run, gives the location of the .pth file
 
     # Model
-    model: Union[str, List[str]] = "inceptionv3" # Options: "inceptionv3", "resnet50"
-    pretrained_weight_n: int = 1 # If using a resnet with multiple options for weights, which to use
+    model: Union[str, List[str]] = "inception_v3" # Options: "inception_v3", "resnet50"
+    pretrained_weight_n: Union[int, List[int]] = 1 # If using a resnet with multiple options for weights, which to use
     multimodel: bool = False
     n_attributes: int = N_ATTRIBUTES # Width of the concept vector, can be greater but not less than N_ATTRIBUTES
     num_classes: int = N_CLASSES
@@ -98,11 +98,10 @@ class Experiment:
     reset_pre_models: bool = False
     reset_post_models: bool = False
     n_models: int = 1
-    thin: bool = False # Whether to only change the last/first layers of th e
+    thin: bool = False # Whether to only change the last/first layers of the models
     do_sep_train: bool = True # For basic multimodel runs, whether to train the models separately first
     report_cross_accuracies: bool = False # Whether to report the cross accuracies of the models
-
-    quick: bool = False
+    diff_order: bool = False # Whether to ensure that the data orders are different for each model
 
     model_sigmoid: bool = True
     gen_pred_sigmoid: bool = False

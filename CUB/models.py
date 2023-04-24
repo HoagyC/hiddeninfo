@@ -36,7 +36,7 @@ def squeeze(x: Optional[torch.Tensor], dim: int = 0):
     return x.squeeze(dim)
 
 # Basic model for predicting attributes from images
-def ModelXtoC(args: Experiment, use_dropout: Optional[bool] = None, model_str: Optional[str] = None) -> nn.Module:
+def ModelXtoC(args: Experiment, use_dropout: Optional[bool] = None, model_str: Optional[str] = None, weight_n: int = 1) -> nn.Module:
     """
     Model for predicting attributes from images.
     Takes in an image and outputs a list of outputs for each attribute,
@@ -52,7 +52,7 @@ def ModelXtoC(args: Experiment, use_dropout: Optional[bool] = None, model_str: O
 
     if model_str == "resnet50":
         print("Using ResNet50 with dropout: ", use_dropout)
-        return resnet50_model(args, weight_n=args.pretrained_weight_n)
+        return resnet50_model(args, weight_n=weight_n)
     
     elif model_str == "inception_v3":
         print("Using Inception v3 with dropout: ", use_dropout)
@@ -99,6 +99,25 @@ class CUB_Model(nn.Module, ABC):
         aux_attr_preds: Optional[torch.Tensor], # n_models x batch_size x n_attributes
         mask: torch.Tensor,):
         pass
+
+    def make_batch_ndxs(self, full_batch_size: int, mask: Optional[torch.Tensor] = None) -> List[List[int]]:
+        with torch.no_grad():
+            # If we want to make sure that we're using different training orders then we'll have to split the batch up between the different models
+            if self.args.diff_order:
+                assert full_batch_size % self.args.n_models == 0
+                model_batch_size = full_batch_size // self.args.n_models
+                input_dims = [list(range(i * model_batch_size, (i + 1) * model_batch_size)) for i in range(self.args.n_models)]
+
+            else:
+                input_dims = [list(range(full_batch_size))] * self.args.n_models
+            
+            if mask is not None:
+                input_dims = [
+                    [i for i in input_dim if mask[i]]
+                    for input_dim in input_dims
+                ]
+        
+            return input_dims
 
 class CUB_Multimodel(CUB_Model):
     def __init__(self):
@@ -162,9 +181,14 @@ class Multimodel(CUB_Multimodel):
             assert len(self.args.model) == self.args.n_models
         else:
             self.args.model = [self.args.model] * self.args.n_models
+
+        if isinstance(self.args.pretrained_weight_n, list):
+            assert len(self.args.pretrained_weight_n) == self.args.n_models
+        else:
+            self.args.pretrained_weight_n = [self.args.pretrained_weight_n] * self.args.n_models
     
         pre_models_list = [
-            ModelXtoC(self.args, use_dropout=self.dropouts[i], model_str=self.args.model[i])
+            ModelXtoC(self.args, use_dropout=self.dropouts[i], model_str=self.args.model[i], weight_n=self.args.pretrained_weight_n[i])
             for i in range(self.args.n_models)
         ]
         self.pre_models = nn.ModuleList(pre_models_list)
@@ -195,37 +219,25 @@ class Multimodel(CUB_Multimodel):
         else:
             raise ValueError(f"Invalid train mode {self.train_mode}")
         
-        if self.train_mode == "average":
-            for pre_model in self.pre_models:
-                attr_pred, aux_attr_pred = pre_model(inputs)
-                attr_preds.append(attr_pred)
-                if self.args.use_aux:
-                    aux_attr_preds.append(aux_attr_pred)
-            
-            attr_preds_input = torch.stack(attr_preds).mean(dim=0)
-            if self.args.use_aux:
-                aux_attr_preds_input = torch.stack(aux_attr_preds).mean(dim=0)
-            for post_model in self.post_models:
-                class_preds.append(post_model(attr_preds_input))
-                if self.args.use_aux:
-                    aux_class_preds.append(post_model(aux_attr_preds_input))
+        # If we want to make sure that we're using different training orders then we'll have to split the batch up between the different models
+        batch_ndxs = self.make_batch_ndxs(self.args.batch_size)
 
-        else:
-            for i, j in enumerate(post_model_indices):
-                attr_pred, aux_attr_pred = self.pre_models[i](inputs)
-                class_pred = self.post_models[j](attr_pred)
-                
-                attr_preds.append(attr_pred)
-                class_preds.append(class_pred)
-                if self.args.use_aux:
-                    aux_class_pred = self.post_models[j](aux_attr_pred)
-                    aux_attr_preds.append(aux_attr_pred)
-                    aux_class_preds.append(aux_class_pred)
+        for i, j in enumerate(post_model_indices):
+            attr_pred, aux_attr_pred = self.pre_models[i](inputs[batch_ndxs[i]])
+            class_pred = self.post_models[j](attr_pred)
+            
+            attr_preds.append(attr_pred)
+            class_preds.append(class_pred)
+            if self.args.use_aux:
+                aux_class_pred = self.post_models[j](aux_attr_pred)
+                aux_attr_preds.append(aux_attr_pred)
+                aux_class_preds.append(aux_class_pred)
 
         if self.args.use_aux:
             return torch.stack(attr_preds), torch.stack(aux_attr_preds), torch.stack(class_preds), torch.stack(aux_class_preds)
         else:
             return torch.stack(attr_preds), None, torch.stack(class_preds), None
+    
     
     def generate_loss(
         self, 
@@ -244,29 +256,37 @@ class Multimodel(CUB_Multimodel):
         assert class_preds is not None and class_labels is not None
 
         assert len(attr_preds) == len(class_preds) == len(self.pre_models)
+
+        batch_ndxs = self.make_batch_ndxs(self.args.batch_size, mask)
+        
         for ndx in range(len(self.pre_models)):
-            class_loss = self.criterion(class_preds[ndx], class_labels)
+            class_loss = self.criterion(class_preds[ndx], class_labels[batch_ndxs[ndx]])
             if self.args.use_aux:
                 assert aux_class_preds is not None
-                aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels)
+                aux_class_loss = self.criterion(aux_class_preds[ndx], class_labels[batch_ndxs[ndx]])
             else:
                 aux_class_loss = 0.
             class_loss += aux_class_loss * self.args.aux_loss_ratio
             total_class_loss += class_loss * self.class_loss_weights[ndx]
             
             attr_loss = 0.
-            for i in range(len(self.attr_criterion)):
-                attr_loss += self.attr_criterion[i](
-                    attr_preds[ndx, mask, i], attr_labels[mask, i] # Masking attr losses
-                )
-                if self.args.use_aux:
-                    assert aux_attr_preds is not None
-                    aux_attr_loss = self.attr_criterion[i](
-                        aux_attr_preds[ndx, mask, i], attr_labels[mask, i] # Masking attr losses
+            try:
+                for i in range(len(self.attr_criterion)):
+                    in_batch_mask = [x % (self.args.batch_size // self.args.n_models) for x in batch_ndxs[ndx]]
+                    attr_loss += self.attr_criterion[i](
+                        attr_preds[ndx, in_batch_mask, i], attr_labels[batch_ndxs[ndx], i] # Masking attr losses
                     )
-                else:
-                    aux_attr_loss = 0.
-                attr_loss += aux_attr_loss * self.args.aux_loss_ratio
+                    if self.args.use_aux:
+                        assert aux_attr_preds is not None
+                        aux_attr_loss = self.attr_criterion[i](
+                            aux_attr_preds[ndx, in_batch_mask, i], attr_labels[batch_ndxs[ndx], i] # Masking attr losses
+                        )
+                    else:
+                        aux_attr_loss = 0.
+                    attr_loss += aux_attr_loss * self.args.aux_loss_ratio
+                
+            except:
+                breakpoint()
             
             attr_loss /= len(self.attr_criterion)
             total_attr_loss += attr_loss * self.attr_loss_weights[ndx]
